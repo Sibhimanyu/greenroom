@@ -1239,6 +1239,17 @@ private final class RootView: NSView {
         peopleView.onAdmitAll = { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } }
         peopleView.onMuteAll = { Self.perform("Muted everyone") { $0.muteEveryone() } }
         peopleView.onAskAllToUnmute = { Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } }
+        // A row's hover Mute and "...", and the footer's "...": the shared lists.
+        peopleView.onQuick = { id in
+            guard let sdk = ParticipantGridWindowController.sdk else { return }
+            ParticipantActionRunner.runQuick(userID: id, client: sdk, surface: Self.actionSurface)
+        }
+        peopleView.personMenu = { id in
+            ParticipantGridWindowController.sdk.map { ParticipantActionRunner.menu(userID: id, client: $0, surface: Self.actionSurface) } ?? []
+        }
+        peopleView.hostMenu = {
+            ParticipantGridWindowController.sdk.map { ParticipantActionRunner.hostMenu(client: $0, surface: Self.actionSurface) } ?? []
+        }
 
         if let controls {
             let host = FirstMouseHostingView(rootView: MeetingToolbarView(model: controls, coordinator: controls.coordinator)
@@ -1620,21 +1631,20 @@ private final class RootView: NSView {
         popOut.onAdmitAll = peopleView.onAdmitAll
         popOut.onMuteAll = peopleView.onMuteAll
         popOut.onAskAllToUnmute = peopleView.onAskAllToUnmute
+        popOut.onQuick = peopleView.onQuick
+        popOut.personMenu = peopleView.personMenu
+        popOut.hostMenu = peopleView.hostMenu
         applyPeople(to: popOut)
     }
 
     private func applyPeople(to target: MeetingPeopleView) {
         let queue = handQueue
         let handIDs = Set(queue.map(\.id))
+        let viewer = ParticipantGridWindowController.sdk.map {
+            ParticipantActionRunner.viewer(me: ParticipantGridWindowController.myEntry, client: $0)
+        } ?? ViewerFacts(role: .attendee)
         func row(_ entry: ZoomMeetingSDKClient.RosterEntry) -> MeetingPeopleView.Row {
-            var tags: [String] = []
-            if entry.isHost { tags.append("Host") } else if entry.isCoHost { tags.append("Co-host") }
-            if entry.isMyself { tags.append("me") }
-            var detail: [String] = []
-            if entry.isSpotlighted { detail.append("spotlit") }
-            return .init(id: entry.id, name: entry.name, tags: tags, detail: detail.joined(separator: " \u{00B7} "),
-                         handUp: entry.isRaisingHand, muted: entry.isMuted, hasAudio: entry.hasJoinedAudio,
-                         cameraOff: !entry.videoOn, selected: selected == entry.id)
+            ParticipantActionRunner.row(entry, viewer: viewer, selected: selected == entry.id)
         }
         // You first, as Zoom lists you. Your own row opens nothing: there is no
         // inspector for yourself, and the toolbar is where your controls are.
@@ -2105,80 +2115,19 @@ private final class RootView: NSView {
         name.textColor = .labelColor
         var controls: [NSView] = [name]
 
-        if !entry.isMyself {
-            controls.append(Self.button(entry.isMuted ? "Unmute" : "Mute",
-                                        symbol: entry.isMuted ? "mic" : "mic.slash") {
-                let mute = !entry.isMuted
-                // Unmuting someone else is a request in Zoom's model, never a
-                // command - the wording has to match or the teacher waits for
-                // something that was never going to happen on its own.
-                Self.perform(mute ? "Muted \(entry.name)" : "Asked \(entry.name) to unmute") {
-                    $0.setMuted(mute, userID: id)
-                }
-            })
-            controls.append(Self.button(entry.videoOn ? "Stop video" : "Ask to start video",
-                                        symbol: (entry.videoOn ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name) {
-                let stop = entry.videoOn
-                Self.perform(stop ? "Stopped \(entry.name)'s video" : "Asked \(entry.name) to start video") {
-                    $0.setVideoMuted(stop, userID: id)
-                }
-            })
-        }
-        controls.append(Self.button(entry.isSpotlighted ? "Unspotlight" : "Spotlight",
-                                    symbol: entry.isSpotlighted ? "star.slash" : "star",
-                                    prominent: !entry.isSpotlighted) {
-            let on = !entry.isSpotlighted
-            Self.perform(on ? "Spotlighted \(entry.name) for everyone" : "Removed \(entry.name) from spotlight") {
-                $0.spotlight(on, userID: id)
-            }
-        })
-        controls.append(Self.button(entry.isPinned ? "Unpin" : "Pin for me",
-                                    symbol: entry.isPinned ? "pin.slash" : "pin") {
-            let on = !entry.isPinned
-            Self.perform(on ? "Pinned \(entry.name) on this Mac only" : "Unpinned \(entry.name)") {
-                $0.pin(on, userID: id)
-            }
-        })
-        if entry.isRaisingHand {
-            controls.append(Self.button("Lower hand", symbol: "hand.raised.slash") {
-                Self.perform("Lowered \(entry.name)'s hand") { $0.lowerHand(userID: id) }
-            })
-        }
-        controls.append(Self.button("Rename", symbol: "pencil") {
-            Self.prompt(title: "Rename \(entry.name)", current: entry.name) { newName in
-                Self.perform("Renamed \(entry.name) to \(newName)") { $0.rename(userID: id, to: newName) }
-            }
-        })
-        if !entry.isMyself {
-            controls.append(Self.button(entry.isCoHost ? "Remove co-host" : "Make co-host",
-                                        symbol: "person.2") {
-                let on = !entry.isCoHost
-                Self.perform(on ? "\(entry.name) is now a co-host" : "\(entry.name) is no longer a co-host") {
-                    $0.setCoHost(on, userID: id)
-                }
-            })
-            if flags.iAmHostOrCoHost, ParticipantGridWindowController.sdk?.waitingRoomAvailable == true {
-                // The way back is Admit in the waiting list, so no confirmation.
-                controls.append(Self.button("Put in waiting room", symbol: "door.left.hand.closed") {
-                    Self.perform("Sent \(entry.name) back to the waiting room") {
-                        $0.putInWaitingRoom(userID: id)
-                    }
+        // The person's controls: one list for the drawer, the rows' "..." and
+        // the Participants view window (ParticipantActionRules), one definition
+        // of what each does (ParticipantActionRunner).
+        if let sdk = ParticipantGridWindowController.sdk {
+            let viewer = ParticipantActionRunner.viewer(me: ParticipantGridWindowController.myEntry, client: sdk)
+            for action in ParticipantActionRules.actions(person: ParticipantActionRunner.facts(entry), viewer: viewer) {
+                controls.append(Self.button(ParticipantActionRules.title(action),
+                                            symbol: ParticipantActionRules.symbol(action),
+                                            prominent: action == .spotlight,
+                                            destructive: ParticipantActionRules.isDestructive(action)) {
+                    ParticipantActionRunner.run(action, on: entry, surface: Self.actionSurface)
                 })
             }
-            controls.append(Self.button("Make host", symbol: "person.badge.key") {
-                Self.confirm(title: "Make \(entry.name) the host?",
-                             message: "You become a co-host. You cannot take the host role back without the host key.",
-                             confirm: "Make host") {
-                    Self.perform("\(entry.name) is now the host") { $0.makeHost(userID: id) }
-                }
-            })
-            controls.append(Self.button("Remove", symbol: "person.fill.xmark", destructive: true) {
-                Self.confirm(title: "Remove \(entry.name) from the meeting?",
-                             message: "They cannot rejoin this meeting.",
-                             confirm: "Remove") {
-                    Self.perform("Removed \(entry.name)") { $0.expel(userID: id) }
-                }
-            })
         }
         // Straight into the drawer. The strip along the bottom is gone: it was
         // always in the layout and empty most of the time, which is the third
@@ -2421,17 +2370,9 @@ private final class RootView: NSView {
         if runAboveEverything(alert) == .alertFirstButtonReturn { action() }
     }
 
-    private static func prompt(title: String, current: String, action: @escaping (String) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(string: current)
-        field.frame = NSRect(x: 0, y: 0, width: 240, height: 24)
-        alert.accessoryView = field
-        let response = runAboveEverything(alert)
-        let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if response == .alertFirstButtonReturn, !trimmed.isEmpty { action(trimmed) }
+    /// How a person control runs from this window: `perform`, and alerts above the panel.
+    fileprivate static var actionSurface: ParticipantActionRunner.Surface {
+        ParticipantActionRunner.Surface(perform: { perform($0, $1) }, runAlert: { runAboveEverything($0) })
     }
 }
 

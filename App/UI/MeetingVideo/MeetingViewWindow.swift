@@ -211,17 +211,23 @@ enum MeetingViewWindows {
     private static var frameFor: (MeetingView) -> (frame: NSRect, screen: NSScreen?)? = { _ in nil }
     private static var copyInvite: () -> Void = {}
     private static var openMeetingWindow: () -> Void = {}
+    /// A view window opened: the coordinator's one-second follow loop must be
+    /// running, or the window is drawn once and never again (the loop stops
+    /// when the Meeting window closes with no view open).
+    private static var keepFollowing: () -> Void = {}
 
     static func configure(client: ZoomMeetingSDKClient,
                           log: @escaping (String) -> Void,
                           frameFor: @escaping (MeetingView) -> (frame: NSRect, screen: NSScreen?)?,
                           copyInvite: @escaping () -> Void,
-                          openMeetingWindow: @escaping () -> Void) {
+                          openMeetingWindow: @escaping () -> Void,
+                          keepFollowing: @escaping () -> Void) {
         self.client = client
         self.log = log
         self.frameFor = frameFor
         self.copyInvite = copyInvite
         self.openMeetingWindow = openMeetingWindow
+        self.keepFollowing = keepFollowing
     }
 
     // MARK: State
@@ -339,6 +345,7 @@ enum MeetingViewWindows {
         controller.content.layoutSubtreeIfNeeded()
         ZoomMeetingSDKClient.viewLog("opened '\(view.title)' frame=\(Int(panel.frame.width))x\(Int(panel.frame.height))")
         onChanged?()
+        keepFollowing()
         tick()
     }
 
@@ -463,14 +470,35 @@ enum MeetingViewWindows {
             admitAll: { perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } },
             lower: { id in perform("Lowered \(name(of: id))\u{2019}s hand") { $0.lowerHand(userID: id) } },
             askToUnmute: { id in perform("Asked \(name(of: id)) to unmute") { $0.setMuted(false, userID: id) } })
+        // A person's controls: the same list as the Meeting window's drawer
+        // (ParticipantActionRules), as a menu. A click on a row opens it at the
+        // pointer; the row's "..." opens it below the button.
+        let surface = ParticipantActionRunner.Surface(perform: { sentence, body in perform(sentence, body) })
         content.peopleActions = MeetingParticipantsActions(
-            select: { _ in },
+            select: { [weak content] id in
+                guard let content else { return }
+                showPersonMenu(ParticipantActionRunner.menu(userID: id, client: client, surface: surface), in: content)
+            },
             admit: { id in perform("Admitted \(name(of: id))") { $0.admitFromWaitingRoom(userID: id) } },
             deny: { id in perform("Denied \(name(of: id))") { $0.denyWaiting(userID: id) } },
             admitAll: { perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } },
             invite: { copyInvite() },
             muteAll: { perform("Muted everyone") { $0.muteEveryone() } },
-            askAllToUnmute: { perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } })
+            askAllToUnmute: { perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } },
+            quick: { id in ParticipantActionRunner.runQuick(userID: id, client: client, surface: surface) },
+            personMenu: { id in ParticipantActionRunner.menu(userID: id, client: client, surface: surface) },
+            hostMenu: { ParticipantActionRunner.hostMenu(client: client, surface: surface) })
+    }
+
+    /// Hangs a person's menu from the click that asked for it, or from the
+    /// middle of the list when the ask came from VoiceOver or the keyboard.
+    private static func showPersonMenu(_ entries: [MenuEntry], in content: NSView) {
+        if let event = NSApp.currentEvent, event.window === content.window,
+           event.type == .leftMouseUp || event.type == .leftMouseDown {
+            MeetingMenuPanel.show(entries, for: event)
+        } else {
+            MeetingMenuPanel.show(entries, at: NSPoint(x: content.bounds.midX, y: content.bounds.midY), in: content)
+        }
     }
 
     /// A name for the log line: a participant, or someone at the door.
@@ -710,13 +738,9 @@ enum MeetingViewWindows {
                 waiting: waiting, canDeny: s.canDeny,
                 hands: handStamps.ordered(roster.map { (id: $0.id, name: $0.name, muted: $0.isMuted && $0.hasJoinedAudio) }))
             s.peopleWaiting = waiting
+            let viewer = ParticipantActionRunner.viewer(me: roster.first(where: \.isMyself), client: client)
             func row(_ e: ZoomMeetingSDKClient.RosterEntry) -> MeetingParticipantRow {
-                var tags: [String] = []
-                if e.isHost { tags.append("Host") } else if e.isCoHost { tags.append("Co-host") }
-                if e.isMyself { tags.append("me") }
-                return MeetingParticipantRow(id: e.id, name: e.name, tags: tags, detail: e.isSpotlighted ? "spotlit" : "",
-                                             handUp: e.isRaisingHand, muted: e.isMuted, hasAudio: e.hasJoinedAudio,
-                                             cameraOff: !e.videoOn, selected: false)
+                ParticipantActionRunner.row(e, viewer: viewer)
             }
             let queueIDs = s.hands.hands.map(\.id)
             let byEntry = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })

@@ -72,14 +72,9 @@ enum PeoplePopOutController {
         guard let view, !ParticipantGridWindowController.isOpen else { return }
         let roster = client.meetingRoster()
         let myID = roster.first(where: \.isMyself)?.id
+        let viewer = ParticipantActionRunner.viewer(me: roster.first(where: \.isMyself), client: client)
         func row(_ entry: ZoomMeetingSDKClient.RosterEntry) -> MeetingPeopleView.Row {
-            var tags: [String] = []
-            if entry.isHost { tags.append("Host") } else if entry.isCoHost { tags.append("Co-host") }
-            if entry.isMyself { tags.append("me") }
-            var entryRow = MeetingPeopleView.Row(
-                id: entry.id, name: entry.name, tags: tags, detail: entry.isSpotlighted ? "spotlit" : "",
-                handUp: entry.isRaisingHand, muted: entry.isMuted, hasAudio: entry.hasJoinedAudio,
-                cameraOff: !entry.videoOn, selected: false)
+            var entryRow = ParticipantActionRunner.row(entry, viewer: viewer)
             if entry.isMyself {
                 entryRow.muted = client.iAmMuted
                 entryRow.cameraOff = CoordinatorController.shared?.ownCameraOff(zoomVideoOn: client.myVideoIsOn) ?? !client.myVideoIsOn
@@ -108,6 +103,22 @@ enum PeoplePopOutController {
         view.onAdmitAll = act { $0.admitEveryoneWaiting() }
         view.onMuteAll = act { $0.muteEveryone() }
         view.onAskAllToUnmute = act { $0.askEveryoneToUnmute() }
+        // A person's controls and the host's switches: the same lists as everywhere.
+        let surface = ParticipantActionRunner.Surface(perform: { [weak client, weak controls] _, body in
+            guard let client else { return }
+            _ = body(client)
+            controls?.refresh()
+        })
+        view.onQuick = { [weak client] id in
+            guard let client else { return }
+            ParticipantActionRunner.runQuick(userID: id, client: client, surface: surface)
+        }
+        view.personMenu = { [weak client] id in
+            client.map { ParticipantActionRunner.menu(userID: id, client: $0, surface: surface) } ?? []
+        }
+        view.hostMenu = { [weak client] in
+            client.map { ParticipantActionRunner.hostMenu(client: $0, surface: surface) } ?? []
+        }
         view.apply(waiting: waiting.map { .init(id: $0.id, name: $0.name) },
                    canDeny: client.canExpelFromWaitingRoom(),
                    isHost: client.roomFlags().iAmHostOrCoHost,

@@ -140,6 +140,9 @@ final class MeetingViewContentView: NSView {
             people.onInvite = { [weak self] in self?.peopleActions.invite() }
             people.onMuteAll = { [weak self] in self?.peopleActions.muteAll() }
             people.onAskAllToUnmute = { [weak self] in self?.peopleActions.askAllToUnmute() }
+            people.onQuick = { [weak self] in self?.peopleActions.quick($0) }
+            people.personMenu = { [weak self] in self?.peopleActions.personMenu?($0) ?? [] }
+            people.hostMenu = { [weak self] in self?.peopleActions.hostMenu?() ?? [] }
             addSubview(people)
         case .sharedScreen:
             shareTile.isHidden = true

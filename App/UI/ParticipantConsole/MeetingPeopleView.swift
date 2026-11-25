@@ -6,9 +6,11 @@
 //  search field, the waiting room on top (Admit, Deny, Admit all), then raised
 //  hands in the order they went up, then everyone, each row an initials circle,
 //  a name with "(Host, me)" style tags and the microphone and camera on the
-//  right. A host's footer has Invite, Mute All and "...". A row opens that
-//  person's inspector; the panel itself does no work, so every action keeps its
-//  one definition in the window.
+//  right. Under the pointer a row shows Mute (or Ask to unmute) and "..." for
+//  that person's controls (ParticipantActionRules decides which). A host's
+//  footer has Invite, Mute All and "..." for the room-wide switches. The panel
+//  itself does no work: every action is handed in, and ParticipantActionRunner
+//  keeps its one definition.
 //
 //  The drawing is MeetingParticipantsPanel, a SwiftUI view of plain values; this
 //  class is the NSView the window embeds, with the same `apply` it always had.
@@ -29,6 +31,11 @@ struct MeetingParticipantRow: Equatable, Identifiable {
     var hasAudio = true
     var cameraOff = false
     var selected = false
+    /// The hover button's words (Mute, Ask to unmute), or nil for none
+    /// (ParticipantActionRules.quick).
+    var quick: String?
+    /// The row has person controls, so hover shows "...".
+    var hasMore = false
 }
 
 struct MeetingWaitingRow: Equatable, Identifiable {
@@ -53,6 +60,12 @@ struct MeetingParticipantsActions {
     var invite: () -> Void = {}
     var muteAll: () -> Void = {}
     var askAllToUnmute: () -> Void = {}
+    /// The row's hover button.
+    var quick: (UInt32) -> Void = { _ in }
+    /// A person's controls as a menu. Nil: "..." does what a click on the row does.
+    var personMenu: ((UInt32) -> [MenuEntry])?
+    /// The footer's "...". Nil: Ask All to Unmute alone.
+    var hostMenu: (() -> [MenuEntry])?
 }
 
 struct MeetingParticipantsPanel: View {
@@ -169,7 +182,7 @@ struct MeetingParticipantsPanel: View {
     }
 
     private func row(_ person: MeetingParticipantRow) -> some View {
-        ParticipantRowView(person: person) { actions.select(person.id) }
+        MeetingParticipantRowView(person: person, actions: actions)
     }
 
     @ViewBuilder private var footer: some View {
@@ -185,7 +198,7 @@ struct MeetingParticipantsPanel: View {
                         .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
                         .overlay {
                             MenuPopUpOverlay(label: "More", entries: {
-                                [.item("Ask All to Unmute", actions.askAllToUnmute)]
+                                actions.hostMenu?() ?? [.item("Ask All to Unmute", actions.askAllToUnmute)]
                             })
                         }
                         .meetingHoverWash()
@@ -218,46 +231,108 @@ struct Avatar: View {
     }
 }
 
-private struct ParticipantRowView: View {
+/// One person's row. `hovering` starts the row under the pointer (the
+/// off-screen render, scripts/render/people.sh, draws it that way).
+struct MeetingParticipantRowView: View {
     let person: MeetingParticipantRow
-    let tap: () -> Void
-    @State private var hovering = false
+    let actions: MeetingParticipantsActions
+    @State private var hovering: Bool
+
+    init(person: MeetingParticipantRow, actions: MeetingParticipantsActions, hovering: Bool = false) {
+        self.person = person
+        self.actions = actions
+        _hovering = State(initialValue: hovering)
+    }
+
+    /// Zoom's list shows a person's two buttons only under the pointer.
+    private var showsButtons: Bool { hovering && (person.quick != nil || person.hasMore) }
 
     var body: some View {
-        Button(action: tap) {
-            HStack(spacing: 10) {
-                Avatar(name: person.name)
-                VStack(alignment: .leading, spacing: 1) {
-                    (Text(person.name).foregroundColor(.white)
-                     + Text(person.tags.isEmpty ? "" : " (\(person.tags.joined(separator: ", ")))")
-                        .foregroundColor(Color.white.opacity(0.62)))
-                        .font(.system(size: 13)).lineLimit(1)
-                    if !person.detail.isEmpty {
-                        Text(person.detail).font(.system(size: 11)).foregroundStyle(MeetingTheme.secondaryText)
-                    }
+        // A tap on the row rather than a Button around it: the row holds
+        // buttons of its own, and a button inside a button loses its clicks.
+        HStack(spacing: 10) {
+            Avatar(name: person.name)
+            VStack(alignment: .leading, spacing: 1) {
+                (Text(person.name).foregroundColor(.white)
+                 + Text(person.tags.isEmpty ? "" : " (\(person.tags.joined(separator: ", ")))")
+                    .foregroundColor(Color.white.opacity(0.62)))
+                    .font(.system(size: 13)).lineLimit(1)
+                if !person.detail.isEmpty {
+                    Text(person.detail).font(.system(size: 11)).foregroundStyle(MeetingTheme.secondaryText)
                 }
-                Spacer(minLength: 4)
-                if person.handUp {
-                    Image(systemName: "hand.raised.fill").font(.system(size: 13)).foregroundStyle(MeetingTheme.hand)
-                }
-                Image(systemName: person.hasAudio && !person.muted ? "mic" : "mic.slash")
-                    .font(.system(size: 13))
-                    .foregroundStyle(person.hasAudio && !person.muted ? Color.white : (person.hasAudio ? MeetingTheme.red : MeetingTheme.secondaryText))
-                    .frame(width: 18)
-                Image(systemName: (person.cameraOff ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name)
-                    .font(.system(size: 13))
-                    .foregroundStyle(person.cameraOff ? MeetingTheme.red : Color.white)
-                    .frame(width: 20)
             }
-            .padding(.horizontal, 16).frame(height: 46)
-            .background(person.selected || hovering ? MeetingTheme.hover : Color.clear)
-            .contentShape(Rectangle())
+            Spacer(minLength: 4)
+            // Under the pointer the buttons take the icons' place, so the name
+            // keeps its room in a 320pt list; the button's words carry the state.
+            if showsButtons {
+                rowButtons
+            } else {
+                stateIcons
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16).frame(height: 46)
+        .background(person.selected || hovering ? MeetingTheme.hover : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { actions.select(person.id) }
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel([person.name, person.tags.isEmpty ? nil : person.tags.joined(separator: ", "),
                              person.handUp ? "hand up" : nil, person.muted ? "muted" : nil,
                              person.cameraOff ? "camera off" : nil].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAction { actions.select(person.id) }
+        .accessibilityActions {
+            // The hover button, for VoiceOver and the keyboard, which never hover.
+            if let quick = person.quick { Button(quick) { actions.quick(person.id) } }
+        }
+    }
+
+    @ViewBuilder private var stateIcons: some View {
+        HStack(spacing: 10) {
+            if person.handUp {
+                Image(systemName: "hand.raised.fill").font(.system(size: 13)).foregroundStyle(MeetingTheme.hand)
+            }
+            Image(systemName: person.hasAudio && !person.muted ? "mic" : "mic.slash")
+                .font(.system(size: 13))
+                .foregroundStyle(person.hasAudio && !person.muted ? Color.white : (person.hasAudio ? MeetingTheme.red : MeetingTheme.secondaryText))
+                .frame(width: 18)
+            Image(systemName: (person.cameraOff ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name)
+                .font(.system(size: 13))
+                .foregroundStyle(person.cameraOff ? MeetingTheme.red : Color.white)
+                .frame(width: 20)
+        }
+    }
+
+    /// Mute (or Ask to unmute), then "...", as in Zoom's Participants list.
+    @ViewBuilder private var rowButtons: some View {
+        HStack(spacing: 6) {
+            if let quick = person.quick {
+                Button { actions.quick(person.id) } label: {
+                    Text(quick).font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
+                        .lineLimit(1).fixedSize()
+                        .padding(.horizontal, 10).frame(height: 24)
+                        .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
+                }
+                .buttonStyle(.meetingControl)
+                .accessibilityLabel("\(quick) \(person.name)")
+            }
+            if person.hasMore {
+                let more = Text("\u{2026}").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 30, height: 24)
+                    .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
+                if let menu = actions.personMenu {
+                    // Our own panel, not a SwiftUI Menu: an NSMenu shows nothing while Greenroom is inactive.
+                    more.overlay {
+                        MenuPopUpOverlay(label: "More for \(person.name)", below: true, entries: { menu(person.id) })
+                    }
+                    .meetingHoverWash()
+                } else {
+                    Button { actions.select(person.id) } label: { more }
+                        .buttonStyle(.meetingControl)
+                        .accessibilityLabel("More for \(person.name)")
+                }
+            }
+        }
     }
 }
 
@@ -276,6 +351,9 @@ final class MeetingPeopleView: NSView {
     var onInvite: (() -> Void)?
     var onMuteAll: (() -> Void)?
     var onAskAllToUnmute: (() -> Void)?
+    var onQuick: ((UInt32) -> Void)?
+    var personMenu: ((UInt32) -> [MenuEntry])?
+    var hostMenu: (() -> [MenuEntry])?
 
     private final class Box: ObservableObject {
         @Published var content = MeetingParticipantsContent()
@@ -306,7 +384,19 @@ final class MeetingPeopleView: NSView {
             admitAll: { [weak self] in self?.onAdmitAll?() },
             invite: { [weak self] in self?.onInvite?() },
             muteAll: { [weak self] in self?.onMuteAll?() },
-            askAllToUnmute: { [weak self] in self?.onAskAllToUnmute?() })
+            askAllToUnmute: { [weak self] in self?.onAskAllToUnmute?() },
+            quick: { [weak self] in self?.onQuick?($0) },
+            // No menu of its own here: "..." opens what a click on the row opens.
+            personMenu: { [weak self] id in
+                guard let self else { return [] }
+                if let menu = self.personMenu { return menu(id) }
+                self.onSelect?(id)
+                return []
+            },
+            hostMenu: { [weak self] in
+                guard let self else { return [] }
+                return self.hostMenu?() ?? [.item("Ask All to Unmute", { [weak self] in self?.onAskAllToUnmute?() })]
+            })
         let host = Host(rootView: Root(box: box, actions: actions))
         host.autoresizingMask = [.width, .height]
         host.frame = bounds

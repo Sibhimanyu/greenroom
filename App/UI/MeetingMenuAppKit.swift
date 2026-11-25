@@ -33,17 +33,21 @@ enum MeetingMenuBuilder {
 /// VoiceOver as a button that opens the same menu.
 struct MenuPopUpOverlay: NSViewRepresentable {
     let label: String
+    /// Hang the menu below the control (a list row) rather than above it (the toolbar).
+    var below = false
     let entries: () -> [MenuEntry]
 
     func makeNSView(context: Context) -> PopView { PopView() }
 
     func updateNSView(_ view: PopView, context: Context) {
         view.entries = entries
+        view.below = below
         view.setAccessibilityLabel(label)
     }
 
     final class PopView: NSView {
         var entries: (() -> [MenuEntry])?
+        var below = false
 
         override var isFlipped: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -58,7 +62,7 @@ struct MenuPopUpOverlay: NSViewRepresentable {
             let w = window
             CoordinatorController.sessionLog("Bar: menu cell pressed (\(accessibilityLabel() ?? "no label"); window visible \(w?.isVisible ?? false), onActiveSpace \(w?.isOnActiveSpace ?? false), alpha \(w?.alphaValue ?? -1))")
             guard let entries = entries?() else { return }
-            MeetingMenuBuilder.popUp(entries, above: self)
+            MeetingMenuBuilder.popUp(entries, above: self, below: below)
         }
     }
 }

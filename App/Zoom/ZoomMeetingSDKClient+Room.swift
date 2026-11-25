@@ -229,6 +229,20 @@ extension ZoomMeetingSDKClient {
 
     var waitingRoomAvailable: Bool { waitingRoom?.isSupportWaitingRoom() ?? false }
 
+    // MARK: Mute on entry
+
+    /// canEnableMuteOnEntry / isMuteOnEntryEnabled (ActionController.h:1103-1109).
+    var muteOnEntryAvailable: Bool { actions?.canEnableMuteOnEntry() ?? false }
+    var muteOnEntryOn: Bool { actions?.isMuteOnEntryEnabled() ?? false }
+
+    /// enableMuteOnEntry:allowUnmuteBySelf: (SettingGeneralController.h:294). The
+    /// second half keeps "Allow participants to unmute themselves" as it is.
+    func setMuteOnEntry(_ on: Bool) -> Bool {
+        let allow = roomFlags().unmuteSelfAllowed
+        return ZoomSDK.shared().getSettingService()?.getGeneralSetting()?
+            .enableMute(onEntry: on, allowUnmuteBySelf: allow) == ZoomSDKError_Success
+    }
+
     // MARK: Camera
 
     func cameraDevices() -> (devices: [MeetingMenus.Device], selectedID: String?) {

@@ -3692,6 +3692,14 @@ final class CoordinatorController: ObservableObject {
         startGridFollowLoop()
     }
 
+    /// A view window opened during a meeting: the follow loop feeds it, so it
+    /// starts again if closing the Meeting window had stopped it. The Meeting
+    /// window stays closed (`meetingWindowWanted` is untouched).
+    private func followForViewWindows() {
+        guard phase.isInMeeting, customUIGridTask == nil else { return }
+        startCustomUIGridFollow()
+    }
+
     /// Configures the meeting window's panel and sets the hooks it calls back
     /// into. Safe to run again and again; the window's close clears them all.
     private func installGridHooks() {
@@ -3749,7 +3757,8 @@ final class CoordinatorController: ObservableObject {
                 return self.layoutEngine.viewFrame(template, view)
             },
             copyInvite: { [weak self] in self?.meetingControls?.copyInviteLink() },
-            openMeetingWindow: { [weak self] in self?.openMeetingWindow() })
+            openMeetingWindow: { [weak self] in self?.openMeetingWindow() },
+            keepFollowing: { [weak self] in self?.followForViewWindows() })
         let startedAt = sessionStartedAt ?? Date()
         let tick: @MainActor () -> Bool = { [weak self] in
             guard let self else { return false }

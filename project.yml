@@ -375,6 +375,7 @@ targets:
       - path: App/UI/MeetingTopBarLayout.swift
       - path: App/UI/ParticipantClickRules.swift
       - path: App/UI/MeetingMenuSpec.swift
+      - path: App/UI/ParticipantConsole/ParticipantActionRules.swift
       - path: App/Zoom/MeetingShareRules.swift
       - path: App/Zoom/MeetingRoomLedgers.swift
       - path: App/Zoom/VideoBudget.swift

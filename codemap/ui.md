@@ -57,15 +57,18 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/TranscriptEditRules.swift (pure, tested) | Transcript rows with raw indexes for both writers (Cues `stamp<TAB>text`, Analyse `[m:ss] text`), one-row rewrite/delete keeping comments/noise/order, stamp seconds, current line, `.original` name/copy decision, stale-summary and auto-scroll rules | `TranscriptEditRules` |
 | UI/SessionNotesBar.swift | Floating notes bar during any session | `SessionNotes.shared`, `SessionNotesBarContent` |
 
-### Settings window (8 tabs; SettingsView.swift)
+### Settings window (9 tabs, 10 in Debug with Account; SettingsView.swift)
 | path | owns |
 |---|---|
-| UI/SettingsView.swift | `TabView`, tab order/heights, Cmd-1..8, notifications `.showWebcamSettings` / `.showSettingsTab` |
+| UI/SettingsView.swift | `TabView`, tab order/heights, Cmd-1..9 (then Cmd-0), notifications `.showWebcamSettings` / `.showSettingsTab` |
 | (rule) Settings pages clip below the toolbar | `SettingsContentClip` (SettingsView.swift) masks the Settings window's whole contentView to `contentLayoutRect` (the toolbar is a sibling view, so only scrolled-up content is cut; the frost stays). A SwiftUI mask per page did NOT hold once scrolled. Each tab only adds `.settingsPageClip()` (= hard top scroll edge). DEBUG tour `scroll y=<pt>` scrolls the Settings page to check | `SettingsContentClip`, `DebugTour.scroll` |
-| UI/WebcamPage.swift (+ WebcamShapePreview, CameraSwitchSection, MicrophoneSection, ShareTargetSettings) | Webcam tab: `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer`; `CameraSwitchSection` (two-camera cut) |
+| UI/WebcamPage.swift (+ WebcamShapePreview, ShareTargetSettings) | Webcam tab (camera look and camera piece only; merges into Layouts in P8): `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer` |
+| UI/DevicesSettingsTab.swift (+ CameraSwitchSection, MicrophoneSection) | Devices tab (`devices`): camera cards and the two-camera cut, microphone, the four Recording toggles, "Other apps" recordings (`VisibleToRecordersRow`). Home's Camera, Microphone and Record panels' "More" open it via `.showSettingsTab` "devices" |
+| UI/GeneralSettingsTab.swift | General tab (`general`): Privacy, anonymous usage analytics (`analyticsEnabled`) |
+| `SettingsTabs` (in UI/HomeTilePanelRules.swift, pure) | Tab order for Settings and the Home More panel, `shortcutKey(at:)` (Cmd-1..9, Cmd-0) |
 | UI/LayoutSettingsTab.swift (+ LayoutCanvas, LayoutAddPanel, LayoutAppOrdering, LayoutScreenPreview) | Layout creator: `LayoutSettingsTab`/`LayoutPageContent`, `LayoutCanvas`, `LayoutPieceTile`, `LayoutAddPanel` |
 | UI/ShortcutsSettingsTab.swift | `ShortcutRecorderField` |
-| UI/ZoomSettingsTab.swift (Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields, each with a Marketplace link, numbered steps and "Show the step-by-step guide"; text and URL in `Zoom/ZoomMarketplaceGuide.swift`, kept in step with `OnboardingView.manualZoomSetup`), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift (import result: one badge plus a `.waiting` badge per note from `SettingsImportReport`) | other tabs; `Cues*` rows reused by onboarding |
+| UI/ZoomSettingsTab.swift (also "During the meeting": copy invite link, open notes, hide my own tile; moved from Layout; Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields, each with a Marketplace link, numbered steps and "Show the step-by-step guide"; text and URL in `Zoom/ZoomMarketplaceGuide.swift`, kept in step with `OnboardingView.manualZoomSetup`), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift (import result: one badge plus a `.waiting` badge per note from `SettingsImportReport`) | other tabs; `Cues*` rows reused by onboarding |
 | UI/AccountSettingsTab.swift | DEBUG only (mock Thriveni account) |
 | UI/SettingsKit.swift | Shared Settings parts: `Collapsible`, `Collapse`, `ChoiceTile`, `PictureChip`, `StatusBadge` |
 

@@ -32,6 +32,7 @@ struct LayoutSettingsTab: View {
     private var cameraModel: LayoutCameraModel {
         let layout = coordinator.stageLayout
         return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: !coordinator.cameraShownOnMyScreen,
+                                 everyoneSees: !coordinator.cameraIsOff,
                                  onStep: { coordinator.previewPlacementStep($0) },
                                  onCommit: { coordinator.commitPreviewPlacement($0) },
                                  setShown: { on in
@@ -46,8 +47,6 @@ struct LayoutSettingsTab: View {
     var body: some View {
         LayoutPageContent(
             library: $coordinator.layoutLibrary,
-            hideSelfView: $coordinator.hideSelfView,
-            analyticsEnabled: $coordinator.analyticsEnabled,
             browserRestoresTabs: $coordinator.browserRestoresTabs,
             browserSearchSuggestions: $coordinator.browserSearchSuggestions,
             apps: apps,
@@ -68,7 +67,8 @@ struct LayoutSettingsTab: View {
             },
             liveLayoutID: coordinator.liveSessionLayoutID,
             applyNow: { coordinator.applyLayoutNow($0) },
-            camera: cameraModel)
+            camera: cameraModel,
+            share: Visibility.Target(coordinator.shareTarget))
         .onAppear {
             apps = AppCatalog.installedAndRunning()
             displays = DisplayResolver.connectedDisplays()
@@ -125,8 +125,6 @@ private enum LayoutFocus: Hashable {
 
 struct LayoutPageContent: View {
     @Binding var library: LayoutLibrary
-    @Binding var hideSelfView: Bool
-    @Binding var analyticsEnabled: Bool
     @Binding var browserRestoresTabs: Bool
     @Binding var browserSearchSuggestions: Bool
     let apps: [AppInfo]
@@ -148,6 +146,8 @@ struct LayoutPageContent: View {
     var applyNow: (UUID) -> Void = { _ in }
     /// The camera overlay, drawn on the shared display's canvas. Nil: none.
     var camera: LayoutCameraModel?
+    /// What is shared right now: the badges and Preview: Everyone read it.
+    var share: Visibility.Target = .wholeScreen
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
     /// Draws the Add panel in place under the row, for the off-screen render.
@@ -155,6 +155,8 @@ struct LayoutPageContent: View {
 
     @State private var selection: UUID?
     @State private var showsTwo = false
+    /// Preview: My screen (false, the default) or Everyone. View state only.
+    @State private var previewEveryone = false
     @State private var activeSlot: LayoutSlot = .one
     @State private var renamingID: UUID?
     @State private var renameDraft = ""
@@ -170,8 +172,6 @@ struct LayoutPageContent: View {
     @State private var refusalTask: Task<Void, Never>?
     @State private var focusRequest: LayoutFocusRequest?
     @FocusState private var focus: LayoutFocus?
-    @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
-    @AppStorage(CoordinatorController.copyInviteOnStartKey) private var copyInviteOnStart = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // MARK: Body
@@ -207,21 +207,6 @@ struct LayoutPageContent: View {
                         .padding(.vertical, 4)
                 }
             }
-
-            Section("During the meeting") {
-                Toggle("Copy the invite link when a meeting starts", isOn: $copyInviteOnStart)
-                    .help("The link goes on the clipboard as the meeting goes live, ready to paste into a message.")
-                Toggle("Open notes when a session starts", isOn: $notesOnStart)
-                    .help("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
-                Toggle("Hide my own tile", isOn: $hideSelfView)
-                    .help("Your own video is left out of the meeting you see. Everyone still sees you.")
-            }
-
-            Section("Privacy") {
-                Toggle("Anonymous usage analytics", isOn: $analyticsEnabled)
-                    .help("Counts and timings only. Never names, meeting IDs, addresses or chat.")
-            }
-
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -431,9 +416,28 @@ struct LayoutPageContent: View {
     private func editor(_ template: LayoutTemplate) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             titleRow(template)
+            previewPicker
             canvases(template)
             paletteRow(template)
             inspector(template)
+        }
+    }
+
+    /// Which picture the canvas draws: what you see, or what the meeting sees.
+    private var previewPicker: some View {
+        HStack(spacing: 8) {
+            Text("Preview")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Picker("Preview", selection: $previewEveryone) {
+                Text("My screen").tag(false)
+                Text("Everyone").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("My screen shows what you see. Everyone shows the meeting\u{2019}s picture: only what everyone sees.")
+            .accessibilityLabel("Preview")
         }
     }
 
@@ -572,7 +576,9 @@ struct LayoutPageContent: View {
                      crossing: two ? crossing(from: slot) : nil,
                      incoming: incoming?.slot == slot ? incoming?.preview : nil,
                      refusal: refusal?.slot == slot ? refusal?.text : nil,
-                     focusRequest: focusRequest)
+                     focusRequest: focusRequest,
+                     share: share,
+                     previewEveryone: previewEveryone)
     }
 
     // MARK: Between the two displays

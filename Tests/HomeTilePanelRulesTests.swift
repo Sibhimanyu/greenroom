@@ -97,17 +97,37 @@ final class HomeTilePanelRulesTests: XCTestCase {
         XCTAssertEqual(RecordPanelRules.headerValue(autoRecord: false), "Manual")
     }
 
-    func testMoreTabsAreTheEightSettingsTabsAndOnlyCuesIsBeta() {
+    func testMoreTabsAreTheSettingsTabsAndOnlyCuesIsBeta() {
         XCTAssertEqual(MorePanelRules.tabs.map(\.id),
-                       ["account", "webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+                       ["account", "webcam", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+        XCTAssertEqual(MorePanelRules.tabs.map(\.id), SettingsTabs.order(includingAccount: true))
         XCTAssertEqual(MorePanelRules.tabs.filter(\.beta).map(\.id), ["cues"])
         XCTAssertEqual(Set(MorePanelRules.tabs.map(\.id)).count, MorePanelRules.tabs.count)
     }
 
     func testMoreTabsLeaveOutAccountWhenTheBuildHasNone() {
         let release = MorePanelRules.tabs(includingAccount: false).map(\.id)
-        XCTAssertEqual(release, ["webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+        XCTAssertEqual(release, ["webcam", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+        XCTAssertEqual(release, SettingsTabs.order(includingAccount: false))
         XCTAssertEqual(MorePanelRules.tabs(includingAccount: true).map(\.id).first, "account")
+    }
+}
+
+final class SettingsTabsTests: XCTestCase {
+    func testDevicesAndGeneralAreTabsAndTheOldHomesAreNotDuplicated() {
+        let tabs = SettingsTabs.order(includingAccount: true)
+        XCTAssertTrue(tabs.contains("devices"))
+        XCTAssertTrue(tabs.contains("general"))
+        XCTAssertEqual(Set(tabs).count, tabs.count)
+    }
+
+    func testEveryTabUpToTenHasAShortcutAndNoneTraps() {
+        let n = SettingsTabs.order(includingAccount: true).count
+        XCTAssertLessThanOrEqual(n, 10)
+        for i in 0..<n { XCTAssertNotNil(SettingsTabs.shortcutKey(at: i), "tab \(i)") }
+        XCTAssertEqual(SettingsTabs.shortcutKey(at: 0), "1")
+        XCTAssertEqual(SettingsTabs.shortcutKey(at: 9), "0")
+        XCTAssertNil(SettingsTabs.shortcutKey(at: 10))
     }
 }
 

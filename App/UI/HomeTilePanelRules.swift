@@ -191,6 +191,31 @@ enum RecordPanelRules {
     static func headerValue(autoRecord: Bool) -> String { autoRecord ? "Auto-record" : "Manual" }
 }
 
+/// The Settings tabs, in toolbar order. Pure, so the order, the shortcuts and
+/// the Home "More" panel stay in step (HomeTilePanelRulesTests).
+enum SettingsTabs {
+    /// The Account tab is a mock that only exists in Debug.
+    #if DEBUG
+    static let buildHasAccount = true
+    #else
+    static let buildHasAccount = false
+    #endif
+
+    static func order(includingAccount: Bool) -> [String] {
+        (includingAccount ? ["account"] : [])
+            + ["webcam", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"]
+    }
+
+    /// ⌘1...⌘9, then ⌘0; nothing past ten. (`Character("10")` would trap.)
+    static func shortcutKey(at index: Int) -> Character? {
+        switch index {
+        case 0...8: return Character(String(index + 1))
+        case 9: return "0"
+        default: return nil
+        }
+    }
+}
+
 /// What the More panel shows: the Settings tabs it jumps to, in order.
 enum MorePanelRules {
     struct Tab: Equatable {
@@ -217,6 +242,8 @@ enum MorePanelRules {
     private static let common: [Tab] = [
         Tab(id: "webcam", title: "Webcam", symbol: "video.fill"),
         Tab(id: "layout", title: "Layout", symbol: "rectangle.split.2x1"),
+        Tab(id: "devices", title: "Devices", symbol: "headphones"),
+        Tab(id: "general", title: "General", symbol: "gearshape"),
         Tab(id: "shortcuts", title: "Shortcuts", symbol: "command"),
         Tab(id: "zoom", title: "Zoom", symbol: "video.bubble"),
         Tab(id: "youtube", title: "YouTube", symbol: "play.rectangle.fill"),

@@ -41,8 +41,8 @@ enum ShareVisibleWindows {
     /// really on screen, and nothing at all unless a whole display is shared.
     static var effectiveNumbers: Set<Int> {
         let visible = windowNumbers.filter { NSApp.window(withWindowNumber: $0)?.isVisible ?? false }
-        let always: Set<Int> = ShareVisibilityRules.alwaysShared(windowKind: .browser)
-            ? Set([BrowserWindowController.visibleWindowNumber].compactMap { $0 }) : []
+        // The rule (Visibility.windowBadge) decides whether the browser is in.
+        let always = Set([BrowserWindowController.visibleWindowNumber].compactMap { $0 })
         return ShowOnShare.exceptionIDs(kind: kind, registry: Set(visible), alwaysShared: always) ?? []
     }
 }
@@ -57,3 +57,43 @@ extension ShowOnShare.ShareKind {
         }
     }
 }
+
+extension Visibility.Target {
+    /// The rule's view of what is shared now.
+    init(_ target: ShareTarget) {
+        switch target.kind {
+        case .display: self = .wholeScreen
+        case .app, .window: self = .window(bundleID: target.appBundleID.isEmpty ? nil : target.appBundleID)
+        case .whiteboard: self = .whiteboard
+        case .nothing: self = .justMe
+        }
+    }
+}
+
+#if DEBUG
+import os
+
+extension ShareVisibleWindows {
+    /// DEBUG cross-check: the live windows of the pieces, against the list the
+    /// stream really passes to ScreenCaptureKit (`effectiveNumbers`). A disagreement
+    /// is logged and trips an assertion: it is the Greenroom Browser bug again.
+    static func crossCheck(pieces: [LayoutPiece], target: Visibility.Target) {
+        var live: [(piece: LayoutPiece, number: Int)] = []
+        for p in pieces {
+            var number: Int?
+            switch p.kind {
+            case .chat: number = ChatWindowController.currentWindow.flatMap { $0.isVisible ? $0.windowNumber : nil }
+            case .meeting: number = ParticipantGridWindowController.meetingWindow.flatMap { $0.isVisible ? $0.windowNumber : nil }
+            case let .app(a): number = AppCatalog.isBuiltInBrowser(a.bundleID) ? BrowserWindowController.visibleWindowNumber : nil
+            case .view, .roomScreen: number = nil
+            }
+            if let number { live.append((p, number)) }
+        }
+        let bad = Visibility.mismatches(windows: live, target: target, exceptionList: effectiveNumbers)
+        guard !bad.isEmpty else { return }
+        Logger(subsystem: "com.greenroom", category: "Visibility")
+            .error("Preview: Everyone disagrees with the capture's exception list for \(bad.count, privacy: .public) piece(s)")
+        assertionFailure("Visibility rule and the capture's exception list disagree")
+    }
+}
+#endif

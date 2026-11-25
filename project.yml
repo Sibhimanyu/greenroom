@@ -327,6 +327,8 @@ targets:
       - path: App/MeetingShrinkRules.swift
       - path: App/MeetingCollapseRules.swift
       - path: App/ShareVisibilityRules.swift
+      - path: App/Layout/Visibility.swift
+      - path: App/Stage/CameraState.swift
       - path: App/LiveExitRules.swift
       - path: App/MainWindowVisibility.swift
       - path: App/StartChoreography.swift

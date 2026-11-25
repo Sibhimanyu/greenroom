@@ -106,8 +106,12 @@ enum ShowOnShare {
     /// work (an app or window share captures only that app or window).
     /// `alwaysShared`: windows that are in the picture with no switch (the
     /// Greenroom Browser, ShareVisibilityRules.alwaysShared).
+    /// Derived from `Visibility.windowBadge`, the one rule the canvas badges read too.
     static func exceptionIDs(kind: ShareKind, registry: Set<Int>, alwaysShared: Set<Int> = []) -> Set<Int>? {
-        kind == .display ? registry.union(alwaysShared) : nil
+        guard kind == .display else { return nil }
+        let marked = Visibility.windowBadge(.meetingWindow, marked: true, target: .wholeScreen).isOn ? registry : []
+        let always = Visibility.windowBadge(.browser, marked: false, target: .wholeScreen).isOn ? alwaysShared : []
+        return marked.union(always)
     }
 
     static func isAvailable(_ kind: ShareKind) -> Bool { kind == .display }

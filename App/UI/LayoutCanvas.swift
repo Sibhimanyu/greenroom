@@ -72,6 +72,9 @@ struct LayoutCameraModel {
     var shape: WebcamShape
     /// Hidden on the owner's own screen (local only): drawn dimmed, still placeable.
     var cameraOff = false
+    /// The meeting sees the camera (CameraState.everyoneSees). With `cameraOff` this
+    /// is "Only everyone": drawn with a dashed outline.
+    var everyoneSees = true
     /// A drag step: the compositor only (no @Published write, no defaults).
     var onStep: (PresenceBox) -> Void
     /// The drag ended: persist once.
@@ -196,6 +199,10 @@ struct LayoutCanvas: View {
     /// Why the last drop here was refused, shown briefly.
     var refusal: String?
     var focusRequest: LayoutFocusRequest?
+    /// What is shared, for the badges (Visibility, the one rule).
+    var share: Visibility.Target = .wholeScreen
+    /// Preview: Everyone, the meeting's picture, instead of My screen.
+    var previewEveryone = false
 
     @State private var drag: DragState?
     @State private var dropTargeted = false
@@ -307,11 +314,13 @@ struct LayoutCanvas: View {
                 if drag != nil || dropTargeted { gridDots(canvas) }
                 if pieces.isEmpty { emptyHint }
 
-                ForEach(pieces) { piece in tile(piece, canvas: canvas) }
+                ForEach(drawnPieces) { piece in tile(piece, canvas: canvas) }
 
                 guides(canvas)
 
-                ForEach(pieces.filter(\.offersShareSwitch)) { piece in shareSwitch(piece, canvas: canvas) }
+                if !previewEveryone {
+                    ForEach(pieces) { piece in badges(piece, canvas: canvas) }
+                }
 
                 if let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
                     ForEach(LayoutGeometry.Handle.allCases, id: \.self) { handle in
@@ -321,7 +330,7 @@ struct LayoutCanvas: View {
 
                 if let d = drag, d.moved { readout(d, canvas: canvas) }
 
-                if let camera { cameraOverlay(camera, canvas: canvas) }
+                if let camera, !previewEveryone || camera.everyoneSees { cameraOverlay(camera, canvas: canvas) }
 
                 if let incoming { incomingOverlay(incoming, canvas: canvas) }
 
@@ -351,6 +360,11 @@ struct LayoutCanvas: View {
                 }
             }
             .coordinateSpace(name: Self.space)
+            #if DEBUG
+            .onChange(of: previewEveryone) { _, on in
+                if on { ShareVisibleWindows.crossCheck(pieces: pieces, target: share) }
+            }
+            #endif
             .dropDestination(for: String.self) { items, location in
                 drop(items, at: location, canvas: canvas)
             } isTargeted: { dropTargeted = $0 }
@@ -389,7 +403,7 @@ struct LayoutCanvas: View {
             .onHover { inside in
                 (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
             }
-            .opacity(isDragging && (drag?.crossing ?? false) ? 0.35 : 1)
+            .opacity(isDragging && (drag?.crossing ?? false) ? 0.35 : (hiddenFromEveryone(piece) ? 0.5 : 1))
             .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
             .position(x: box.midX, y: box.midY)
@@ -494,31 +508,80 @@ struct LayoutCanvas: View {
             .allowsHitTesting(false)
     }
 
-    // MARK: Show to everyone
+    // MARK: Who sees what
 
-    /// The quiet eye of the window title bars, in the tile's top-right corner:
-    /// faint when only you see the window, amber when everyone does. A sibling of
-    /// the tile (not inside it) so it answers its own click, not a tile drag.
+    /// Preview: Everyone draws the meeting's picture: only what the rule turns on.
+    private var drawnPieces: [LayoutPiece] {
+        previewEveryone ? pieces.filter { Visibility.everyoneSees(piece: $0, target: share).isOn } : pieces
+    }
+
+    /// A piece the meeting does not see looks faded on My screen.
+    private func hiddenFromEveryone(_ piece: LayoutPiece) -> Bool {
+        !previewEveryone && !Visibility.everyoneSees(piece: piece, target: share).isOn
+    }
+
+    private enum BadgeKind { case me, everyone }
+
+    /// Two small badges in the tile's top-right corner: the eye (on your screen) and
+    /// the broadcast mark (everyone, amber when on). Siblings of the tile, so each
+    /// answers its own click and not a tile drag. A fixed answer is drawn as a fact
+    /// (no button, no hover highlight) with its reason as help.
     @ViewBuilder
-    private func shareSwitch(_ piece: LayoutPiece, canvas: CGSize) -> some View {
+    private func badges(_ piece: LayoutPiece, canvas: CGSize) -> some View {
         let box = frame(of: liveRect(piece), canvas: canvas)
-        if box.width >= 56, box.height >= 40, !piece.isFixed {
-            let on = piece.showsToEveryone
-            Button {
-                if let i = pieces.firstIndex(where: { $0.id == piece.id }) { pieces[i].showsToEveryone.toggle() }
-            } label: {
-                Image(systemName: on ? "eye" : "eye.slash")
-                    .font(.system(size: 11))
-                    .foregroundStyle(on ? Brand.netText : Color.secondary.opacity(0.6))
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
+        if box.width >= 64, box.height >= 40, !piece.isFixed {
+            HStack(spacing: 0) {
+                badge(.me, Visibility.onMyScreen(piece: piece), piece: piece)
+                badge(.everyone, Visibility.everyoneSees(piece: piece, target: share), piece: piece)
             }
-            .buttonStyle(.plain)
-            .help(on ? "Everyone in the meeting sees this window" : "Only you see this window")
-            .accessibilityLabel("Show to everyone")
-            .accessibilityValue(on ? "On. Everyone in the meeting sees this window" : "Off. Only you see this window")
-            .position(x: box.maxX - 17, y: box.minY + 15)
+            .position(x: box.maxX - 27, y: box.minY + 15)
             .zIndex(3)
+        }
+    }
+
+    @ViewBuilder
+    private func badge(_ which: BadgeKind, _ state: Visibility.Badge, piece: LayoutPiece) -> some View {
+        let on = state.isOn
+        let symbol = which == .me ? (on ? "eye" : "eye.slash")
+                                  : (on ? "dot.radiowaves.left.and.right" : "dot.radiowaves.left.and.right.slash")
+        let words = which == .me ? "On your screen" : "Everyone sees"
+        let tint: Color = on ? (which == .everyone ? Brand.netText : Color.primary.opacity(0.7)) : Color.secondary.opacity(0.6)
+        let glyph = Image(systemName: symbol)
+            .font(.system(size: 11))
+            .foregroundStyle(tint)
+            .frame(width: 22, height: 22)
+        if let reason = state.reason {
+            glyph
+                .opacity(0.75)
+                .help(reason)
+                .accessibilityLabel(words)
+                .accessibilityValue("\(on ? "On" : "Off"), fixed. \(reason)")
+        } else {
+            Button { flip(which, piece) } label: { glyph.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .help(on ? "\(words): on. Click to turn off" : "\(words): off. Click to turn on")
+                .accessibilityLabel(words)
+                .accessibilityValue(on ? "On" : "Off")
+        }
+    }
+
+    /// Flips a badge the rule leaves open. Turning the eye off also takes the piece
+    /// out of the meeting's picture: a window that starts hidden is not shared.
+    private func flip(_ which: BadgeKind, _ piece: LayoutPiece) {
+        guard let i = pieces.firstIndex(where: { $0.id == piece.id }) else { return }
+        switch which {
+        case .everyone:
+            pieces[i].showsToEveryone.toggle()
+        case .me:
+            switch pieces[i].kind {
+            case let .meeting(fills, hidden):
+                pieces[i].kind = .meeting(fillsDisplay: fills, startsHidden: !hidden)
+            case let .view(view, hidden):
+                pieces[i].kind = .view(view, startsHidden: !hidden)
+            case .chat, .app, .roomScreen:
+                return
+            }
+            if Visibility.onMyScreen(piece: pieces[i]) == .off { pieces[i].showsToEveryone = false }
         }
     }
 
@@ -536,7 +599,8 @@ struct LayoutCanvas: View {
                 onStep: camera.onStep, onCommit: camera.onCommit,
                 selected: selection == LayoutCameraModel.selectionID,
                 onSelect: { selection = LayoutCameraModel.selectionID; takeKeyboard(); onActivate() },
-                fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff, size: size)) })
+                fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff && !previewEveryone,
+                                                      dashed: camera.cameraOff && camera.everyoneSees && !previewEveryone, size: size)) })
                 .frame(width: canvas.width, height: canvas.height)
                 .zIndex(6)
         }
@@ -546,7 +610,8 @@ struct LayoutCanvas: View {
     /// right): shown, not draggable, and click-through so the tiles stay usable.
     private func presenterStandIn(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
         let h = canvas.height, w = min(h * 0.62, canvas.width * 0.3)
-        return CameraStandIn(shape: .presenterLarge, off: camera.cameraOff, size: CGSize(width: w, height: h))
+        return CameraStandIn(shape: .presenterLarge, off: camera.cameraOff && !previewEveryone,
+                             dashed: camera.cameraOff && camera.everyoneSees && !previewEveryone, size: CGSize(width: w, height: h))
             .frame(width: w, height: h)
             .position(x: canvas.width * 0.24, y: canvas.height / 2)
             .allowsHitTesting(false)
@@ -1180,6 +1245,8 @@ struct MeetingViewDiagram: Shape {
 private struct CameraStandIn: View {
     let shape: WebcamShape
     let off: Bool
+    /// Hidden from me but shown to everyone: a dashed outline says so.
+    var dashed = false
     let size: CGSize
 
     var body: some View {
@@ -1201,6 +1268,11 @@ private struct CameraStandIn: View {
             }
         }
         .opacity(off ? 0.5 : 1)
+        .overlay {
+            if dashed {
+                clip.stroke(Brand.net, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            }
+        }
         .overlay {
             if shape == .cutout || shape == .presenterLarge {
                 RoundedRectangle(cornerRadius: 6)

@@ -809,7 +809,7 @@ struct HomeView: View {
         .greenroomPopover(isPresented: $cameraOpen) {
             HomeCameraPanel(coordinator: coordinator, cameras: cameras) {
                 cameraOpen = false
-                openWebcamSettings()
+                openSettingsTab("devices")
             }
         }
         // The panel explains itself, so no hover card (see lookControl).
@@ -834,7 +834,7 @@ struct HomeView: View {
             HomeMicPanel(coordinator: coordinator, microphones: microphones,
                          systemName: AVCaptureDevice.default(for: .audio)?.localizedName) {
                 micOpen = false
-                openWebcamSettings()
+                openSettingsTab("devices")
             }
         }
         // The panel explains itself, so no hover card (see lookControl).
@@ -905,7 +905,7 @@ struct HomeView: View {
         .greenroomPopover(isPresented: $recordOpen) {
             HomeRecordPanel(coordinator: coordinator, isLive: isLive) {
                 recordOpen = false
-                openWebcamSettings()
+                openSettingsTab("devices")
             }
         }
         // The panel explains itself, so no hover card (see lookControl).
@@ -1403,6 +1403,14 @@ struct HomeView: View {
         // Webcam anyway, and one already open needs telling.
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
+        }
+    }
+
+    /// Settings on the named tab (`SettingsTabs`), e.g. "devices".
+    private func openSettingsTab(_ tab: String) {
+        openSettings()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .showSettingsTab, object: tab)
         }
     }
 }

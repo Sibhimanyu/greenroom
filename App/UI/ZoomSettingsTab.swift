@@ -45,6 +45,7 @@ struct ZoomSettingsTab: View {
             s2sClientID: $coordinator.s2sClientID,
             s2sClientSecret: $coordinator.s2sClientSecret,
             displayName: $coordinator.userDisplayName,
+            hideSelfView: $coordinator.hideSelfView,
             signIn: ZoomSignInSection.live(coordinator),
             showGuide: { coordinator.presentOnboarding() })
     }
@@ -59,6 +60,7 @@ struct ZoomPageContent: View {
     @Binding var s2sClientID: String
     @Binding var s2sClientSecret: String
     @Binding var displayName: String
+    @Binding var hideSelfView: Bool
     let signIn: ZoomSignInSection
     /// Opens the setup guide. Nil in the off-screen render, which hides the button.
     var showGuide: (() -> Void)? = nil
@@ -66,6 +68,10 @@ struct ZoomPageContent: View {
     var ownAppsOpen = false
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
+
+    // "During the meeting" (moved from the Layout tab; keys unchanged).
+    @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
+    @AppStorage(CoordinatorController.copyInviteOnStartKey) private var copyInviteOnStart = true
 
     static let scopes = ZoomScopes.names
 
@@ -122,6 +128,15 @@ struct ZoomPageContent: View {
             Section("Meeting") {
                 TextField("Display name", text: $displayName)
                     .help("The name everyone sees for you in the meeting.")
+            }
+
+            Section("During the meeting") {
+                Toggle("Copy the invite link when a meeting starts", isOn: $copyInviteOnStart)
+                    .help("The link goes on the clipboard as the meeting goes live, ready to paste into a message.")
+                Toggle("Open notes when a session starts", isOn: $notesOnStart)
+                    .help("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
+                Toggle("Hide my own tile", isOn: $hideSelfView)
+                    .help("Your own video is left out of the meeting you see. Everyone still sees you.")
             }
         }
         .formStyle(.grouped)

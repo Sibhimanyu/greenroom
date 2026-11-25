@@ -2,7 +2,8 @@
 //  WebcamPage.swift
 //  Greenroom
 //
-//  Settings -> Webcam: what the class sees, and how you appear in it.
+//  Settings -> Webcam: how you appear to everyone in the meeting (the camera
+//  look and the camera piece). The devices are on the Devices tab.
 //
 //  Built to be looked at rather than read. The picture is the stage; every
 //  choice on the page is a picture of itself (looks, sizes, corners, what is
@@ -71,23 +72,6 @@ struct WebcamSettingsTab: View {
             shareDetail: {
                 ShareTargetSettings(displays: displays,
                                     onChange: { coordinator.requestShapeApply(rebuild: true) })
-            },
-            cameras: { CameraSwitchSection() },
-            microphone: { MicrophoneSection() },
-            recording: {
-                Toggle("Keep the last 5 minutes clippable", isOn: $coordinator.clipBufferEnabled)
-                    .help("The clip shortcuts (Settings \u{2192} Shortcuts) save the last minutes as a clip, recording or not. About 300 MB of memory, nothing on disk until you press.")
-                Toggle("Record automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
-                    .help("Off: press Record or \(ShortcutStore.phrase(.toggleRecording)). Files land in Documents/Greenroom.")
-                Picker("Countdown before recording", selection: $coordinator.recordingCountdownSeconds) {
-                    Text("Off").tag(0)
-                    Text("3 seconds").tag(3)
-                    Text("5 seconds").tag(5)
-                    Text("10 seconds").tag(10)
-                }
-                .help("A big number counts down on screen before a recording you start begins. Esc or Cancel stops it. A recording that starts by itself with the meeting has no countdown.")
-                Toggle("Record the Mac\u{2019}s sound", isOn: $coordinator.recordSystemAudio)
-                    .help("Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Greenroom\u{2019}s own sound is left out, so the meeting is not doubled. Needs something shared under Behind you.")
             })
         .onAppear {
             displays = DisplayResolver.connectedDisplays()
@@ -117,7 +101,7 @@ struct LiveCompositePicture: View {
 
 // MARK: - The page
 
-struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Microphone: View, Recording: View>: View {
+struct WebcamPageContent<LivePicture: View, ShareDetail: View>: View {
     @Binding var shape: WebcamShape
     @Binding var removal: BackgroundRemoval
     @Binding var cameraBackground: CameraBackground
@@ -137,9 +121,6 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     let reset: () -> Void
     @ViewBuilder let livePicture: () -> LivePicture
     @ViewBuilder let shareDetail: () -> ShareDetail
-    @ViewBuilder let cameras: () -> Cameras
-    @ViewBuilder let microphone: () -> Microphone
-    @ViewBuilder let recording: () -> Recording
 
     /// Where the bubble is while it is being dragged or nudged.
     ///
@@ -214,13 +195,11 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
                 shareDetail()
             }
 
+            // The camera devices, microphone, recording and other apps'
+            // recordings are on the Devices tab (DevicesSettingsTab).
             Section("Camera") {
-                cameras()
                 MirrorMyCameraRow()
             }
-            Section("Other apps") { VisibleToRecordersRow() }
-            Section("Microphone") { microphone() }
-            Section("Recording") { recording() }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -795,20 +774,6 @@ private struct MirrorMyCameraRow: View {
             Text(visibleToRecorders
                  ? PresenceRecorderRules.mirrorDisabledNote
                  : "Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// "Show Greenroom on screen in other apps' recordings" (PresenceRecorderRules).
-private struct VisibleToRecordersRow: View {
-    @AppStorage(PresenceRecorderRules.key) private var visible = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Toggle(PresenceRecorderRules.settingTitle, isOn: $visible)
-            Text(PresenceRecorderRules.settingNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -111,5 +111,5 @@ struct ShareSwitchState: Equatable {
 /// shown, LayoutPiece.defaultShowsToEveryone); with no layout, or a layout that
 /// does not place the window, it is "Only you".
 enum LayoutShareRule {
-    static func startsShown(placedBy piece: LayoutPiece?) -> Bool { piece?.showsToEveryone ?? false }
+    static func startsShown(placedBy piece: LayoutPiece?) -> Bool { piece.map { Visibility.everyoneSees(piece: $0, target: .wholeScreen).isOn } ?? false }
 }

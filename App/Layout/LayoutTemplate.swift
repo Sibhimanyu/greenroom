@@ -231,10 +231,7 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     /// switch (ShareableWindow.offersSwitch): the Meeting window, Chat, a view.
     /// Other apps' windows and the Greenroom Browser never do.
     var offersShareSwitch: Bool {
-        switch kind {
-        case .meeting, .chat, .view: return true
-        case .app, .roomScreen: return false
-        }
+        !Visibility.everyoneSees(piece: self, target: .wholeScreen).isFixed
     }
 
     private enum CodingKeys: String, CodingKey { case id, kind, rect, showsToEveryone }

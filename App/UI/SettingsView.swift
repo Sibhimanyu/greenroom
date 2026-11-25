@@ -15,26 +15,23 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension Notification.Name {
-    /// Home's "Change..." beside the picture summary: Settings, on Webcam.
+    /// Home's "Change..." beside the picture summary: Settings, on Webcam (the camera look).
     static let showWebcamSettings = Notification.Name("GreenroomShowWebcamSettings")
     /// Home's Layout chip and Zoom readiness pill: Settings, on the tab named
-    /// by the notification's object ("layout", "zoom").
+    /// by the notification's object ("layout", "devices", "zoom", ...; `SettingsTabs`).
     static let showSettingsTab = Notification.Name("GreenroomShowSettingsTab")
 }
 
 struct SettingsView: View {
-    // The Thriveni account is a mock for now, so it only shows in Debug.
-    #if DEBUG
-    private static let tabOrder = ["account", "webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
-    #else
-    private static let tabOrder = ["webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
-    #endif
+    private static let tabOrder = SettingsTabs.order(includingAccount: SettingsTabs.buildHasAccount)
 
     private var tabShortcuts: some View {
         ZStack {
             ForEach(Array(Self.tabOrder.enumerated()), id: \.offset) { index, tag in
-                Button("") { tab = tag }
-                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                if let key = SettingsTabs.shortcutKey(at: index) {
+                    Button("") { tab = tag }
+                        .keyboardShortcut(KeyEquivalent(key), modifiers: .command)
+                }
             }
         }
         .opacity(0)
@@ -49,14 +46,15 @@ struct SettingsView: View {
         case "transfer": return 420
         case "cues": return 480
         case "account": return 560
-        case "zoom": return 600
+        case "zoom": return 640
+        case "general": return 360
         case "youtube": return 640
         default: return 730
         }
     }
 
     @EnvironmentObject private var coordinator: CoordinatorController
-    /// Only Webcam is ever chosen from outside; the other tags are there so
+    /// Home and the other windows choose a tab from outside by its tag; the other tags are there so
     /// the TabView can track which tab is showing.
     @State private var tab = "webcam"
 
@@ -78,6 +76,16 @@ struct SettingsView: View {
                 .settingsPageClip()
                 .tabItem { Label("Layout", systemImage: "rectangle.split.2x1") }
                 .tag("layout")
+
+            DevicesSettingsTab()
+                .settingsPageClip()
+                .tabItem { Label("Devices", systemImage: "headphones") }
+                .tag("devices")
+
+            GeneralSettingsTab()
+                .settingsPageClip()
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag("general")
 
             ShortcutsSettingsTab()
                 .settingsPageClip()
@@ -108,7 +116,7 @@ struct SettingsView: View {
         .settingsTopEdge()
         .background(SettingsContentClip())
         .animation(.snappy(duration: 0.25), value: tab)
-        // ⌘1...⌘8 pick a tab, as in every macOS Settings window. The buttons
+        // ⌘1...⌘9 (and ⌘0 for a tenth in Debug) pick a tab, as in every macOS Settings window. The buttons
         // live in this view, so the shortcuts exist only while Settings is key.
         .background(tabShortcuts)
         // Secrets are loaded lazily (see loadSecretsIfNeeded) - opening

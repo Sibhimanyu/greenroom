@@ -21,35 +21,41 @@ Owner, 2026-11-25: delete the mode. Greenroom's own meeting window is the only w
 
 `initSDK` always sets `needCustomizedUI = true`. Nothing reads the `customUIMode` default; `didUseCustomUI` and `customUIModeEnabled` no longer exist.
 
-Acceptance: `grep -rn "didUseCustomUI\|customUIModeEnabled" App` finds nothing.
-Status: pending.
+Acceptance: `grep -rn "didUseCustomUI\|customUIModeEnabled" App` finds nothing. (Callers that need the SDK to be up check `didInit`, as before.)
+Status: built.
 
 ### R2. No Settings toggle
 
 Settings > Zoom has no "Use Zoom's own meeting window" row, no relaunch note. The Layout pages no longer say "Zoom window" or "Needs Greenroom's meeting UI".
 
 Acceptance: the Zoom page shows sign-in, credentials and display name only; `ZoomPageContent` takes no `customUI` binding.
-Status: pending.
+Status: built.
 
 ### R3. Old files still import
 
 A settings export that has `customUIMode` (true or false) decodes and imports without error and changes nothing. The field is retired: decoded, ignored, never written.
 
 Acceptance: test `testRetiredCustomUIModeImportsAsNothing` imports a file with `customUIMode: false`; the catalog guard test stays green with a written reason.
-Status: pending.
+Status: built.
 
 ### R4. Zoom-window code is gone
 
 The coordinator no longer finds, parks, pins or demotes SDK windows (`parkBuiltInMeetingWindow`, the people-view placer, stray-window demotion, tile candidates, drift logging) and the layout engine has no path for "Zoom's own window".
 
 Acceptance: build and full test suite pass; nothing remains that is reachable only when custom UI is off.
-Status: pending.
+Status: built.
 
 ### R5. Layout pieces and the analytics key
 
 A Meeting piece is always "Meeting window"; the view pieces (Active speaker and so on) never show "Needs Greenroom's window". The `custom_ui` analytics dimension stops being sent.
 
-Status: pending.
+Status: built.
+
+## Notes on what was kept
+
+- `ZoomWindowManager` stays: it is only the Accessibility grant prompt used by onboarding and layouts.
+- `customUIMode` stays in `SettingsTransfer` and `SettingsCatalog.retiredTransferFields`; the stored UserDefaults values (`customUIMode`, `customUIMode.migratedV2`) are left on disk, unread. `migrateCustomUIDefault` is removed: nothing reads the key.
+- The Zoom SDK's persisted AutoFullScreen-off assertion stays (harmless). The thumbnail and info-button hides were moot in custom UI and are gone.
 
 ## What users with the mode off will see
 

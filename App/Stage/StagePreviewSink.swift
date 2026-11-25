@@ -77,6 +77,9 @@ final class StagePreviewSink: StageFrameSink {
                     mask = NSImage(cgImage: m, size: picture.size)
                 }
             }
+            #if DEBUG
+            PreviewFpsLog.count(.picture)
+            #endif
             DispatchQueue.main.async { [weak self] in self?.onPicture?(picture, mask) }
         }
     }

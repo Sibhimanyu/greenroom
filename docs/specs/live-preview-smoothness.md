@@ -63,14 +63,14 @@ Status: built.
 
 Once a second, category `preview-fps`, one line: compositor ticks, preview pictures delivered, camera frames processed (`CutoutPublisher.process`). All inside `#if DEBUG`.
 
-Acceptance: the lines appear in a Debug build and the symbols are absent from Release.
-Status: open.
+Acceptance: the lines appear in a Debug build and the symbols are absent from Release (`PreviewFpsLog.swift` is one `#if DEBUG` block; the three call sites are each wrapped).
+Status: built.
 
 ## How to read the log (R6)
 
     log stream --predicate 'category == "preview-fps"'
 
-Each line is `ticks=30 pictures=29 camera=30` for the last second. Ticks near 30 and pictures well below is the sink (rate, busy drops). Camera well below ticks is the camera or Vision, which this spec does not touch.
+Each line is `ticks=30 pictures=29 camera=30` (logged by the first event after each second, so a stalled stage logs nothing) for the last second. Ticks near 30 and pictures well below is the sink (rate, busy drops). Camera well below ticks is the camera or Vision, which this spec does not touch.
 
 ## Manual check (owner)
 

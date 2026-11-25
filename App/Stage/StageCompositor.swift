@@ -714,6 +714,9 @@ final class StageCompositor: StageFrameSource {
         let snap = board.snapshot()
         pushStatus(snap, now: now)
         guard !sinks.isEmpty else { return }
+        #if DEBUG
+        PreviewFpsLog.count(.tick)
+        #endif
 
         if let fade = scene.fade {
             let t = fadeLength > 0 ? (now - fadeBegan) / fadeLength : 1

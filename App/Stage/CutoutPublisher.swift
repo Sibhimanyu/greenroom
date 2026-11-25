@@ -327,6 +327,9 @@ final class CutoutPublisher: NSObject {
     // MARK: Per frame
 
     private func process(_ frame: CVPixelBuffer) {
+        #if DEBUG
+        PreviewFpsLog.count(.camera)
+        #endif
         let width = CVPixelBufferGetWidth(frame), height = CVPixelBufferGetHeight(frame)
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var image = CIImage(cvPixelBuffer: frame)

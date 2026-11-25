@@ -115,6 +115,36 @@ final class RoomScreenTests: XCTestCase {
         XCTAssertEqual(RoomScreenRules.source(compositorRunning: false), .ownDisplay)
     }
 
+    // MARK: Show my camera (R47)
+
+    func testShowMyCameraIsOnByDefaultAndForOldLayouts() throws {
+        XCTAssertTrue(piece(room).showsMyCamera)
+        let old = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","kind":{"type":"roomScreen"},"rect":{"x":0,"y":0,"w":1,"h":1}}"#
+        XCTAssertTrue(try JSONDecoder().decode(LayoutPiece.self, from: Data(old.utf8)).showsMyCamera)
+    }
+
+    func testShowMyCameraOffIsSaved() throws {
+        var p = piece(room)
+        p.showsMyCamera = false
+        let back = try JSONDecoder().decode(LayoutPiece.self, from: JSONEncoder().encode(p))
+        XCTAssertFalse(back.showsMyCamera)
+        XCTAssertEqual(back, p)
+    }
+
+    func testCameraOffTakesTheCameralessPicture() {
+        XCTAssertEqual(RoomScreenRules.source(compositorRunning: true, showsMyCamera: false), .compositorWithoutCamera)
+        XCTAssertEqual(RoomScreenRules.source(compositorRunning: true, showsMyCamera: true), .compositor)
+        // Its own capture never has the camera: the bubble is a Greenroom window, left out with the app.
+        XCTAssertEqual(RoomScreenRules.source(compositorRunning: false, showsMyCamera: false), .ownDisplay)
+    }
+
+    func testShowMyCameraWords() {
+        XCTAssertEqual(RoomScreenRules.showMyCameraLabel, "Show my camera")
+        let tip = RoomScreenRules.showMyCameraTip
+        XCTAssertFalse(tip.isEmpty)
+        XCTAssertFalse(tip.lowercased().contains("class"))
+    }
+
     func testCaptureDisplayNeverTheRoomDisplay() {
         XCTAssertEqual(RoomScreenRules.captureDisplay(preferred: "A", roomDisplay: "B", main: "M"), "A")
         XCTAssertEqual(RoomScreenRules.captureDisplay(preferred: "B", roomDisplay: "B", main: "M"), "M")

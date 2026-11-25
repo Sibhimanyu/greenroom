@@ -132,6 +132,7 @@ different order; this table is the authority.
 | R44 | Camera state names and canvas captions | P15 | built (rendered off screen) |
 | R45 | Bug list: a layout places windows once; only Snap re-places; never steals focus | bug list | built; rules tested, not driven live |
 | R46 | The Room screen is a real macOS window, native full screen included | owner, 2026-11-26 | built; rules tested (needs a live check on the room display) |
+| R47 | Show my camera, per Room screen | owner, 2026-11-26 | built; rules and codec tested (needs a live look) |
 
 **R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
 - R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
@@ -359,6 +360,17 @@ different order; this table is the authority.
   they put it for the rest of the meeting (`RoomScreenRules.Ownership`).
 - R46.4 Other apps' captures still see it (default sharingType); Greenroom's own share and recordings
   still leave it out with the whole app.
+
+**R47. Show my camera, per Room screen.** (owner, 2026-11-26)
+- R47.1 The Room screen inspector has one row at rest, a Toggle "Show my camera" with a tooltip
+  (`PieceInspectorRules.rows`: `[.showMyCamera]`; no hint paragraph).
+- R47.2 It is saved per layout on the piece (`LayoutPiece.showsMyCamera`), on by default; layouts saved
+  before it decode as on.
+- R47.3 Off, the Room screen shows what everyone sees without the owner's camera: the same content and
+  layout, the camera's place left empty (`StageCompositor.addCameralessSink`). The compositor renders
+  that second picture only while such a Room screen is attached and a camera is drawn: one more
+  compose and 1920x1080 render per frame, after the meeting's frame. Without a camera it is the same
+  frame. Without a running compositor the Room screen's own capture never has the camera.
 
 **R17. One icon language.** (Q28 to Q33)
 - R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)

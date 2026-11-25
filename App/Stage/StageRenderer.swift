@@ -98,7 +98,10 @@ final class StageRenderer {
             .cropped(to: CGRect(origin: .zero, size: canvas))
     }
 
-    func compose(scene: StageScene, screen: CIImage?, marks: CIImage? = nil, cameras: [Int: StageCameraInput]) -> CIImage {
+    /// `recordsCoverage` false (the Room screen's camera-less second picture, R47) leaves
+    /// `lastCameraCoverage` as the full picture's.
+    func compose(scene: StageScene, screen: CIImage?, marks: CIImage? = nil, cameras: [Int: StageCameraInput],
+                 recordsCoverage: Bool = true) -> CIImage {
         let layout = scene.layout
         var out = backdrop                                   // layer 0 (enforceLayerOrder :952)
         var drawnContent: CGRect?
@@ -158,7 +161,7 @@ final class StageRenderer {
         // Nothing to show: no content is on and no camera has a picture (none
         // plugged in, or not delivering yet). The recording still needs a
         // picture, so it is a clean card instead of an empty backdrop.
-        placementLock.lock(); cameraCoverage_ = coverage; placementLock.unlock()
+        if recordsCoverage { placementLock.lock(); cameraCoverage_ = coverage; placementLock.unlock() }
         if !layout.showsContent, !drewCamera, let card = audioOnlyCard {
             out = card.composited(over: out)
         }

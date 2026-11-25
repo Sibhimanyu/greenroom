@@ -127,6 +127,9 @@ final class StageCompositor: StageFrameSource {
     let status = StageStatus()
 
     private let sinks = StageSinkList()
+    /// Sinks that take the picture without the owner's camera (a Room screen with "Show my camera"
+    /// off, R47). Rendered only while one is attached and a camera is drawn.
+    private let cameralessSinks = StageSinkList()
     private let renderer: StageRenderer
     private let pool: StageBufferPool
     private let board = StageInputBoard()
@@ -174,7 +177,9 @@ final class StageCompositor: StageFrameSource {
     /// The last frame's camera alpha (StageRenderer.lastCameraCoverage).
     /// Read on the render queue from a sink, it belongs to the frame being delivered.
     var lastCameraCoverage: CIImage? { renderer.lastCameraCoverage }
-    func removeSink(_ sink: StageFrameSink) { sinks.remove(sink) }
+    func removeSink(_ sink: StageFrameSink) { sinks.remove(sink); cameralessSinks.remove(sink) }
+    /// The picture without the owner's camera: the same content and layout, the camera's place left empty.
+    func addCameralessSink(_ sink: StageFrameSink) { cameralessSinks.add(sink) }
 
     /// Where the Mac's sound goes (the recorder). Called on the capture queue.
     private let systemAudioHandler = LockedBox<((CMSampleBuffer) -> Void)?>(nil)
@@ -713,7 +718,7 @@ final class StageCompositor: StageFrameSource {
         let now = ProcessInfo.processInfo.systemUptime
         let snap = board.snapshot()
         pushStatus(snap, now: now)
-        guard !sinks.isEmpty else { return }
+        guard !sinks.isEmpty || !cameralessSinks.isEmpty else { return }
         #if DEBUG
         PreviewFpsLog.count(.tick)
         #endif
@@ -737,14 +742,25 @@ final class StageCompositor: StageFrameSource {
            let picture = renderer.pixels(of: input, scene: scene) {
             handler(picture)
         }
+        // Marks belong to the real screen; the whiteboard page has its own ink.
+        let marks = snap.whiteboardMode ? nil : marksOverlay.withLock { $0 }
         let image = renderer.compose(scene: scene,
                                      screen: snap.screen?.image,
-                                     // Marks belong to the real screen; the whiteboard page has its own ink.
-                                     marks: snap.whiteboardMode ? nil : marksOverlay.withLock { $0 },
+                                     marks: marks,
                                      cameras: cameras)
         guard let buffer = pool.make() else { return }
         renderer.render(image, to: buffer)
-        sinks.deliver(buffer, at: CMClockGetTime(CMClockGetHostTimeClock()))
+        let stamp = CMClockGetTime(CMClockGetHostTimeClock())
+        sinks.deliver(buffer, at: stamp)
+        // R47: the picture without the owner's camera, for a Room screen with "Show my camera" off.
+        // A second compose and render only while such a sink is attached and a camera is drawn
+        // (after the meeting's frame, so it never delays it); otherwise it is the same frame.
+        guard !cameralessSinks.isEmpty else { return }
+        guard !cameras.isEmpty, scene.layout.showsCamera else { cameralessSinks.deliver(buffer, at: stamp); return }
+        guard let bare = pool.make() else { return }
+        renderer.render(renderer.compose(scene: scene, screen: snap.screen?.image, marks: marks, cameras: [:],
+                                         recordsCoverage: false), to: bare)
+        cameralessSinks.deliver(bare, at: stamp)
     }
 
     private func pushStatus(_ snap: StageInputBoard.Snapshot, now: TimeInterval) {

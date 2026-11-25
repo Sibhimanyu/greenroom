@@ -51,13 +51,24 @@ enum RoomScreenRules {
     enum Source: Equatable {
         /// The compositor's own output frames: what the meeting gets, camera included.
         case compositor
+        /// The compositor's picture without the owner's camera (R47, "Show my camera" off).
+        case compositorWithoutCamera
         /// The Room screen's own capture of the shared display, same filter.
         case ownDisplay
     }
 
     /// A live compositor is the one source of truth; without one the screen runs
     /// its own capture.
-    static func source(compositorRunning: Bool) -> Source { compositorRunning ? .compositor : .ownDisplay }
+    /// "Show my camera" off takes the compositor's camera-less picture. The own capture never has the
+    /// camera: the bubble is a Greenroom window, left out with the whole app.
+    static func source(compositorRunning: Bool, showsMyCamera: Bool = true) -> Source {
+        guard compositorRunning else { return .ownDisplay }
+        return showsMyCamera ? .compositor : .compositorWithoutCamera
+    }
+
+    /// The Room screen inspector's one row (R47).
+    static let showMyCameraLabel = "Show my camera"
+    static let showMyCameraTip = "Draws your webcam on the screen in the room, as everyone in the meeting sees it. Off, the room sees the same picture without your camera."
 
     /// Which display the own capture takes: the shared one, never the room display
     /// itself (it would show itself), else the main one.

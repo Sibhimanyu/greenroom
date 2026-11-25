@@ -116,6 +116,8 @@ While a meeting is live, the controls are in exactly one place. Code:
 
 **Room screen**: a piece for a second display that people in the room watch. It shows what everyone sees.
 
+**Show my camera** (Room screen): whether the owner's own webcam is drawn on the Room screen. On by default. Off, the room sees what everyone sees without the owner's camera. Saved per layout.
+
 **Layouts tab**: the one place to build layouts, camera included. Replaces the separate Webcam and Layout tabs.
 
 **Camera device**: the physical camera (and second camera, auto-switching) the owner uses. Chosen on Home or in the Devices tab, never per layout.

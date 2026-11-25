@@ -87,6 +87,8 @@ enum RoomScreen {
     private static var feeder: RoomFrameFeeder?
     private static var roomScreenID = ""
     private static var hidden = false
+    /// The piece's "Show my camera" (R47): off takes the compositor's camera-less picture.
+    private static var showsMyCamera = true
     private static var observer: NSObjectProtocol?
     private static var occlusionObserver: NSObjectProtocol?
     private static var healthTimer: Timer?
@@ -109,9 +111,10 @@ enum RoomScreen {
     /// Opens the window at `frame` on the display `screenID`, or places it there: native full screen
     /// on that display when the piece fills it, else a window at `frame`
     /// (`RoomScreenRules.placeSteps`). Nothing moves once the owner has moved it by hand.
-    static func place(frame: NSRect, rect: UnitRect, screenID: String, hidden: Bool) {
+    static func place(frame: NSRect, rect: UnitRect, screenID: String, hidden: Bool, showsMyCamera: Bool = true) {
         guard DisplayResolver.screen(forUUID: screenID) != nil else { close(); return }
         roomScreenID = screenID
+        Self.showsMyCamera = showsMyCamera
         let win = window ?? makeWindow()
         let fullScreen = win.styleMask.contains(.fullScreen)
         let steps = RoomScreenRules.placeSteps(rect: rect, pieceFrame: frame, currentFrame: win.frame,
@@ -250,14 +253,14 @@ enum RoomScreen {
 
     private static func syncSource() {
         guard window != nil, !hidden, let feeder else { stopSources(); return }
-        let wanted = RoomScreenRules.source(compositorRunning: compositor != nil)
-        if wanted == sourceInUse, wanted != .compositor || sinkedStage === compositor { return }
+        let wanted = RoomScreenRules.source(compositorRunning: compositor != nil, showsMyCamera: showsMyCamera)
+        if wanted == sourceInUse, wanted == .ownDisplay || sinkedStage === compositor { return }
         stopSources()
         sourceInUse = wanted
         switch wanted {
-        case .compositor:
+        case .compositor, .compositorWithoutCamera:
             guard let stage = compositor else { return }
-            stage.addSink(feeder)
+            if wanted == .compositor { stage.addSink(feeder) } else { stage.addCameralessSink(feeder) }
             sinkedStage = stage
         case .ownDisplay:
             startOwnCapture(feeder)

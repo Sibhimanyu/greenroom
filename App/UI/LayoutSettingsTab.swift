@@ -1144,7 +1144,11 @@ struct LayoutPageContent: View {
                 case let .app(app): appControls(piece, app: app, slot: slot, template: template)
                 case let .meeting(fills, hidden): meetingControls(piece, fills: fills, hidden: hidden, slot: slot, template: template)
                 case let .view(_, hidden): viewControls(piece, view: piece.kind.view ?? .gallery, hidden: hidden)
-                case .roomScreen, .chat:
+                case .roomScreen:
+                    RoomScreenInspectorRows(showsMyCamera: Binding(
+                        get: { piece.showsMyCamera },
+                        set: { v in update(piece.id) { $0.showsMyCamera = v } }))
+                case .chat:
                     // Nothing at rest (R35.2): the header, and the tooltip says what it is.
                     EmptyView()
                 }

@@ -235,11 +235,17 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     /// The default for a piece nobody has chosen for: a layout shows what it places.
     static let defaultShowsToEveryone = true
 
-    init(id: UUID = UUID(), kind: Kind, rect: UnitRect, showsToEveryone: Bool = LayoutPiece.defaultShowsToEveryone) {
+    /// Room screen only (R47): the owner's own webcam is drawn on the screen in the room. Off, the
+    /// room sees what everyone sees minus the camera. On by default and for layouts saved before it.
+    var showsMyCamera = true
+
+    init(id: UUID = UUID(), kind: Kind, rect: UnitRect, showsToEveryone: Bool = LayoutPiece.defaultShowsToEveryone,
+         showsMyCamera: Bool = true) {
         self.id = id
         self.kind = kind
         self.rect = rect
         self.showsToEveryone = showsToEveryone
+        self.showsMyCamera = showsMyCamera
     }
 
     /// Whether this piece is one of Greenroom's own windows that can carry the
@@ -250,7 +256,7 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
         kind.app == nil && !Visibility.everyoneSees(piece: self, target: .wholeScreen).isFixed
     }
 
-    private enum CodingKeys: String, CodingKey { case id, kind, rect, showsToEveryone }
+    private enum CodingKeys: String, CodingKey { case id, kind, rect, showsToEveryone, showsMyCamera }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -259,7 +265,8 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
         self.init(id: (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID(),
                   kind: kind,
                   rect: (try? c.decodeIfPresent(UnitRect.self, forKey: .rect)) ?? .full,
-                  showsToEveryone: (try? c.decodeIfPresent(Bool.self, forKey: .showsToEveryone)) ?? LayoutPiece.defaultShowsToEveryone)
+                  showsToEveryone: (try? c.decodeIfPresent(Bool.self, forKey: .showsToEveryone)) ?? LayoutPiece.defaultShowsToEveryone,
+                  showsMyCamera: (try? c.decodeIfPresent(Bool.self, forKey: .showsMyCamera)) ?? true)
     }
 }
 

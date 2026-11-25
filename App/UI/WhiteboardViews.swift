@@ -236,6 +236,8 @@ struct CameraWhiteboardStage: View {
 struct CameraWhiteboardTools: View {
     @ObservedObject var board: CameraWhiteboardModel
     var onDone: (() -> Void)?
+    var doneTitle = "Back to screen"
+    var doneHelp = "Go back to what you were sharing before the whiteboard"
 
     var body: some View {
         HStack(spacing: 6) {
@@ -267,10 +269,10 @@ struct CameraWhiteboardTools: View {
                 .disabled(!board.canUndo)
             if let onDone {
                 divider
-                Button("Back to screen", action: onDone)
+                Button(doneTitle, action: onDone)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .help("Go back to what you were sharing before the whiteboard")
+                    .help(doneHelp)
             }
         }
         .padding(.horizontal, 12)
@@ -317,11 +319,15 @@ struct CameraWhiteboardTools: View {
 struct WhiteboardWindowView: View {
     @ObservedObject var board: CameraWhiteboardModel
     var onDone: () -> Void
+    var mode: WhiteboardWindowController.Mode = .presented
 
     var body: some View {
         CameraWhiteboardStage(board: board, cornerRadius: 0)
             .overlay(alignment: .bottom) {
-                CameraWhiteboardTools(board: board, onDone: onDone)
+                CameraWhiteboardTools(board: board, onDone: onDone,
+                                      doneTitle: mode == .local ? "Done" : "Back to screen",
+                                      doneHelp: mode == .local ? "Close this whiteboard. The meeting never saw it unless you turned its eye on"
+                                                               : "Go back to what you were sharing before the whiteboard")
                     .padding(.bottom, 14)
             }
             .tint(Brand.green)
@@ -330,12 +336,21 @@ struct WhiteboardWindowView: View {
 
 // MARK: - The window
 
-/// The whiteboard window: a Greenroom window, so never captured. What the
-/// meeting and the recording see is the page rendered by the coordinator.
+/// The whiteboard window: a Greenroom window, so never captured by default.
+/// `.presented` is the share target: what the meeting and the recording see is
+/// the page rendered by the coordinator. `.local` is opened from the drawing
+/// tools: a plain white window for the owner, nothing about the share changes,
+/// and it carries the "Show on my share" eye like any other Greenroom window
+/// (off until the owner turns it on; only a whole-display share can show it).
 @MainActor
 final class WhiteboardWindowController: NSObject, NSWindowDelegate {
+    enum Mode { case presented, local }
+
     private var window: NSWindow?
+    private let mode: Mode
     var onClosed: (() -> Void)?
+
+    init(mode: Mode = .presented) { self.mode = mode }
 
     var isVisible: Bool { window?.isVisible ?? false }
 
@@ -350,10 +365,16 @@ final class WhiteboardWindowController: NSObject, NSWindowDelegate {
             created.contentAspectRatio = NSSize(width: 16, height: 9)
             created.contentMinSize = NSSize(width: 480, height: 270)
             created.delegate = self
+            if mode == .local {
+                // An ordinary window: normal level, never full screen.
+                created.level = .normal
+                created.collectionBehavior.insert(.fullScreenNone)
+                WindowShareController.attach(to: created, dark: false)
+            }
             // Other apps record it per the switch; our own capture excludes the
             // window through the app-wide filter (it is its own share target).
             RecorderVisibility.track(created, as: .whiteboard)
-            created.contentView = NSHostingView(rootView: WhiteboardWindowView(board: board, onDone: onDone))
+            created.contentView = NSHostingView(rootView: WhiteboardWindowView(board: board, onDone: onDone, mode: mode))
             created.center()
             window = created
         }

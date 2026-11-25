@@ -100,6 +100,53 @@ enum CameraPanelRules {
     }
 }
 
+/// What a Home camera tile (Look) shows and does, from the camera setting and
+/// whether any camera device exists. Home is a control surface, so a camera
+/// that is only off by setting is one click from on.
+enum CameraTileRules {
+    enum State: Equatable {
+        case on
+        /// The setting turned the camera off: the tile stays live and turns it on.
+        case offBySetting
+        /// No camera is connected at all: nothing to turn on.
+        case noDevice
+    }
+
+    static func state(cameraIsOff: Bool, deviceCount: Int) -> State {
+        if deviceCount == 0 { return .noDevice }
+        return cameraIsOff ? .offBySetting : .on
+    }
+
+    static func isEnabled(_ state: State) -> Bool { state != .noDevice }
+
+    /// Just me (the Screen panel) needs a camera on screen: from the off-by-setting
+    /// state a click turns it on, so only a missing device blocks it.
+    static func justMeEnabled(_ state: State) -> Bool { isEnabled(state) }
+    static func justMeTurnsCameraOn(_ state: State) -> Bool { tapTurnsCameraOn(state) }
+    static let justMeNoDeviceHint = "Just me needs a camera. None is connected."
+
+    static func value(_ state: State, onValue: String) -> String {
+        switch state {
+        case .on: return onValue
+        case .offBySetting: return "Camera off"
+        case .noDevice: return "No camera"
+        }
+    }
+
+    static func symbol(_ state: State, onSymbol: String) -> String {
+        state == .on ? onSymbol : "video.slash"
+    }
+
+    /// A tap turns the camera on only from the off-by-setting state.
+    static func tapTurnsCameraOn(_ state: State) -> Bool { state == .offBySetting }
+
+    static let noDeviceHelp = "No camera is connected. Plug one in to use it in the meeting."
+    static let offHelp = "Camera is off. Click to turn it on for everyone in the meeting."
+
+    /// The panel's off row: the action while the camera is on, the state once off.
+    static func offRowTitle(cameraIsOff: Bool) -> String { cameraIsOff ? "Camera off" : "Turn camera off" }
+}
+
 /// What the Mic panel shows.
 enum MicPanelRules {
     /// A saved microphone that is not plugged in stays listed (and checked),
@@ -195,8 +242,10 @@ enum ScreenPanelRules {
         }
     }
 
-    /// "Just my camera" with no camera would be an empty backdrop.
-    static func tileEnabled(_ tile: Tile, cameraOff: Bool) -> Bool { !(tile == .camera && cameraOff) }
+    /// "Just my camera" with no camera device would be an empty backdrop; a camera that is only off by setting is turned on by the click.
+    static func tileEnabled(_ tile: Tile, camera: CameraTileRules.State) -> Bool {
+        tile != .camera || CameraTileRules.justMeEnabled(camera)
+    }
 
     static func capturesScreen(_ kind: SetupSummary.ShareKind) -> Bool {
         switch kind {

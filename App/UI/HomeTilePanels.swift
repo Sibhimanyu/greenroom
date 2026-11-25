@@ -118,6 +118,7 @@ struct HomeTileChoice: Identifiable {
     var title: String
     var symbol: String
     var selected: Bool
+    var enabled = true
 }
 
 /// A row of choice tiles: arrows move, Return picks, Esc closes the popover.
@@ -153,6 +154,7 @@ struct HomeTileChoiceRow: View {
                     .frame(width: tileWidth)
                 }
                 .greenroomTile(role: .choice(selected: choice.selected), radius: 10)
+                .disabled(!choice.enabled)
                 .overlay { HomeTileKeyRing(show: keyed && index == offset, radius: 10) }
                 .help(choice.title)
             }

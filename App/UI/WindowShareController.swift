@@ -7,9 +7,10 @@
 //  app is excluded in StageScreenSource). The small eye in a window's title bar
 //  lets the person show that window: it joins ShareVisibleWindows (the capture
 //  excepts it from the exclusion, so it really is in the picture), its background
-//  goes solid (WindowFrost) and it gets the amber edge. Off, it leaves the picture,
-//  goes back to frost and loses the edge. Off every launch; the one place it is
-//  remembered is the layout (LayoutPiece.showsToEveryone, applied by LayoutShareChoice).
+//  goes solid (WindowFrost). Off, it leaves the picture and goes back to frost.
+//  Windows a layout places start on (LayoutPiece.defaultShowsToEveryone), the rest
+//  off; the one place a choice is remembered is the layout
+//  (LayoutPiece.showsToEveryone, applied by LayoutShareChoice).
 //
 //  The decisions (which windows offer it, the words, when it is available) are
 //  ShareSwitchState / ShareableWindow in ShareVisibilityRules.swift (tested); this
@@ -38,9 +39,7 @@ final class WindowShareController: NSObject {
     private weak var window: NSWindow?
     private(set) var isOn = false
     private var registeredNumber: Int?
-    private var border: ShareBorderOverlay?
     private var entries: [Entry] = []
-    private let announcer = ShareVisibilityAnnouncer()
     private let idleTint: NSColor
     private let mutedTint: NSColor
     private let markedTint: NSColor
@@ -59,11 +58,6 @@ final class WindowShareController: NSObject {
         for name in [NSWindow.willCloseNotification] {
             observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.windowClosed() }
-            })
-        }
-        for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
-            observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.border?.sync() }
             })
         }
     }
@@ -122,7 +116,7 @@ final class WindowShareController: NSObject {
         refresh()
     }
 
-    /// The buttons, the registry, the border, the backdrop and the island follow
+    /// The buttons, the registry and the backdrop follow
     /// the choice and what is being shared right now.
     func refresh() {
         guard let window else { return }
@@ -135,10 +129,7 @@ final class WindowShareController: NSObject {
         // needs no re-adding; the capture decides by kind (exceptionIDs).
         syncRegistry(window: window)
         let marked = ShowOnShare.marksWindow(on: isOn, kind: kind)
-        if marked, border == nil { border = ShareBorderOverlay(parent: window) }
-        border?.show(marked)
         WindowFrost.show(ShareVisibility(marked: marked).backdrop, in: window)
-        announcer.update(marked: marked)
         NotificationCenter.default.post(name: Self.stateDidChange, object: window)
     }
 
@@ -156,14 +147,11 @@ final class WindowShareController: NSObject {
         isOn = false
         if let old = registeredNumber { ShareVisibleWindows.remove(old) }
         registeredNumber = nil
-        border?.close()
-        border = nil
         if let window { WindowFrost.show(.frosted, in: window) }
         for entry in entries {
             ShowOnShareSwitch.apply(to: entry.button, on: false, kind: ShareVisibleWindows.kind, pointSize: entry.pointSize,
                                     showsTitle: entry.showsTitle, idleTint: idleTint, mutedTint: mutedTint, markedTint: markedTint)
         }
-        announcer.update(marked: false)
         NotificationCenter.default.post(name: Self.stateDidChange, object: window)
     }
 }
@@ -204,17 +192,28 @@ private final class CentredHost: NSView {
 /// are already open.
 @MainActor
 enum LayoutShareChoice {
+    /// A window the layout does not place stays hidden; a placed one follows its
+    /// piece, which defaults to shown (LayoutPiece.defaultShowsToEveryone).
     static var meeting = false
     static var chat = false
     static var views: [MeetingView: Bool] = [:]
 
     static func view(_ view: MeetingView) -> Bool { views[view] ?? false }
 
-    static func record(_ r: LayoutResolver.Result) {
-        meeting = r.meeting?.piece.showsToEveryone ?? false
-        chat = r.chat?.piece.showsToEveryone ?? false
+    /// No layout runs: every window of Greenroom's goes back to "Only you". Called
+    /// at Start with Start layout None and when a session ends, so a layout's
+    /// choices never leak into a later session.
+    static func reset() {
+        meeting = false
+        chat = false
         views = [:]
-        for placed in r.views { if let v = placed.piece.kind.view { views[v] = placed.piece.showsToEveryone } }
+    }
+
+    static func record(_ r: LayoutResolver.Result) {
+        meeting = LayoutShareRule.startsShown(placedBy: r.meeting?.piece)
+        chat = LayoutShareRule.startsShown(placedBy: r.chat?.piece)
+        views = [:]
+        for placed in r.views { if let v = placed.piece.kind.view { views[v] = LayoutShareRule.startsShown(placedBy: placed.piece) } }
         WindowShareController.existing(for: ChatWindowController.currentWindow)?.set(chat)
         WindowShareController.existing(for: ParticipantGridWindowController.meetingWindow)?.set(meeting)
         MeetingViewWindows.applyLayoutShare()

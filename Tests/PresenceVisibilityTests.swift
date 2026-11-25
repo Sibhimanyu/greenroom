@@ -8,6 +8,12 @@ final class PresenceVisibilityTests: XCTestCase {
     }
 
     func testShowsWhenEverythingIsInPlace() { XCTAssertEqual(decide(), .show) }
+    func testHiddenOnMyScreenOnlyStartsTheBubbleHidden() {
+        XCTAssertTrue(PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: false))
+        XCTAssertFalse(PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: true))
+        // The Stage keeps the camera (layoutPlaceable follows noCamera, not this): the bubble is only hidden by the presenter flag.
+        XCTAssertEqual(decide { $0.hiddenByPresenter = true }, .hideKeepingPlacement)
+    }
     func testHidesWhenNotLive() { XCTAssertEqual(decide { $0.live = false }, .hide) }
     func testHidesWhenTheLookHasNoBoxToMove() { XCTAssertEqual(decide { $0.layoutPlaceable = false }, .hide) }
     func testHidesUntilTheCameraHasAFrame() { XCTAssertEqual(decide { $0.hasCapturedFrame = false }, .hide) }

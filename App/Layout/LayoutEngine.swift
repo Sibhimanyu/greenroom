@@ -46,6 +46,11 @@ final class LayoutEngine {
     /// ask every second pass false, or the log would repeat a fallback forever.
     func resolve(_ template: LayoutTemplate, logNotes: Bool = false) -> Resolution {
         let primaryHeight = DisplayResolver.mainDisplayScreen()?.frame.height ?? 0
+        // Views open only in custom UI with views on (MeetingViewWindows.isEnabled, but read from
+        // the saved setting, because the SDK's answer arrives after Start).
+        let customUI = (UserDefaults.standard.object(forKey: "customUIMode") as? Bool) ?? true
+        let viewsCanOpen = MeetingViewPieces.enabled && customUI && !MeetingViewWindows.meetingWindowOnly
+        let template = LayoutResolver.substitutingMeetingForActiveSpeaker(template, viewsCanOpen: viewsCanOpen)
         let result = LayoutResolver.resolve(template, screens: Self.connectedScreens(), primaryHeight: primaryHeight)
         if logNotes { result.notes.forEach(log) }
         return result
@@ -72,7 +77,8 @@ final class LayoutEngine {
     func startsHidden(_ template: LayoutTemplate) -> Bool {
         resolve(template).placed.contains { placed in
             if case .meeting(let fills, let hidden) = placed.piece.kind { return !fills && hidden }
-            if case .view(_, let hidden) = placed.piece.kind { return hidden }
+            // A Self view's own "Starts hidden" hides only itself (selfViewStartsHidden).
+            if case .view(let view, let hidden) = placed.piece.kind { return hidden && SelfViewVisibility.joinsTogetherHide(view) }
             return false
         }
     }
@@ -219,6 +225,7 @@ final class LayoutEngine {
             if ChatWindowController.isOpen { ChatWindowController.setFrame(frame) }
         }
         placeViews(r, frames: frames, hidden: hidden)
+        placeRoomScreen(r, frames: frames, hidden: hidden)
         guard let meeting = r.meeting, !meeting.fillsDisplay else { return }
         if hidden {
             ParticipantGridWindowController.hide()
@@ -236,8 +243,20 @@ final class LayoutEngine {
         MeetingViewWindows.setHiddenTogether(hidden)
         for placed in r.views {
             guard let view = placed.piece.kind.view, let frame = frames[placed.piece.id]?.ns else { continue }
-            MeetingViewWindows.place(view, frame: frame, hidden: hidden)
+            var away = hidden
+            if view == .selfView, case .view(_, let startsHidden) = placed.piece.kind {
+                away = SelfViewVisibility.hidden(startsHidden: startsHidden, hiddenTogether: hidden)
+            }
+            MeetingViewWindows.place(view, frame: frame, hidden: away)
         }
+    }
+
+    /// The Room screen: opens on its display at its rectangle, hides with the layout's
+    /// hide, and closes when the layout has none, the second display is gone or it
+    /// is mirrored (no second slot then; `RoomScreenRules.placement`).
+    private func placeRoomScreen(_ r: Resolution, frames: [UUID: LayoutFrames], hidden: Bool) {
+        guard let room = r.roomScreen, let frame = frames[room.piece.id]?.ns else { RoomScreen.close(); return }
+        RoomScreen.place(frame: frame, screenID: room.screen.id, hidden: hidden)
     }
 
     /// Opens the Chat piece at its frame: the join of a class.
@@ -291,7 +310,7 @@ final class LayoutEngine {
                     log(line)
                 }
             }
-        case .meeting, .view:
+        case .meeting, .view, .roomScreen:
             break
         }
     }

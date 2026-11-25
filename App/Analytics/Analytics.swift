@@ -177,6 +177,7 @@ enum Analytics {
             switch piece.kind {
             case .meeting: return "meeting"
             case .chat: return "chat"
+            case .roomScreen: return "room_screen"
             case .app: return "app"
             case let .view(view, _): return "view_" + view.rawValue
             }

@@ -31,13 +31,12 @@ struct LayoutSettingsTab: View {
     /// The one presence placement, shared with the floating bubble and Home.
     private var cameraModel: LayoutCameraModel {
         let layout = coordinator.stageLayout
-        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: coordinator.cameraIsOff,
+        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: !coordinator.cameraShownOnMyScreen,
                                  onStep: { coordinator.previewPlacementStep($0) },
                                  onCommit: { coordinator.commitPreviewPlacement($0) },
-                                 canHide: !coordinator.cameraDirectorSettings.enabled && coordinator.shareTarget.kind != .nothing,
                                  setShown: { on in
-                                     coordinator.cameraDirectorSettings.noCamera = !on
-                                     coordinator.previewCamerasChanged()
+                                     coordinator.cameraShownOnMyScreen = on
+                                     coordinator.presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: on)
                                  },
                                  adjust: {
                                      NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
@@ -288,14 +287,13 @@ struct LayoutPageContent: View {
                     LayoutCard(title: template.name, selected: library.activeID == template.id,
                                isRenaming: renamingID == template.id, draft: $renameDraft,
                                select: { choose(template.id) },
-                               beginRename: template.isLocked ? nil : { beginRename(template) },
+                               beginRename: { beginRename(template) },
                                commitRename: { commitRename() },
                                cancelRename: { renamingID = nil }) {
                         LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight, look: look)
                     }
                     .contextMenu {
                         Button("Rename") { beginRename(template) }
-                            .disabled(template.isLocked)
                         Button("Duplicate") { duplicate(template.id) }
                         Divider()
                         Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
@@ -333,7 +331,6 @@ struct LayoutPageContent: View {
     }
 
     private func beginRename(_ template: LayoutTemplate) {
-        guard !template.isLocked else { return }
         renameDraft = template.name
         renamingID = template.id
     }
@@ -376,7 +373,8 @@ struct LayoutPageContent: View {
             pieces.contains { $0.kind.isChat } ? "chat" : nil,
         ].compactMap { $0 } + (MeetingViewPieces.enabled ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
         var sentence: String
-        // Raj Mode as shipped: the compact Meeting window is the active speaker.
+        // Raj Mode as shipped: the Active speaker view is the speaker (a Meeting window
+        // stands in for it where views cannot open).
         if isRajAsShipped(template), let browser = opens.first {
             sentence = "Greenroom opens \(browser) and places the meeting as active speaker, with chat below."
             sentence += " With a second display connected it uses the two-display version."
@@ -401,11 +399,13 @@ struct LayoutPageContent: View {
     private func isRajAsShipped(_ template: LayoutTemplate) -> Bool {
         guard template.starter == LayoutLibrary.rajMode,
               let shipped = LayoutLibrary.starters().first(where: { $0.starter == LayoutLibrary.rajMode }) else { return false }
+        // The sentence also promises the two-display version, so removing it counts as an edit.
+        guard template.twoDisplays != nil else { return false }
         let now = template.oneDisplay
         let was = shipped.oneDisplay
         guard now.count == was.count else { return false }
         for (a, b) in zip(now, was) where a.rect != b.rect || a.kind.isChat != b.kind.isChat
-            || a.kind.isMeeting != b.kind.isMeeting { return false }
+            || a.kind.view != b.kind.view || a.kind.isMeeting != b.kind.isMeeting { return false }
         return true
     }
 
@@ -424,19 +424,10 @@ struct LayoutPageContent: View {
 
     private func editor(_ template: LayoutTemplate) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            if template.isLocked {
-                VStack(alignment: .leading, spacing: 6) {
-                    titleRow(template)
-                    lockLine(template)
-                }
-            } else {
-                titleRow(template)
-            }
+            titleRow(template)
             canvases(template)
             paletteRow(template)
-            // Nothing to change on a built-in layout, so no inspector: its
-            // "select a piece" hint would promise something that cannot happen.
-            if !template.isLocked { inspector(template) }
+            inspector(template)
         }
     }
 
@@ -451,30 +442,8 @@ struct LayoutPageContent: View {
                 })
     }
 
-    /// What a built-in layout says about itself, quietly, with the way out.
-    private func lockLine(_ template: LayoutTemplate) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("Built-in layout. Duplicate it to make your own version.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Button("Duplicate") { duplicate(template.id) }
-                .controlSize(.small)
-                .help("Makes an editable copy named \u{201C}\(template.name) copy\u{201D} and selects it.")
-        }
-    }
-
     private func titleRow(_ template: LayoutTemplate) -> some View {
         HStack(spacing: 12) {
-            if template.isLocked {
-                Text(template.name)
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-            } else {
             HStack(spacing: 2) {
                 // The hidden Text sizes the field to its name, so the pencil sits
                 // right after the last letter instead of at the field's far end.
@@ -505,7 +474,6 @@ struct LayoutPageContent: View {
                     library.templates[i].name = "Untitled layout"
                 }
             }
-            }
             Spacer(minLength: 8)
             if template.twoDisplays != nil {
                 GreenroomSegmented("Layout for", selection: Binding(get: { showsTwo },
@@ -515,7 +483,7 @@ struct LayoutPageContent: View {
                                    options: [false, true]) { two in
                     Text(two ? "Two displays" : "One display")
                 }
-            } else if !template.isLocked {
+            } else {
                 Button {
                     withAnimation(anim) {
                         if let i = activeIndex { library.templates[i].addTwoDisplayVersion() }
@@ -534,7 +502,7 @@ struct LayoutPageContent: View {
 
     private var nameBinding: Binding<String> {
         Binding(get: { library.active?.name ?? "" },
-                set: { if let i = activeIndex, !library.templates[i].isLocked { library.templates[i].name = $0 } })
+                set: { if let i = activeIndex { library.templates[i].name = $0 } })
     }
 
     // MARK: Canvases
@@ -564,7 +532,7 @@ struct LayoutPageContent: View {
                     canvas(.main, space: mainSpace)
                     canvas(.second, space: secondSpace(two))
                 }
-                if !template.isLocked { secondDisplayRow(two) }
+                secondDisplayRow(two)
             }
         } else {
             canvas(.one, space: mainSpace)
@@ -582,7 +550,6 @@ struct LayoutPageContent: View {
                      },
                      onActivate: { activeSlot = slot; showsAddPanel = false },
                      onNotice: { say($0) },
-                     locked: library.active?.isLocked == true,
                      // The main display is the one that is shared; a second
                      // (reference) display gets participants, not the camera.
                      camera: slot == .second ? nil : camera)
@@ -624,15 +591,13 @@ struct LayoutPageContent: View {
         let slot = showsTwo ? activeSlot : .one
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                if !template.isLocked {
-                    Button { showsAddPanel.toggle() } label: {
-                        Label("Add", systemImage: "plus")
-                    }
-                    .help(MeetingViewPieces.enabled ? "Add the meeting, a view of it, chat or an app" : "Add the meeting, chat or an app")
-                    .accessibilityLabel("Add to layout")
-                    .greenroomPopover(isPresented: $showsAddPanel) {
-                        addPanel(slot: slot, template: template)
-                    }
+                Button { showsAddPanel.toggle() } label: {
+                    Label("Add", systemImage: "plus")
+                }
+                .help(MeetingViewPieces.enabled ? "Add the meeting, a view of it, chat or an app" : "Add the meeting, chat or an app")
+                .accessibilityLabel("Add to layout")
+                .greenroomPopover(isPresented: $showsAddPanel) {
+                    addPanel(slot: slot, template: template)
                 }
                 Spacer()
                 Button {
@@ -650,7 +615,7 @@ struct LayoutPageContent: View {
                         .help("A meeting is running another layout. This moves it to this one now; otherwise this layout starts with the next meeting.")
                 }
             }
-            if previewsAddPanel, !template.isLocked {
+            if previewsAddPanel {
                 // The off-screen render cannot show a popover window, so it draws
                 // the same panel in place.
                 HStack {
@@ -702,6 +667,7 @@ struct LayoutPageContent: View {
             if view == .speakerStrip { return "Speaker + strip already shows the active speaker. Remove the Active speaker view first." }
             return "Speaker + strip already shows the active speaker. Remove it first."
         case .chat: return "Already in this layout"
+        case .roomScreen: return RoomScreenRules.blockReason(slot: slot, existing: version.map(\.kind))
         case let .app(app):
             if version.contains(where: { $0.kind.app?.bundleID == app.bundleID }) { return "Already in this layout" }
             return "A layout holds at most \(LayoutTemplate.maxApps) apps."
@@ -734,7 +700,7 @@ struct LayoutPageContent: View {
 
     private func sameKind(_ a: LayoutPiece.Kind, _ b: LayoutPiece.Kind) -> Bool {
         switch (a, b) {
-        case (.meeting, .meeting), (.chat, .chat): return true
+        case (.meeting, .meeting), (.chat, .chat), (.roomScreen, .roomScreen): return true
         case let (.app(x), .app(y)): return x.bundleID == y.bundleID
         case let (.view(x, _), .view(y, _)): return x == y
         default: return false
@@ -779,6 +745,8 @@ struct LayoutPageContent: View {
                                    comingLater: !MeetingViewPieces.enabled)
         case .chat:
             return LayoutPieceLook(name: "Chat", icon: nil, symbol: "bubble.left.and.bubble.right.fill")
+        case .roomScreen:
+            return LayoutPieceLook(name: RoomScreenRules.title, icon: nil, symbol: RoomScreenRules.symbol)
         case let .app(app):
             let installed = LayoutIcons.isInstalled(app.bundleID)
             let name = AppCatalog.displayName(forBundleID: app.bundleID)
@@ -839,6 +807,10 @@ struct LayoutPageContent: View {
                 case let .app(app): appControls(piece, app: app, slot: slot, template: template)
                 case let .meeting(fills, hidden): meetingControls(piece, fills: fills, hidden: hidden, slot: slot, template: template)
                 case let .view(_, hidden): viewControls(piece, view: piece.kind.view ?? .gallery, hidden: hidden)
+                case .roomScreen:
+                    Text("What the meeting sees, on the screen in the room. Greenroom\u{2019}s private windows are left out. Set that screen as an extended display, not mirrored.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 case .chat:
                     Text("The meeting chat window. It opens in this space when the meeting starts.")
                         .font(.callout)
@@ -864,7 +836,7 @@ struct LayoutPageContent: View {
     @ViewBuilder
     private func cameraInspector(_ camera: LayoutCameraModel) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: camera.cameraOff ? "video.slash" : "video")
+            Image(systemName: camera.cameraOff ? "eye.slash" : "video")
                 .foregroundStyle(.secondary)
                 .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
@@ -881,14 +853,11 @@ struct LayoutPageContent: View {
             .help("Opens Settings \u{2192} Webcam: shape, size, background, mirror.")
         }
         HStack(spacing: 24) {
-            Toggle("Show my camera", isOn: Binding(get: { !camera.cameraOff }, set: { camera.setShown($0) }))
-                .disabled(!camera.cameraOff && !camera.canHide)
-                .help(camera.canHide || camera.cameraOff
-                      ? "Whether your camera is in the picture everyone sees."
-                      : "Camera switching is on, or nothing is shared. Change that on the Webcam page first.")
+            Toggle("Show my camera on my screen", isOn: Binding(get: { !camera.cameraOff }, set: { camera.setShown($0) }))
+                .help("Whether your camera shows on your screen. The meeting still sees you.")
             Spacer()
         }
-        Text("This is your camera setting for every layout, not just this one. Drag it on the canvas to move it, drag a corner to resize it.")
+        Text("This only changes your screen. The meeting still sees you. This is your camera setting for every layout, not just this one. Drag it on the canvas to move it, drag a corner to resize it.")
             .font(.callout)
             .foregroundStyle(.secondary)
     }
@@ -1010,10 +979,12 @@ struct LayoutPageContent: View {
     @ViewBuilder
     private func viewControls(_ piece: LayoutPiece, view: MeetingView, hidden: Bool) -> some View {
         HStack(spacing: 24) {
-            Toggle("Starts hidden", isOn: Binding(
+            Toggle(view == .selfView ? "Start with my Self view hidden" : "Starts hidden", isOn: Binding(
                 get: { hidden },
                 set: { v in update(piece.id) { $0.kind = .view(view, startsHidden: v) } }))
-                .help("This view starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
+                .help(view == .selfView
+                      ? "Your own picture stays out of the way at Start."
+                      : "This view starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
             Spacer()
         }
         if !MeetingViewPieces.enabled {

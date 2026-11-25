@@ -120,16 +120,25 @@ final class MeetingBarModelTests: XCTestCase {
 
     func testTheBubbleCellSaysEveryoneStillSeesYou() {
         let shown = M.bubbleCell(hidden: false)
-        XCTAssertEqual(shown.spoken, "Hide my bubble")
+        XCTAssertEqual(shown.spoken, "Hide my camera on my screen")
         XCTAssertTrue(shown.help.contains("Everyone in the meeting still sees you"))
         XCTAssertFalse(shown.on)
         let hidden = M.bubbleCell(hidden: true)
-        XCTAssertEqual(hidden.spoken, "Show my bubble")
+        XCTAssertEqual(hidden.spoken, "Show my camera on my screen")
         XCTAssertTrue(hidden.on)
         // Never the eye: that is "Show on my share".
         XCTAssertFalse(shown.symbol.hasPrefix("eye"))
         XCTAssertFalse(hidden.symbol.hasPrefix("eye"))
         XCTAssertNotEqual(shown.symbol, hidden.symbol)
+    }
+
+    func testSelfViewStartsHiddenAlone() {
+        typealias V = SelfViewVisibility
+        XCTAssertFalse(V.joinsTogetherHide(.selfView))
+        XCTAssertTrue(V.joinsTogetherHide(.activeSpeaker))
+        XCTAssertTrue(V.hidden(startsHidden: true, hiddenTogether: false))
+        XCTAssertFalse(V.hidden(startsHidden: false, hiddenTogether: false))
+        XCTAssertTrue(V.hidden(startsHidden: false, hiddenTogether: true))   // all hidden together
     }
 
     func testViewsSlotFollowsTheMeetingButton() {

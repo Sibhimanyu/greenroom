@@ -32,7 +32,7 @@ Greenroom's own meeting UI (Zoom runs in custom-UI mode, the only mode: the SDK 
 | MeetingVideo/MeetingViewRules.swift | Pure: modes, share layouts, split, prefs, tile filter/plan, grid/strip maths | `MeetingViewMode`, `MeetingShareLayout`, `MeetingSplit`, `MeetingViewPrefs`, `MeetingTilePlan`, `MeetingVideoLayout.gallery/strip/multiSpeaker` |
 | MeetingVideo/VideoTiles.swift | Tile = SDK video view + chrome; right-click Spotlight | `MeetingViewPerson`, `MeetingVideoTile` |
 | MeetingVideo/HandsUpPanel.swift | Hands up list (waiting room on top) | `HandsUpContent`, `HandsUpPanel`, `HandsUpView` |
-| MeetingVideo/ShowOnShareViews.swift | The eye switch, one-time toast, amber share border | `ShowOnShareSwitch`, `ShareVisibilityAnnouncer`, `ShareBorderOverlay` |
+| MeetingVideo/ShowOnShareViews.swift | The eye switch only (the amber edge, its label and the one-time island toast were removed 2026-11-25) | `ShowOnShareSwitch` |
 | Layout/LayoutTemplate.swift (outside UI) | `MeetingView` enum (raw values saved in layouts), `MeetingViewPieces.enabled` flag (`meetingViews.enabled`) | |
 
 ### ParticipantConsole/
@@ -83,6 +83,7 @@ Greenroom's own meeting UI (Zoom runs in custom-UI mode, the only mode: the SDK 
 - Change Present/share-self card -> `SelfShareCardView` (window), `PresentMenu` (menu).
 
 ## Gotchas
+
 - Zoom-familiar dark look is a recorded owner decision (DESIGN.md, 2026-11-12) overriding "do not imitate Zoom" for this window only: dark aqua forced, fixed `MeetingTheme` values, SF Symbols only, never Zoom's logo/word as branding. The Zoom-ish greens here are NOT `Brand.green`; the app accent stays untouched elsewhere.
 - Meeting windows are real titled windows, never borderless (close button + title bar always). Panels are non-activating (`ControlPanel`, `MeetingViewPanel`, Control bar `BarPanel` never key/main): a click must not pull Greenroom forward over the teacher's slides. `MeetingViewPanel.keyable` only for People list (search).
 - Control bar/floating pill: a floating surface, so glass rules apply; anything new on it follows `MeetingBarModel` rules (owner 2026-11-13): non-universal icons carry a word, one timer in the REC pill, End is the only red control, rare actions fold into REC menu / More.

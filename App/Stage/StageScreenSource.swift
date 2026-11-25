@@ -36,6 +36,14 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// Called on the capture queue with each complete frame.
     var onFrame: ((CVPixelBuffer) -> Void)?
+    /// Called just before `onFrame` with the frame's own host-clock time, for
+    /// whoever measures delivery (the Room screen, DEBUG).
+    var onFrameTime: ((CMTime) -> Void)?
+    /// Frames per second asked of ScreenCaptureKit and how many it may queue. The
+    /// compositor's 30 and 4 by default; the Room screen asks for the display's
+    /// 60 and 3. Set before `start()`.
+    var framesPerSecond: Int32 = 30
+    var queueDepth = 4
     /// Called on the capture queue with each buffer of the Mac's sound
     /// (48 kHz stereo Float32, host-clock stamps). Only when `captureAudio`.
     var onAudio: ((CMSampleBuffer) -> Void)?
@@ -320,7 +328,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         configuration.width = max(2, Int((nativeW * fit).rounded()) & ~1)
         configuration.height = max(2, Int((nativeH * fit).rounded()) & ~1)
         Self.log("Filter is \(Int(size.width))\u{00D7}\(Int(size.height)) points; capturing \(configuration.width)\u{00D7}\(configuration.height) pixels.")
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: framesPerSecond)
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.showsCursor = true
         configuration.capturesAudio = captureAudio
@@ -333,7 +341,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         configuration.backgroundColor = .clear
         configuration.ignoreShadowsSingleWindow = true      // show_shadow: false
-        configuration.queueDepth = 4
+        configuration.queueDepth = queueDepth
         return configuration
     }
 
@@ -417,6 +425,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         watching?.cancel()
         onFollowing = nil
         onFrame = nil
+        onFrameTime = nil
         onAudio = nil
         onStop = nil
         Self.log("Capture stopped: \(targetText), \(reason).")
@@ -444,6 +453,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         if first {
             Self.log("First frame: \(targetText), \(CVPixelBufferGetWidth(pixels))\u{00D7}\(CVPixelBufferGetHeight(pixels)).")
         }
+        onFrameTime?(sampleBuffer.presentationTimeStamp)
         onFrame?(pixels)
     }
 

@@ -22,6 +22,8 @@ struct HomeScreenPanel: View {
     let gone: Bool
     let permissionMissing: Bool
     let value: String
+    /// Cameras present on this Mac (HomeView's list), for the Just me tile.
+    var cameraCount = 1
     let more: () -> Void
     let close: () -> Void
 
@@ -72,6 +74,7 @@ struct HomeScreenPanel: View {
     var body: some View {
         let tiles = ScreenPanelRules.Tile.allCases
         let selectedTile = ScreenPanelRules.tile(for: kind)
+        let cameraState = CameraTileRules.state(cameraIsOff: coordinator.cameraIsOff, deviceCount: cameraCount)
         HomeTilePanel(
             title: "Screen", summary: "What everyone sees behind you.", value: value,
             art: DockHintVisual.share(share.kind, shape: coordinator.webcamShape, cameraOff: coordinator.cameraIsOff),
@@ -84,12 +87,13 @@ struct HomeScreenPanel: View {
                         HomeTileChoiceRow(
                             choices: tiles.map {
                                 HomeTileChoice(id: $0.rawValue, title: title($0), symbol: symbol($0),
-                                               selected: $0 == selectedTile)
+                                               selected: $0 == selectedTile,
+                                               enabled: ScreenPanelRules.tileEnabled($0, camera: cameraState))
                             },
                             autofocus: true
                         ) { pickTile(tiles[$0]) }
-                        if coordinator.cameraIsOff {
-                            Text("Just me needs a camera. Pick one in Camera.")
+                        if cameraState == .noDevice {
+                            Text(CameraTileRules.justMeNoDeviceHint)
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                         }
                     }
@@ -175,7 +179,8 @@ struct HomeScreenPanel: View {
     }
 
     private func pickTile(_ tile: ScreenPanelRules.Tile) {
-        guard ScreenPanelRules.tileEnabled(tile, cameraOff: coordinator.cameraIsOff) else { return }
+        let cameraState = CameraTileRules.state(cameraIsOff: coordinator.cameraIsOff, deviceCount: cameraCount)
+        guard ScreenPanelRules.tileEnabled(tile, camera: cameraState) else { return }
         switch tile {
         case .window:
             browsing = true
@@ -189,6 +194,11 @@ struct HomeScreenPanel: View {
             coordinator.shareTarget.kind = .whiteboard
         case .camera:
             browsing = false
+            // Same write as the Look tile: noCamera false, then re-preview.
+            if CameraTileRules.justMeTurnsCameraOn(cameraState) {
+                coordinator.cameraDirectorSettings.noCamera = false
+                coordinator.previewCamerasChanged()
+            }
             coordinator.shareTarget.kind = .nothing
         }
         coordinator.requestShapeApply(rebuild: true)

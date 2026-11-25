@@ -51,6 +51,7 @@ enum LayoutGeometry {
         case .chat: return CGSize(width: 280, height: 200)
         case .app: return CGSize(width: 400, height: 300)
         case let .view(view, _): return view.minimumPoints
+        case .roomScreen: return CGSize(width: 320, height: 180)
         }
     }
 
@@ -75,6 +76,7 @@ enum LayoutGeometry {
         case .chat: return (3, 7)
         case .app: return (8, 12)
         case let .view(view, _): return view.defaultCells
+        case .roomScreen: return (divisions, divisions)
         }
     }
 
@@ -435,6 +437,31 @@ enum LayoutResolver {
         var chat: Placed? { placed.first { $0.piece.kind.isChat } }
         var apps: [Placed] { placed.filter { $0.piece.kind.app != nil } }
         var views: [Placed] { placed.filter { $0.piece.kind.isView } }
+        /// The Room screen, when it may show: see `RoomScreenRules.placement`.
+        var roomScreen: Placed? { RoomScreenRules.placement(in: self) }
+    }
+
+    /// Where view windows cannot open (custom UI off, views switched off, or a
+    /// session that shows the video in the Meeting window only), a version that
+    /// holds an Active speaker view and no Meeting piece gets the Meeting window
+    /// in that view's rectangle instead, so Zoom-UI mode keeps the tile parking
+    /// and hide logic the starters relied on. Anything else is returned as is.
+    /// The saved template is never changed; the engine applies this when it resolves.
+    static func substitutingMeetingForActiveSpeaker(_ template: LayoutTemplate, viewsCanOpen: Bool) -> LayoutTemplate {
+        guard !viewsCanOpen else { return template }
+        func swap(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
+            guard !pieces.contains(where: { $0.kind.isMeeting }),
+                  let i = pieces.firstIndex(where: { $0.kind.view == .activeSpeaker }),
+                  case .view(_, let hidden) = pieces[i].kind else { return pieces }
+            var out = pieces
+            out[i].kind = .meeting(fillsDisplay: false, startsHidden: hidden)
+            return out
+        }
+        var copy = template
+        copy.oneDisplay = swap(template.oneDisplay)
+        copy.twoDisplays?.main = swap(template.twoDisplays?.main ?? [])
+        copy.twoDisplays?.second = swap(template.twoDisplays?.second ?? [])
+        return copy
     }
 
     /// Re-resolved on every call, never cached: displays come and go and a
@@ -584,7 +611,6 @@ extension LayoutTemplate {
     }
 
     mutating func setMeetingStartsHidden(_ hidden: Bool) {
-        guard !isLocked else { return }
         func apply(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
             pieces.map { p in
                 var p = p

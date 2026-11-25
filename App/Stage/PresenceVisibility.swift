@@ -57,6 +57,11 @@ enum PresenceVisibility {
         return .show
     }
 
+    /// Where the bubble starts at each Start or Snap Back: hidden when the layout's
+    /// "Show my camera on my screen" is off. Local only (the camera stays in the
+    /// meeting's picture); the control bar's bubble button flips it from there.
+    static func bubbleStartsHidden(shownOnMyScreen: Bool) -> Bool { !shownOnMyScreen }
+
     /// How often the coordinator re-reads the world (seconds): quicker while a
     /// window is followed, so the bubble keeps up with a window being dragged.
     static func pollInterval(shareKind: ShareKind, bubbleUp: Bool) -> TimeInterval {

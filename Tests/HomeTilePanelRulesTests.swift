@@ -116,8 +116,15 @@ final class ScreenLayoutPanelRulesTests: XCTestCase {
         XCTAssertEqual(ScreenPanelRules.tile(for: .app), .screen)
         XCTAssertEqual(ScreenPanelRules.tile(for: .display), .screen)
         XCTAssertEqual(ScreenPanelRules.tile(for: .nothing), .camera)
-        XCTAssertFalse(ScreenPanelRules.tileEnabled(.camera, cameraOff: true))
-        XCTAssertTrue(ScreenPanelRules.tileEnabled(.window, cameraOff: true))
+        // Just me: off by setting is one click from on; only no device blocks it.
+        XCTAssertTrue(ScreenPanelRules.tileEnabled(.camera, camera: .offBySetting))
+        XCTAssertTrue(ScreenPanelRules.tileEnabled(.camera, camera: .on))
+        XCTAssertFalse(ScreenPanelRules.tileEnabled(.camera, camera: .noDevice))
+        XCTAssertTrue(ScreenPanelRules.tileEnabled(.window, camera: .noDevice))
+        XCTAssertTrue(CameraTileRules.justMeTurnsCameraOn(.offBySetting))
+        XCTAssertFalse(CameraTileRules.justMeTurnsCameraOn(.on))
+        XCTAssertFalse(CameraTileRules.justMeTurnsCameraOn(.noDevice))
+        XCTAssertEqual(CameraTileRules.justMeNoDeviceHint, "Just me needs a camera. None is connected.")
     }
 
     func testScreenSections() {
@@ -148,5 +155,25 @@ final class ScreenLayoutPanelRulesTests: XCTestCase {
         XCTAssertNil(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: false, secondConnected: true))
         XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: false), "Two displays when connected")
         XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: true), "Using two displays")
+    }
+
+    func testCameraTileStates() {
+        XCTAssertEqual(CameraTileRules.state(cameraIsOff: false, deviceCount: 1), .on)
+        XCTAssertEqual(CameraTileRules.state(cameraIsOff: true, deviceCount: 2), .offBySetting)
+        XCTAssertEqual(CameraTileRules.state(cameraIsOff: true, deviceCount: 0), .noDevice)
+        XCTAssertEqual(CameraTileRules.state(cameraIsOff: false, deviceCount: 0), .noDevice)
+        XCTAssertTrue(CameraTileRules.isEnabled(.on))
+        XCTAssertTrue(CameraTileRules.isEnabled(.offBySetting))
+        XCTAssertFalse(CameraTileRules.isEnabled(.noDevice))
+        XCTAssertEqual(CameraTileRules.value(.offBySetting, onValue: "Circle"), "Camera off")
+        XCTAssertEqual(CameraTileRules.value(.noDevice, onValue: "Circle"), "No camera")
+        XCTAssertEqual(CameraTileRules.value(.on, onValue: "Circle"), "Circle")
+        XCTAssertEqual(CameraTileRules.symbol(.offBySetting, onSymbol: "circle"), "video.slash")
+        XCTAssertEqual(CameraTileRules.symbol(.on, onSymbol: "circle"), "circle")
+        XCTAssertTrue(CameraTileRules.tapTurnsCameraOn(.offBySetting))
+        XCTAssertFalse(CameraTileRules.tapTurnsCameraOn(.on))
+        XCTAssertFalse(CameraTileRules.tapTurnsCameraOn(.noDevice))
+        XCTAssertEqual(CameraTileRules.offRowTitle(cameraIsOff: false), "Turn camera off")
+        XCTAssertEqual(CameraTileRules.offRowTitle(cameraIsOff: true), "Camera off")
     }
 }

@@ -6,7 +6,6 @@ final class ShareVisibilityRulesTests: XCTestCase {
         XCTAssertEqual(ShareVisibility.onlyYou.label, "Only you")
         XCTAssertEqual(ShareVisibility.classSees.symbol, "eye")
         XCTAssertEqual(ShareVisibility.onlyYou.symbol, "eye.slash")
-        XCTAssertEqual(ShowOnShare.borderLabel, "Everyone sees this")
     }
 
     func testMarkedMeansTheClassSees() {
@@ -17,34 +16,14 @@ final class ShareVisibilityRulesTests: XCTestCase {
         XCTAssertEqual(ShareVisibility(marked: ShowOnShare.marksWindow(on: true, kind: .display)), .classSees)
     }
 
-    func testFrostedWhenHiddenSolidWithEdgeWhenSeen() {
+    func testFrostedWhenHiddenSolidWhenSeen() {
         XCTAssertEqual(ShareVisibility.onlyYou.backdrop, .frosted)
         XCTAssertEqual(ShareVisibility.classSees.backdrop, .solid)
-        XCTAssertFalse(WindowBackdrop.frosted.hasEdge)
-        XCTAssertTrue(WindowBackdrop.solid.hasEdge)
     }
 
     func testTransitionIsInstantUnderReduceMotion() {
         XCTAssertEqual(WindowBackdrop.transitionDuration(reduceMotion: true), 0)
         XCTAssertGreaterThan(WindowBackdrop.transitionDuration(reduceMotion: false), 0)
-    }
-
-    func testToastOnlyOnAChangeAndOnlyOnce() {
-        XCTAssertEqual(ShareVisibilityExplainer.toast(was: .onlyYou, now: .classSees, alreadyExplained: false),
-                       "Everyone in the meeting sees this window.")
-        XCTAssertEqual(ShareVisibilityExplainer.toast(was: .classSees, now: .onlyYou, alreadyExplained: false),
-                       "Hidden from the meeting. Only you see this window.")
-        XCTAssertNil(ShareVisibilityExplainer.toast(was: .onlyYou, now: .onlyYou, alreadyExplained: false))
-        XCTAssertNil(ShareVisibilityExplainer.toast(was: .onlyYou, now: .classSees, alreadyExplained: true))
-    }
-
-    func testExplainedFlagIsPerMac() {
-        let defaults = UserDefaults(suiteName: "ShareVisibilityRulesTests")!
-        defaults.removePersistentDomain(forName: "ShareVisibilityRulesTests")
-        XCTAssertFalse(ShareVisibilityExplainer.hasExplained(defaults))
-        ShareVisibilityExplainer.markExplained(defaults)
-        XCTAssertTrue(ShareVisibilityExplainer.hasExplained(defaults))
-        defaults.removePersistentDomain(forName: "ShareVisibilityRulesTests")
     }
 
     func testWhichWindowsOfferTheSwitch() {

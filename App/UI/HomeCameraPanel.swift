@@ -31,7 +31,7 @@ struct HomeCameraPanel: View {
 
     private var rows: [Row] {
         cameras.map { Row(id: $0.id, name: $0.name, symbol: CameraPanelRules.symbol(name: $0.name, isBuiltIn: $0.isBuiltIn)) }
-            + [Row(id: "none", name: "No camera", symbol: "video.slash", isNone: true)]
+            + [Row(id: "none", name: CameraTileRules.offRowTitle(cameraIsOff: coordinator.cameraIsOff), symbol: "video.slash", isNone: true)]
     }
 
     var body: some View {
@@ -47,7 +47,7 @@ struct HomeCameraPanel: View {
         ) {
             HomeTileSection(title: "Cameras") {
                 if cameras.isEmpty {
-                    Text("No camera found. Plug one in, or pick No camera.")
+                    Text("No camera found. Plug one in, or turn the camera off.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 HomeTileList(rows: rows, selected: isSelected, autofocus: true, pick: pickRow) { row, keyed in

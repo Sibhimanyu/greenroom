@@ -203,17 +203,24 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
         case app(AppPiece)
         /// One part of the meeting in its own window. Needs custom UI.
         case view(MeetingView, startsHidden: Bool)
+        /// What the meeting sees, on a screen in the room (RoomScreenWindow). Only
+        /// ever on the second display of a two-display version.
+        case roomScreen
     }
 
     var id: UUID
     var kind: Kind
     var rect: UnitRect
     /// "Show to everyone": Greenroom's own window for this piece (Meeting window,
-    /// Chat, a meeting view) is let into the picture the meeting sees. Off by
-    /// default; ignored for other apps' windows.
-    var showsToEveryone = false
+    /// Chat, a meeting view) is let into the picture the meeting sees. On by
+    /// default (owner, 2026-11-25: everything a layout places is visible);
+    /// ignored for other apps' windows.
+    var showsToEveryone = LayoutPiece.defaultShowsToEveryone
 
-    init(id: UUID = UUID(), kind: Kind, rect: UnitRect, showsToEveryone: Bool = false) {
+    /// The default for a piece nobody has chosen for: a layout shows what it places.
+    static let defaultShowsToEveryone = true
+
+    init(id: UUID = UUID(), kind: Kind, rect: UnitRect, showsToEveryone: Bool = LayoutPiece.defaultShowsToEveryone) {
         self.id = id
         self.kind = kind
         self.rect = rect
@@ -226,7 +233,7 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     var offersShareSwitch: Bool {
         switch kind {
         case .meeting, .chat, .view: return true
-        case .app: return false
+        case .app, .roomScreen: return false
         }
     }
 
@@ -239,7 +246,7 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
         self.init(id: (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID(),
                   kind: kind,
                   rect: (try? c.decodeIfPresent(UnitRect.self, forKey: .rect)) ?? .full,
-                  showsToEveryone: (try? c.decodeIfPresent(Bool.self, forKey: .showsToEveryone)) ?? false)
+                  showsToEveryone: (try? c.decodeIfPresent(Bool.self, forKey: .showsToEveryone)) ?? LayoutPiece.defaultShowsToEveryone)
     }
 }
 
@@ -261,6 +268,9 @@ extension LayoutPiece.Kind: Codable {
             // an older build drops view pieces it has never heard of.
             self = .view(try c.decode(MeetingView.self, forKey: .view),
                          startsHidden: (try? c.decodeIfPresent(Bool.self, forKey: .startsHidden)) ?? false)
+        case "roomScreen":
+            // An older build has no such case: it throws below and its lossy array drops the piece.
+            self = .roomScreen
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown piece kind")
         }
@@ -282,11 +292,14 @@ extension LayoutPiece.Kind: Codable {
             try c.encode("view", forKey: .type)
             try c.encode(view, forKey: .view)
             try c.encode(hidden, forKey: .startsHidden)
+        case .roomScreen:
+            try c.encode("roomScreen", forKey: .type)
         }
     }
 }
 
 extension LayoutPiece.Kind {
+    var isRoomScreen: Bool { if case .roomScreen = self { return true } else { return false } }
     var isMeeting: Bool { if case .meeting = self { return true } else { return false } }
     var isChat: Bool { if case .chat = self { return true } else { return false } }
     var app: AppPiece? { if case let .app(a) = self { return a } else { return nil } }
@@ -365,13 +378,6 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
                   twoDisplays: try? c.decodeIfPresent(TwoDisplay.self, forKey: .twoDisplays))
     }
 
-    /// Raj Mode is built in and cannot be edited, renamed or re-arranged:
-    /// duplicate it for a version of your own. Derived from `starter`, which is
-    /// already saved, kept by a reset and written by the one-time append, so it
-    /// needs no field of its own and an old file decodes the same way. A copy
-    /// loses `starter` (LayoutLibrary.duplicate), which is what unlocks it.
-    var isLocked: Bool { starter == LayoutLibrary.rajMode }
-
     // MARK: Pieces by slot
 
     func pieces(for slot: LayoutSlot) -> [LayoutPiece] {
@@ -383,7 +389,6 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     }
 
     mutating func setPieces(_ pieces: [LayoutPiece], for slot: LayoutSlot) {
-        guard !isLocked else { return }
         switch slot {
         case .one: oneDisplay = pieces
         case .main: twoDisplays?.main = pieces
@@ -424,6 +429,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
             case .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp: return true
             }
         case .chat: return !existing.contains { $0.kind.isChat }
+        case .roomScreen: return RoomScreenRules.canAdd(to: slot, existing: existing.map(\.kind))
         case let .app(app):
             let apps = existing.compactMap { $0.kind.app }
             return apps.count < Self.maxApps && !apps.contains { $0.bundleID == app.bundleID }
@@ -441,7 +447,6 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// Puts another app in the place of one (onboarding's single picker), in every
     /// version of the layout. Its website and Start / Stop choices stay.
     mutating func replaceApp(_ old: String, with new: String) {
-        guard !isLocked else { return }
         func swap(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
             pieces.map { piece in
                 guard var app = piece.kind.app, app.bundleID == old else { return piece }
@@ -465,10 +470,12 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// there stays on the main display (without the Meeting), and the Meeting
     /// fills the second.
     mutating func addTwoDisplayVersion() {
-        guard !isLocked, twoDisplays == nil else { return }
-        var main = oneDisplay.filter { !$0.kind.isMeeting }
+        guard twoDisplays == nil else { return }
+        // The Active speaker view is the starters' speaker, so it moves like the Meeting.
+        func isSpeaker(_ p: LayoutPiece) -> Bool { p.kind.isMeeting || p.kind.view == .activeSpeaker }
+        var main = oneDisplay.filter { !isSpeaker($0) }
         // The old column the Meeting sat in goes to the Chat, if there is one.
-        if let meeting = oneDisplay.first(where: { $0.kind.isMeeting }),
+        if let meeting = oneDisplay.first(where: isSpeaker),
            let chat = main.firstIndex(where: { $0.kind.isChat }),
            abs(main[chat].rect.x - meeting.rect.x) < 1e-6, abs(main[chat].rect.w - meeting.rect.w) < 1e-6 {
             main[chat].rect = UnitRect(x: meeting.rect.x, y: 0, w: meeting.rect.w, h: 1)
@@ -480,7 +487,6 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     }
 
     mutating func removeTwoDisplayVersion() {
-        guard !isLocked else { return }
         twoDisplays = nil
     }
 }
@@ -522,8 +528,7 @@ struct LayoutLibrary: Codable, Equatable {
     }
 
     mutating func update(_ template: LayoutTemplate) {
-        guard let i = templates.firstIndex(where: { $0.id == template.id }),
-              !templates[i].isLocked else { return }
+        guard let i = templates.firstIndex(where: { $0.id == template.id }) else { return }
         templates[i] = template
     }
 
@@ -566,8 +571,7 @@ struct LayoutLibrary: Codable, Equatable {
     /// An empty name is ignored: a layout with no name cannot be found again.
     mutating func rename(_ id: UUID, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let i = templates.firstIndex(where: { $0.id == id }),
-              !templates[i].isLocked else { return }
+        guard !trimmed.isEmpty, let i = templates.firstIndex(where: { $0.id == id }) else { return }
         templates[i].name = trimmed
     }
 
@@ -583,19 +587,22 @@ struct LayoutLibrary: Codable, Equatable {
     static let builtInBrowserBundleID = "com.sibhimanyu.greenroom.browser"
 
     /// The ordinary, editable templates every library begins with, in the order
-    /// the strip shows them (right after None).
+    /// the strip shows them (right after None). Their one-display Meeting is the
+    /// Active speaker view.
     static func starters() -> [LayoutTemplate] {
         let third = 1.0 / 12
         return [
             // The old fixed arrangement: the browser, the speaker, the chat.
-            // The Meeting window at 3x5 cells is small enough that the runtime
-            // shows the compact Speaker view, which is the active speaker.
+            // The speaker is the Active speaker view. Where views cannot open
+            // the runtime puts the Meeting window in its place
+            // (LayoutResolver.substitutingMeetingForActiveSpeaker). The second
+            // display keeps a full-display Meeting: the reference display.
             LayoutTemplate(
                 name: "Raj Mode", starter: rajMode,
                 oneDisplay: [
                     LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
                                 rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
-                    LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false),
+                    LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
                                 rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third)),
                     LayoutPiece(kind: .chat,
                                 rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third)),
@@ -612,7 +619,7 @@ struct LayoutLibrary: Codable, Equatable {
                 oneDisplay: [
                     LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
                                 rect: UnitRect(x: 0, y: 0, w: 8 * third, h: 1)),
-                    LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false),
+                    LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
                                 rect: UnitRect(x: 8 * third, y: 0, w: 4 * third, h: 5 * third)),
                     LayoutPiece(kind: .chat,
                                 rect: UnitRect(x: 8 * third, y: 5 * third, w: 4 * third, h: 7 * third)),
@@ -620,7 +627,7 @@ struct LayoutLibrary: Codable, Equatable {
             LayoutTemplate(
                 name: "Meeting and chat", starter: meetingAndChat,
                 oneDisplay: [
-                    LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false),
+                    LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
                                 rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
                     LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1)),
                 ]),
@@ -685,14 +692,42 @@ extension LayoutLibrary {
             // deleted is in `known` already and stays gone.
             let known = defaults.stringArray(forKey: knownStartersKey).map(Set.init)
                 ?? Set(originalStarterKeys)
-            if saved.addStarters(notIn: known) { saved.save(to: defaults) }
+            var changed = saved.addStarters(notIn: known)
+            // The old default was hidden; saved layouts hold it explicitly. Flip once.
+            if !defaults.bool(forKey: shownToEveryoneMigratedKey) {
+                saved.showEverythingToEveryone()
+                changed = true
+            }
+            if changed { saved.save(to: defaults) }
+            defaults.set(true, forKey: shownToEveryoneMigratedKey)
             recordKnownStarters(in: defaults)
             return saved
         }
         let library = firstRun(legacy: LegacyLayoutSettings.read(from: defaults, defaultSiteURL: defaultSiteURL))
         library.save(to: defaults)
+        defaults.set(true, forKey: shownToEveryoneMigratedKey)
         recordKnownStarters(in: defaults)
         return library
+    }
+
+    /// Set once the one-time "show to everyone" flip has run; never cleared, so
+    /// a piece hidden afterwards stays hidden.
+    static let shownToEveryoneMigratedKey = "layoutLibrary.shownToEveryoneMigrated"
+
+    /// Pure: every piece that offers the switch (Meeting window, Chat, views), in
+    /// every template, one- and two-display, is set to shown.
+    mutating func showEverythingToEveryone() {
+        func flip(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
+            pieces.map { var p = $0; if p.offersShareSwitch { p.showsToEveryone = true }; return p }
+        }
+        for i in templates.indices {
+            templates[i].oneDisplay = flip(templates[i].oneDisplay)
+            if var two = templates[i].twoDisplays {
+                two.main = flip(two.main)
+                two.second = flip(two.second)
+                templates[i].twoDisplays = two
+            }
+        }
     }
 
     /// Every starter key this build knows, so a later build can tell which are new.

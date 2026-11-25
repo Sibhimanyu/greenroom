@@ -147,3 +147,29 @@ final class CameraWhiteboardModel: ObservableObject {
         }
     }
 }
+
+/// Two different things people call "the whiteboard", kept apart.
+/// PRESENTING it is a share target (Home's Screen panel, "Whiteboard"): the
+/// meeting sees the page. OPENING it from the drawing tools (Annotations) is
+/// only a white window on the owner's screen: the share target and the Stage
+/// are left alone, and the window follows "Show on my share" like any other.
+enum WhiteboardOpenRules {
+    enum Action: Equatable {
+        /// An ordinary white window, share target untouched.
+        case openLocal
+        /// The local window is up: the tool puts it away again.
+        case closeLocal
+        /// The whiteboard is already the share target: its window is the one to show.
+        case raisePresented
+    }
+
+    /// What the drawing tools' Whiteboard button (and W) does.
+    static func toolAction(shareIsWhiteboard: Bool, localIsOpen: Bool) -> Action {
+        if shareIsWhiteboard { return .raisePresented }
+        return localIsOpen ? .closeLocal : .openLocal
+    }
+
+    /// Whether a stroke change should re-render the page for the Stage: only
+    /// while the whiteboard IS the share target.
+    static func feedsStage(shareIsWhiteboard: Bool) -> Bool { shareIsWhiteboard }
+}

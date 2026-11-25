@@ -70,15 +70,12 @@ extension LayoutPieceLook {
 struct LayoutCameraModel {
     var box: PresenceBox
     var shape: WebcamShape
-    /// "No camera" is chosen: drawn dimmed, still placeable.
+    /// Hidden on the owner's own screen (local only): drawn dimmed, still placeable.
     var cameraOff = false
     /// A drag step: the compositor only (no @Published write, no defaults).
     var onStep: (PresenceBox) -> Void
     /// The drag ended: persist once.
     var onCommit: (PresenceBox) -> Void
-    /// Whether the camera can be turned off from here (not while switching is on,
-    /// and not with nothing shared). Turning it on is always allowed.
-    var canHide = true
     /// Show (true) or hide (false) the camera. It is the camera setting for
     /// every layout, not a per-layout flag.
     var setShown: (Bool) -> Void = { _ in }
@@ -105,6 +102,7 @@ enum LayoutPalettePayload {
         case .chat: return prefix + "chat"
         case let .app(app): return prefix + "app:" + app.bundleID
         case let .view(view, _): return prefix + "view:" + view.rawValue
+        case .roomScreen: return prefix + "roomScreen"
         }
     }
 
@@ -113,6 +111,7 @@ enum LayoutPalettePayload {
         let rest = String(string.dropFirst(prefix.count))
         if rest == "meeting" { return .meeting(fillsDisplay: false, startsHidden: false) }
         if rest == "chat" { return .chat }
+        if rest == "roomScreen" { return .roomScreen }
         if rest.hasPrefix("view:") {
             return MeetingView(rawValue: String(rest.dropFirst(5))).map { .view($0, startsHidden: false) }
         }
@@ -145,9 +144,6 @@ struct LayoutCanvas: View {
     let onNotice: (String) -> Void
     /// Draws the title row above the canvas. Off when the page supplies its own.
     var showsHeader = true
-    /// A built-in layout: the pieces are drawn but cannot be selected, moved,
-    /// resized, removed or dropped onto.
-    var locked = false
     /// The camera overlay for this display (the shared one); nil on others.
     /// Drawn above every piece, never saved with the template.
     var camera: LayoutCameraModel?
@@ -215,25 +211,18 @@ struct LayoutCanvas: View {
             let canvas = geo.size
             ZStack(alignment: .topLeading) {
                 // Focus layer: under the controls (see the file note).
-                if locked {
-                    // No keyboard layer: nothing here can be armed or moved.
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { onActivate() }
-                } else {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .focusable()
-                        .focusEffectDisabled()
-                        .focused($focused)
-                        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow,
-                                           .delete, .deleteForward, .tab, .escape], action: handleKey)
-                        .onTapGesture {
-                            selection = nil
-                            focused = true
-                            onActivate()
-                        }
-                }
+                Color.clear
+                    .contentShape(Rectangle())
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($focused)
+                    .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow,
+                                       .delete, .deleteForward, .tab, .escape], action: handleKey)
+                    .onTapGesture {
+                        selection = nil
+                        focused = true
+                        onActivate()
+                    }
 
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
@@ -248,7 +237,7 @@ struct LayoutCanvas: View {
 
                 ForEach(pieces.filter(\.offersShareSwitch)) { piece in shareSwitch(piece, canvas: canvas) }
 
-                if !locked, let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
+                if let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
                     ForEach(LayoutGeometry.Handle.allCases, id: \.self) { handle in
                         handleView(handle, piece: selected, canvas: canvas)
                     }
@@ -268,8 +257,8 @@ struct LayoutCanvas: View {
             }
             .coordinateSpace(name: Self.space)
             .dropDestination(for: String.self) { items, location in
-                locked ? false : drop(items, at: location, canvas: canvas)
-            } isTargeted: { dropTargeted = !locked && $0 }
+                drop(items, at: location, canvas: canvas)
+            } isTargeted: { dropTargeted = $0 }
         }
     }
 
@@ -288,7 +277,7 @@ struct LayoutCanvas: View {
     private func tile(_ piece: LayoutPiece, canvas: CGSize) -> some View {
         let rect = liveRect(piece)
         let box = frame(of: rect, canvas: canvas).insetBy(dx: Self.tileInset, dy: Self.tileInset)
-        let isSelected = !locked && selection == piece.id
+        let isSelected = selection == piece.id
         let isDragging = drag?.id == piece.id
         let readout = LayoutGeometry.pointSize(of: rect, display: display.size)
         let span = LayoutGeometry.cellSpan(of: rect)
@@ -297,34 +286,23 @@ struct LayoutCanvas: View {
                                pointSize: readout, columns: span.cols.count,
                                selected: isSelected, invalid: isDragging && (drag?.invalid ?? false))
             .frame(width: box.width, height: box.height)
-        // Locked: a picture, with no gesture and no cursor. Before .position:
-        // that modifier fills its parent, so a gesture added after it would
-        // answer across the whole canvas.
-        return Group {
-            if locked {
-                drawn
-                    .position(x: box.midX, y: box.midY)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(appearance.name)
-                    .accessibilityValue("\(spokenSpan(span)). Built-in layout, not adjustable")
-            } else {
-                drawn
-                    .contentShape(Rectangle())
-                    .gesture(moveGesture(piece, canvas: canvas))
-                    .onHover { inside in
-                        (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
-                    }
-                    .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                    .position(x: box.midX, y: box.midY)
-                    .modifier(TileAccessibility(
-                        name: appearance.name, value: spokenSpan(span), selected: isSelected,
-                        select: { select(piece.id) },
-                        nudge: { nudge(piece.id, cols: $0, rows: $1) },
-                        grow: { grow(piece.id, cols: $0, rows: $1) },
-                        remove: { remove(piece.id) }))
+        // The gesture goes before .position: that modifier fills its parent, so a
+        // gesture added after it would answer across the whole canvas.
+        return drawn
+            .contentShape(Rectangle())
+            .gesture(moveGesture(piece, canvas: canvas))
+            .onHover { inside in
+                (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
             }
-        }
+            .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            .position(x: box.midX, y: box.midY)
+            .modifier(TileAccessibility(
+                name: appearance.name, value: spokenSpan(span), selected: isSelected,
+                select: { select(piece.id) },
+                nudge: { nudge(piece.id, cols: $0, rows: $1) },
+                grow: { grow(piece.id, cols: $0, rows: $1) },
+                remove: { remove(piece.id) }))
     }
 
     private func spokenSpan(_ span: (cols: ClosedRange<Int>, rows: ClosedRange<Int>)) -> String {
@@ -407,14 +385,12 @@ struct LayoutCanvas: View {
             } label: {
                 Image(systemName: on ? "eye" : "eye.slash")
                     .font(.system(size: 11))
-                    .foregroundStyle(on ? Brand.netText : Color.secondary.opacity(locked ? 0.35 : 0.6))
+                    .foregroundStyle(on ? Brand.netText : Color.secondary.opacity(0.6))
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(locked)
-            .help(locked ? "Built-in layout. Duplicate to change."
-                         : (on ? "Everyone in the meeting sees this window" : "Only you see this window"))
+            .help(on ? "Everyone in the meeting sees this window" : "Only you see this window")
             .accessibilityLabel("Show to everyone")
             .accessibilityValue(on ? "On. Everyone in the meeting sees this window" : "Off. Only you see this window")
             .position(x: box.maxX - 17, y: box.minY + 15)
@@ -435,7 +411,7 @@ struct LayoutCanvas: View {
                 space: display.cameraSpace,
                 onStep: camera.onStep, onCommit: camera.onCommit,
                 selected: selection == LayoutCameraModel.selectionID,
-                onSelect: locked ? nil : { selection = LayoutCameraModel.selectionID; focused = true; onActivate() },
+                onSelect: { selection = LayoutCameraModel.selectionID; focused = true; onActivate() },
                 fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff, size: size)) })
                 .frame(width: canvas.width, height: canvas.height)
                 .zIndex(6)
@@ -586,7 +562,7 @@ struct LayoutCanvas: View {
     private func animation(_ a: Animation) -> Animation? { reduceMotion ? nil : a }
 
     private func commit(_ rect: UnitRect, for id: UUID) {
-        guard !locked, let i = pieces.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = pieces.firstIndex(where: { $0.id == id }) else { return }
         pieces[i].rect = rect
     }
 
@@ -650,7 +626,6 @@ struct LayoutCanvas: View {
     }
 
     private func remove(_ id: UUID) {
-        guard !locked else { return }
         withAnimation(animation(.snappy(duration: 0.25))) {
             pieces.removeAll { $0.id == id }
             if selection == id { selection = nil }
@@ -1100,10 +1075,10 @@ private struct CameraStandIn: View {
     private var label: some View {
         let small = min(size.width, size.height) < 64
         return VStack(spacing: 2) {
-            Image(systemName: off ? "video.slash.fill" : "video.fill")
+            Image(systemName: off ? "eye.slash" : "video.fill")
                 .font(.system(size: small ? 11 : 15, weight: .medium))
             if !small && size.width > 84 {
-                Text(off ? "Camera off" : "Your camera")
+                Text(off ? "Hidden on your screen" : "Your camera")
                     .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
             }

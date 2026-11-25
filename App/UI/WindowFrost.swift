@@ -5,9 +5,8 @@
 //  The window background that says who sees a window. A window only you see is
 //  frosted: its BACKGROUND is see-through (a behind-window visual effect), while
 //  text, controls, images and video stay fully opaque on top. A window the class
-//  sees is solid, and carries the amber edge (ShareBorderOverlay). Never the
-//  window's alphaValue, never faded content. With Reduce Transparency on, the
-//  system draws the frost solid by itself; the edge still carries the signal.
+//  sees is solid. Never the window's alphaValue, never faded content. With Reduce
+//  Transparency on, the system draws the frost solid by itself.
 //  The decision is WindowBackdrop (ShareVisibilityRules.swift, tested).
 //
 import AppKit

@@ -2,24 +2,20 @@
 //  ShareVisibilityRules.swift
 //  Greenroom
 //
-//  The plain words and the one-time explanation behind "Show on my share".
-//  Most of Greenroom's windows are hidden from the picture the class sees; the
-//  few that are let in carry an amber edge. Which window is marked is
-//  ShowOnShare.marksWindow; this file says what to call each state and decides
-//  when the island explains it (once ever per Mac, the first time a window goes
-//  from hidden to seen or back). Foundation only, so the test target compiles
-//  this file as it is.
+//  The plain words behind "Show on my share". Windows a layout places are in the
+//  picture the class sees by default; the rest of Greenroom's windows are hidden
+//  from it. Which window is marked is ShowOnShare.marksWindow; this file says
+//  what to call each state. (The amber edge and the one-time island explanation
+//  were removed on 2026-11-25, owner's decision.) Foundation only, so the test
+//  target compiles this file as it is.
 //
 import Foundation
 
 /// The look of a window's background. The rule: a window only you see is
 /// frosted (its background is see-through, its content stays opaque); a window
-/// the class sees is solid and carries the amber edge.
+/// the class sees is solid.
 enum WindowBackdrop: Equatable {
     case frosted, solid
-
-    /// Whether the amber edge is drawn with this backdrop.
-    var hasEdge: Bool { self == .solid }
 
     /// How long the change between the two takes; none with Reduce Motion.
     static func transitionDuration(reduceMotion: Bool) -> TimeInterval { reduceMotion ? 0 : 0.2 }
@@ -31,7 +27,7 @@ enum ShareVisibility: Equatable {
 
     init(marked: Bool) { self = marked ? .classSees : .onlyYou }
 
-    /// The switch's words and the edge's label.
+    /// The switch's words.
     var label: String { self == .classSees ? "Everyone sees this" : "Only you" }
 
     /// An eye open or struck through.
@@ -39,37 +35,13 @@ enum ShareVisibility: Equatable {
 
     /// Frosted while hidden from the class, solid while it is in the picture.
     var backdrop: WindowBackdrop { self == .classSees ? .solid : .frosted }
-
-    /// The one-time island toast: a short sentence for each way round.
-    var explanation: String {
-        self == .classSees ? "Everyone in the meeting sees this window." : "Hidden from the meeting. Only you see this window."
-    }
-}
-
-enum ShareVisibilityExplainer {
-    static let defaultsKey = "shareVisibility.explained"
-
-    /// What to tell now, or nil. `was` is what the window was a moment ago;
-    /// nothing is said when nothing changed or the Mac has been told already.
-    static func toast(was: ShareVisibility, now: ShareVisibility, alreadyExplained: Bool) -> String? {
-        guard was != now, !alreadyExplained else { return nil }
-        return now.explanation
-    }
-
-    static func hasExplained(_ defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: defaultsKey)
-    }
-
-    static func markExplained(_ defaults: UserDefaults = .standard) {
-        defaults.set(true, forKey: defaultsKey)
-    }
 }
 
 // MARK: - Which windows offer "Show to everyone", and what the switch says
 
 /// Every kind of window Greenroom opens, and whether it carries the switch.
-/// Hidden from the class by default; the switch lets the person show one, say
-/// to show how they present. (This is Greenroom's OWN capture; what other
+/// Windows a layout places (Meeting window, Chat, views) are shown by default;
+/// the rest are hidden, and the switch flips either. (This is Greenroom's OWN capture; what other
 /// apps' recorders see is `sharingType`, decided by PresenceRecorderRules.) Tools and anything private never carry it.
 enum ShareableWindow: CaseIterable {
     case main, settings, meetingChat, participants, meetingWindow, meetingView
@@ -125,4 +97,12 @@ struct ShareSwitchState: Equatable {
         accessibilityLabel = "Show to everyone"
         accessibilityValue = visibility.label
     }
+}
+
+/// Whether one of Greenroom's own windows starts in the picture the meeting sees.
+/// Only a window the running layout places follows its piece (which defaults to
+/// shown, LayoutPiece.defaultShowsToEveryone); with no layout, or a layout that
+/// does not place the window, it is "Only you".
+enum LayoutShareRule {
+    static func startsShown(placedBy piece: LayoutPiece?) -> Bool { piece?.showsToEveryone ?? false }
 }

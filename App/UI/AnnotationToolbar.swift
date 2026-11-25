@@ -103,7 +103,7 @@ struct AnnotationToolbarView: View {
 
             divider
 
-            iconButton("rectangle.inset.filled.on.rectangle", help: "Whiteboard (W) \u{2014} switch what you share to a white page, and back",
+            iconButton("rectangle.inset.filled.on.rectangle", help: "Whiteboard (W) \u{2014} open a white page on your screen. The meeting does not see it",
                        action: onWhiteboard)
             iconButton("arrow.uturn.backward", help: "Undo (\u{2318}Z)") { model.undo() }
                 .disabled(!model.canUndo)

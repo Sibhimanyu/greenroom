@@ -119,6 +119,20 @@ enum MeetingSplit {
     }
 }
 
+// MARK: - The Self view piece's own visibility
+
+/// "Starts hidden" on a Self view piece hides only the Self view. Every other
+/// view, and the Meeting window, go away together (\u{2303}\u{2325}\u{2318}H).
+enum SelfViewVisibility {
+    /// Whether a view's "Starts hidden" joins the all-together hide.
+    static func joinsTogetherHide(_ view: MeetingView) -> Bool { view != .selfView }
+
+    /// Hidden now: with everything hidden together, or by its own "Starts hidden".
+    static func hidden(startsHidden: Bool, hiddenTogether: Bool) -> Bool {
+        hiddenTogether || startsHidden
+    }
+}
+
 // MARK: - What a Mac remembers
 
 /// The choices that belong to the Mac, not to a meeting. The defaults are

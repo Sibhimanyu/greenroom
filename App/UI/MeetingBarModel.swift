@@ -197,14 +197,14 @@ enum MeetingBarModel {
                  spoken: open ? "Hide notes" : "Show notes", on: open)
     }
 
-    /// The camera bubble on your own screen: hide it or bring it back. Only the
-    /// bubble: the class and the recording keep the camera. The symbol is a
+    /// Your camera on your own screen: hide it or bring it back. Only your screen:
+    /// the meeting and the recording keep the camera. The symbol is a
     /// person, never the eye, which belongs to "Show on my share".
     static func bubbleCell(hidden: Bool) -> IconCell {
         IconCell(symbol: hidden ? "person.crop.circle.badge.xmark" : "person.crop.circle",
-                 help: hidden ? "Shows your camera bubble on your screen again. Everyone in the meeting sees you either way."
-                              : "Hides your camera bubble from your screen. Everyone in the meeting still sees you.",
-                 spoken: hidden ? "Show my bubble" : "Hide my bubble", on: hidden)
+                 help: hidden ? "Shows your camera on your screen again. Everyone in the meeting sees you either way."
+                              : "Hides your camera from your screen. Everyone in the meeting still sees you.",
+                 spoken: hidden ? "Show my camera on my screen" : "Hide my camera on my screen", on: hidden)
     }
 
     /// Meeting Views: opens the views submenu's entries as a menu of its own.

@@ -67,6 +67,11 @@ struct LayoutAddPanel: View {
         var available: Bool { reason == nil }
     }
 
+    /// A line under a tile that needs one (the Room screen's).
+    private static func hint(for kind: LayoutPiece.Kind) -> String? {
+        kind.isRoomScreen ? RoomScreenRules.hint : nil
+    }
+
     private func item(_ id: String, _ title: String, _ kind: LayoutPiece.Kind, symbol: String = "",
                       icon: NSImage? = nil, view: MeetingView? = nil) -> Item {
         Item(id: id, title: title, kind: kind, symbol: symbol, icon: icon, view: view,
@@ -90,6 +95,7 @@ struct LayoutAddPanel: View {
             return item(entry.id, entry.title, entry.kind, symbol: view?.symbol ?? "video.fill", view: view)
         }
         let chat = item("chat", "Chat", .chat, symbol: "bubble.left.and.bubble.right.fill")
+        let room = item("roomScreen", RoomScreenRules.title, .roomScreen, symbol: RoomScreenRules.symbol)
         let byID = Dictionary(apps.map { ("app:\($0.bundleID)", $0) }, uniquingKeysWith: { first, _ in first })
         let arranged = LayoutAppOrdering.arrange(
             apps.map { LayoutAppCandidate(id: "app:\($0.bundleID)", name: $0.name,
@@ -104,7 +110,7 @@ struct LayoutAddPanel: View {
                 }
             }
         }
-        return Visible(top: meeting + [chat], suggested: tiles(arranged.suggested),
+        return Visible(top: meeting + [chat, room], suggested: tiles(arranged.suggested),
                        rest: tiles(arranged.rest), searching: arranged.searching, appCount: apps.count)
     }
 
@@ -248,7 +254,7 @@ struct LayoutAddPanel: View {
     private func captionLine(_ all: [Item]) -> some View {
         let id = hovered ?? noted ?? focus
         let current = all.first { $0.id == id }
-        let text = current.map { $0.reason ?? "Click to add, or drag onto the canvas." }
+        let text = current.map { $0.reason ?? Self.hint(for: $0.kind) ?? "Click to add, or drag onto the canvas." }
             ?? "Click to add, or drag onto the canvas."
         return Text(text)
             .font(.caption)
@@ -298,7 +304,7 @@ struct LayoutAddPanel: View {
             .onHover { inside in
                 if inside { hovered = item.id } else if hovered == item.id { hovered = nil }
             }
-            .help(item.reason ?? item.title)
+            .help(item.reason ?? Self.hint(for: item.kind) ?? item.title)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(item.title)
             .accessibilityValue(item.placed ? "Already in this layout" : (item.reason ?? "Available"))

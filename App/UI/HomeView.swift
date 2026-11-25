@@ -731,17 +731,22 @@ struct HomeView: View {
 
     /// Look: the shapes as swatches in a popover, one click each.
     private var lookControl: some View {
-        Button { lookOpen.toggle() } label: {
-            dockLabel(symbol: Self.symbol(for: coordinator.webcamShape),
-                      value: coordinator.cameraIsOff ? "No camera" : coordinator.webcamShape.label)
+        let state = CameraTileRules.state(cameraIsOff: coordinator.cameraIsOff, deviceCount: cameras.count)
+        return Button {
+            if CameraTileRules.tapTurnsCameraOn(state) { turnCameraOn() }
+            lookOpen.toggle()
+        } label: {
+            dockLabel(symbol: CameraTileRules.symbol(state, onSymbol: Self.symbol(for: coordinator.webcamShape)),
+                      value: CameraTileRules.value(state, onValue: coordinator.webcamShape.label))
         }
         .buttonStyle(DockButtonStyle())
-        .disabled(coordinator.cameraIsOff)
+        .disabled(!CameraTileRules.isEnabled(state))
         .greenroomPopover(isPresented: $lookOpen) { lookPicker }
         // The panel explains itself (header line, value), so no hover card.
         // To bring a tile's hover card back, add `.dockHint(DockHintContent(...))` here.
-        .help(coordinator.cameraIsOff ? "Look: no camera is picked, so there is no look to choose."
-                                      : "Look: how you appear over what you share.")
+        .help(state == .noDevice ? CameraTileRules.noDeviceHelp
+              : state == .offBySetting ? CameraTileRules.offHelp
+              : "Look: how you appear over what you share.")
         .accessibilityLabel("Look")
         .accessibilityValue(coordinator.webcamShape.label)
     }
@@ -776,6 +781,7 @@ struct HomeView: View {
         .greenroomPopover(isPresented: $shareOpen) {
             HomeScreenPanel(coordinator: coordinator, displays: displays, windows: windows,
                             gone: shareGone, permissionMissing: problem("screen"), value: shareValue,
+                            cameraCount: cameras.count,
                             more: { shareOpen = false; openWebcamSettings() },
                             close: { shareOpen = false })
         }
@@ -785,6 +791,12 @@ struct HomeView: View {
               : "Screen: what everyone sees behind you.")
         .accessibilityLabel("Behind you")
         .accessibilityValue(LookSummary.shareText(coordinator.shareTarget))
+    }
+
+    /// Same write as Settings > Webcam's camera cards: noCamera false, then re-preview.
+    private func turnCameraOn() {
+        coordinator.cameraDirectorSettings.noCamera = false
+        coordinator.previewCamerasChanged()
     }
 
     /// Camera: the same list and the same rule as the Webcam page's cards.

@@ -37,6 +37,7 @@ final class CoordinatorController: ObservableObject {
         MeetingControlBarController.close()
         ParticipantGridWindowController.close()
         MeetingViewWindows.closeAll()
+        RoomScreen.close()
         zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
@@ -664,6 +665,12 @@ final class CoordinatorController: ObservableObject {
     /// speaker tile and participant view show only the others. OFF: your
     /// own tile appears among them like anyone else's. Local rendering
     /// only - the class receives your video either way. Applies live.
+    /// Layouts -> "Show my camera on my screen". Local only: whether Greenroom
+    /// puts the camera bubble on this screen. The meeting, recordings and the
+    /// share follow `cameraIsOff` (the Webcam page), never this. Global.
+    @Published var cameraShownOnMyScreen: Bool {
+        didSet { defaults.set(cameraShownOnMyScreen, forKey: "cameraShownOnMyScreen") }
+    }
     @Published var hideSelfView: Bool {
         didSet {
             defaults.set(hideSelfView, forKey: "hideSelfView")
@@ -1019,6 +1026,7 @@ final class CoordinatorController: ObservableObject {
               let template = layoutLibrary.template(id: id) else { return }
         sessionTemplate = template
         speakerTileQuickHidden = layoutEngine.startsHidden(template)
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
         reapplyLayout(userInitiated: false, openApps: true)
     }
@@ -1296,6 +1304,9 @@ final class CoordinatorController: ObservableObject {
         // (explicit request); the speaker tile stays clean regardless
         // because spotlight-my-video and the thumbnail strip are disabled.
         hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? false
+        let shownOnMyScreen = (defaults.object(forKey: "cameraShownOnMyScreen") as? Bool) ?? true
+        cameraShownOnMyScreen = shownOnMyScreen
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: shownOnMyScreen)
         speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.
@@ -1546,11 +1557,12 @@ final class CoordinatorController: ObservableObject {
         permissionWatcher = nil
         endDrawingTools()
         cameraDirector.stop()
+        RoomScreen.setCompositor(nil)
         guard let stage else { return }
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
         self.stage = nil
-        presenceBubbleHidden = false
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
         presenceFeedInstalled = false
         stageObservers.removeAll()
         stageCameraUIDs = nil
@@ -1658,6 +1670,7 @@ final class CoordinatorController: ObservableObject {
         // the whole class. None (nil) arranges nothing.
         sessionTemplate = layoutLibrary.active
         sessionArranges = sessionTemplate != nil
+        if !sessionArranges { LayoutShareChoice.reset() }
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
         // The Meeting window opens at Start unless the layout shows the meeting only as views.
         meetingWindowWanted = sessionTemplate.map { !layoutEngine.hasViewsButNoMeeting($0) } ?? true
@@ -1943,6 +1956,7 @@ final class CoordinatorController: ObservableObject {
             recorder?.disarmClipBuffer()
             zoomChatClient.onParticipantCountChanged = nil
                 if failure == nil { ParticipantGridWindowController.close() }
+            RoomScreen.close()
             MeetingViewWindows.reset()
             meetingWindowWanted = true
             zoomChatClient.releaseCustomUIVideo()
@@ -1984,6 +1998,7 @@ final class CoordinatorController: ObservableObject {
             apply(.meetingTornDown)
             warmUpForStart()
             sessionTemplate = nil
+            LayoutShareChoice.reset()
             speakerTileQuickHidden = false
             resumePreviewIfWanted()
             // The session pushed Greenroom to the back (finalizeLayout) so
@@ -2091,11 +2106,13 @@ final class CoordinatorController: ObservableObject {
     /// Drawing on the screen and the whiteboard (phase 5, drawing-port-log.md).
     let drawing = ScreenAnnotationController()
     let whiteboardModel = CameraWhiteboardModel()
+    /// The whiteboard as the share target (Home's Screen panel).
     private let whiteboardWindow = WhiteboardWindowController()
+    /// The whiteboard opened from the drawing tools: a plain window on the
+    /// owner's screen; the share target and the Stage are never touched by it.
+    private let localWhiteboardWindow = WhiteboardWindowController(mode: .local)
     /// The drawing tools are up (on the screen, or the whiteboard window).
     @Published private(set) var isDrawing = false
-    /// What was shared before the whiteboard took over, to go back to.
-    private var shareBeforeWhiteboard: ShareTarget?
     /// The screen canvas was put away for the whiteboard and comes back after it.
     private var drawingSuspended = false
     private var lastShareKind: ShareTarget.Kind?
@@ -2243,7 +2260,7 @@ final class CoordinatorController: ObservableObject {
 
     private func wireDrawing() {
         drawing.onClose = { [weak self] in self?.stopDrawing() }
-        drawing.onWhiteboard = { [weak self] in self?.toggleWhiteboard() }
+        drawing.onWhiteboard = { [weak self] in self?.whiteboardFromTools() }
         drawing.onOverlay = { [weak self] overlay in self?.stage?.setMarksOverlay(overlay) }
         drawing.capturedFrame = { [weak self] in self?.capturedScreenFrame() }
         // The page is drawn again for the Stage whenever a stroke changes.
@@ -2265,6 +2282,7 @@ final class CoordinatorController: ObservableObject {
             guard let self, self.shareTarget.kind == .whiteboard else { return }
             self.isDrawing = false
         }
+        localWhiteboardWindow.onClosed = { [weak self] in self?.closeLocalWhiteboard() }
     }
 
     /// The Draw button, the pill's Draw, and the Draw shortcut.
@@ -2297,36 +2315,58 @@ final class CoordinatorController: ObservableObject {
         if drawing.isActive || drawingSuspended { drawing.end() }
         drawingSuspended = false
         whiteboardWindow.hide()
+        localWhiteboardWindow.hide()
         isDrawing = false
     }
 
     /// The session or the picture ended: nothing can be drawn on any more.
     private func endDrawingTools() {
         stopDrawing()
-        // The whiteboard was only borrowed with W: give back what was shared.
-        if let before = shareBeforeWhiteboard, shareTarget.kind == .whiteboard { shareTarget = before }
-        shareBeforeWhiteboard = nil
     }
 
-    /// W from the drawing tools, or the whiteboard's "Back to screen":
-    /// switches what is shared to the whiteboard page, and back.
-    func toggleWhiteboard() {
-        if shareTarget.kind == .whiteboard {
-            shareTarget = shareBeforeWhiteboard ?? ShareTarget()
-            shareBeforeWhiteboard = nil
-        } else {
-            shareBeforeWhiteboard = shareTarget
-            shareTarget.kind = .whiteboard
-        }
+    /// The presented whiteboard's "Back to screen": the share goes back to a screen.
+    func leaveWhiteboardShare() {
+        guard shareTarget.kind == .whiteboard else { return }
+        shareTarget = ShareTarget()
         requestShapeApply(rebuild: true)
+    }
+
+    /// W / the toolbar's Whiteboard button. Only OPENS a white window on the
+    /// owner's screen; presenting the whiteboard is the Screen panel's choice
+    /// (WhiteboardOpenRules says which).
+    func whiteboardFromTools() {
+        switch WhiteboardOpenRules.toolAction(shareIsWhiteboard: shareTarget.kind == .whiteboard,
+                                              localIsOpen: localWhiteboardWindow.isVisible) {
+        case .openLocal:
+            // The screen canvas steps aside (marks kept) so the window can be drawn on.
+            if drawing.isActive { drawingSuspended = true; drawing.suspend() }
+            localWhiteboardWindow.show(board: whiteboardModel) { [weak self] in self?.closeLocalWhiteboard() }
+            isDrawing = true
+        case .closeLocal:
+            closeLocalWhiteboard()
+        case .raisePresented:
+            showWhiteboardWindow()
+        }
+    }
+
+    /// Done or the window's close button: the canvas comes back over the screen.
+    private func closeLocalWhiteboard() {
+        localWhiteboardWindow.hide()
+        guard drawingSuspended, shareTarget.kind != .whiteboard, shareTarget.kind != .nothing else { return }
+        drawingSuspended = false
+        if let screen = recordedScreen ?? NSScreen.main {
+            drawing.begin(on: screen, followsWindow: stage?.followsWindow() ?? false)
+            isDrawing = true
+        }
     }
 
     private func shareKindChanged(to kind: ShareTarget.Kind) {
         defer { lastShareKind = kind }
         guard lastShareKind != nil, lastShareKind != kind else { return }
-        if kind != .whiteboard { shareBeforeWhiteboard = lastShareKind == .whiteboard ? nil : shareBeforeWhiteboard }
         switch kind {
         case .whiteboard:
+            // The presented whiteboard replaces a locally opened one.
+            localWhiteboardWindow.hide()
             pushWhiteboardPage()
             guard canDraw else { return }
             // The screen canvas steps aside (its marks are kept) and the page opens.
@@ -2335,6 +2375,8 @@ final class CoordinatorController: ObservableObject {
         case .display, .app, .window:
             let wasWhiteboard = whiteboardWindow.isVisible
             whiteboardWindow.hide()
+            // A local whiteboard is still open: the canvas stays put away.
+            if localWhiteboardWindow.isVisible { break }
             if drawingSuspended || drawing.isActive {
                 drawingSuspended = false
                 // A different screen or window may now be what is captured:
@@ -2352,13 +2394,13 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func showWhiteboardWindow() {
-        whiteboardWindow.show(board: whiteboardModel) { [weak self] in self?.toggleWhiteboard() }
+        whiteboardWindow.show(board: whiteboardModel) { [weak self] in self?.leaveWhiteboardShare() }
         isDrawing = true
     }
 
     /// Renders the page for the Stage, at most ~30 times a second.
     private func scheduleWhiteboardPush() {
-        guard shareTarget.kind == .whiteboard, !whiteboardPushPending else { return }
+        guard WhiteboardOpenRules.feedsStage(shareIsWhiteboard: shareTarget.kind == .whiteboard), !whiteboardPushPending else { return }
         whiteboardPushPending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 30) { [weak self] in
             guard let self else { return }
@@ -3051,7 +3093,7 @@ final class CoordinatorController: ObservableObject {
         recorder?.disarmClipBuffer()
         recorder = nil
         lastCameraLive = nil
-        presenceBubbleHidden = false
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
         stopStage()
     }
 
@@ -4078,7 +4120,8 @@ final class CoordinatorController: ObservableObject {
             // Back to the layout's own starting state: hidden if the Meeting
             // starts hidden, shown otherwise.
             speakerTileQuickHidden = layoutEngine.startsHidden(template)
-        } else if !layoutEngine.hasPlacedSurface(template) {
+            presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
+            } else if !layoutEngine.hasPlacedSurface(template) {
             // A display change can turn a placed Meeting into a whole-display one
             // (or take it away): nothing is hidden then.
             speakerTileQuickHidden = false
@@ -4574,6 +4617,7 @@ final class CoordinatorController: ObservableObject {
         stage.addSink(probe)
         defer { stage.removeSink(probe) }
         stage.start(configuration)
+        RoomScreen.setCompositor(stage)     // a Room screen shows what the meeting now gets
         stage.cut(toSlot: 0, fade: 0)
         attachPreview()
 

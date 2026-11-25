@@ -209,4 +209,37 @@ final class LayoutViewPieceTests: XCTestCase {
         XCTAssertFalse(k.isMeeting); XCTAssertFalse(k.isChat); XCTAssertNil(k.app)
         XCTAssertFalse(LayoutPiece.Kind.chat.isMeetingSurface)
     }
+
+    // MARK: Fallback where views cannot open
+
+    func testActiveSpeakerBecomesTheMeetingWindowWhereViewsCannotOpen() {
+        let raj = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.rajMode }!
+        let rect = raj.oneDisplay.first { $0.kind.view == .activeSpeaker }!.rect
+        let out = LayoutResolver.substitutingMeetingForActiveSpeaker(raj, viewsCanOpen: false)
+        let m = out.oneDisplay.first { $0.kind.isMeeting }
+        XCTAssertEqual(m?.rect, rect, "same rectangle")
+        XCTAssertEqual(m?.kind, .meeting(fillsDisplay: false, startsHidden: false))
+        XCTAssertFalse(out.oneDisplay.contains { $0.kind.isView })
+        XCTAssertEqual(out.twoDisplays, raj.twoDisplays, "the second display's full Meeting is untouched")
+        XCTAssertEqual(out.oneDisplay.count, raj.oneDisplay.count)
+    }
+
+    func testNothingChangesWhenViewsCanOpen() {
+        for t in LayoutLibrary.starters() {
+            XCTAssertEqual(LayoutResolver.substitutingMeetingForActiveSpeaker(t, viewsCanOpen: true), t)
+        }
+    }
+
+    func testStartsHiddenCarriesOverAndAnExistingMeetingWins() {
+        var t = LayoutTemplate(name: "x", oneDisplay: [piece(view(.activeSpeaker, hidden: true), UnitRect(x: 0, y: 0, w: 0.5, h: 1))])
+        let out = LayoutResolver.substitutingMeetingForActiveSpeaker(t, viewsCanOpen: false)
+        XCTAssertEqual(out.oneDisplay[0].kind, .meeting(fillsDisplay: false, startsHidden: true))
+
+        t.oneDisplay.append(piece(meeting, UnitRect(x: 0.5, y: 0, w: 0.5, h: 1)))
+        XCTAssertEqual(LayoutResolver.substitutingMeetingForActiveSpeaker(t, viewsCanOpen: false), t,
+                       "a version with its own Meeting piece keeps its view")
+        let other = LayoutTemplate(name: "y", oneDisplay: [piece(view(.gallery))])
+        XCTAssertEqual(LayoutResolver.substitutingMeetingForActiveSpeaker(other, viewsCanOpen: false), other,
+                       "only the Active speaker stands in")
+    }
 }

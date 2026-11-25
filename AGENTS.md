@@ -57,6 +57,10 @@ Read `DESIGN.md` before any visual change.
 - Pure decision files (`*Rules.swift`, geometry, budgets, ledgers) import Foundation only.
   The test target compiles them directly, so keep app and SDK types out. A new pure file
   must be listed in `GreenroomTests.sources` in `project.yml`.
+- Before building a feature, read its spec in `docs/specs/`; update requirement statuses with the code.
+- `GLOSSARY.md` holds the agreed words for layouts and visibility; use them in code and UI text.
+- `docs/adr/` records decisions that are hard to reverse; read it before reopening one.
+- `scripts/check.sh`: generate, Debug build and the full tests in one command; `scripts/run-debug.sh`: quit all Greenroom and open this worktree's Debug build.
 - `Greenroom.xcodeproj` is generated: edit `project.yml` and run `xcodegen generate`.
   `Vendor/ZoomSDK` is gitignored; worktrees need it symlinked in.
 - Zoom types stay inside `App/Zoom`. Outside callers get plain values.

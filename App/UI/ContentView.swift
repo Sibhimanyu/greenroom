@@ -112,6 +112,18 @@ struct ContentView: View {
         }
     }
 
+    /// Home has no page name. A Debug build shows the branch and commit it was
+    /// built from (written into Info.plist by project.yml's "Stamp the Debug
+    /// build" phase), so a running copy is never mistaken for another
+    /// worktree's. Compiled out of Release.
+    private var homeSubtitle: String {
+        #if DEBUG
+        return Bundle.main.object(forInfoDictionaryKey: "GreenroomDebugBuild") as? String ?? ""
+        #else
+        return ""
+        #endif
+    }
+
     private var pageSubtitle: String {
         switch coordinator.mainPage {
         case .home: return ""
@@ -276,7 +288,7 @@ struct ContentView: View {
         // never changes height during a page change. Subtitle only, never a
         // navigation title: the window is still found by its title.
         .pageToolbar(back: chromeOnPage ? PageBack(label: backLabel, action: { if isEditorPage { editor.backRequests += 1 } else { coordinator.goBack() } }) : nil,
-                     subtitle: chromeOnPage ? pageSubtitle : "")
+                     subtitle: chromeOnPage ? pageSubtitle : homeSubtitle)
         .toolbar {
             if !chromeOnPage {
                 // The switcher is the toolbar's centre and the only main choice;

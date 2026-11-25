@@ -22,6 +22,7 @@ if [ $? -ne 0 ]; then grep -E "error:" "$LOG" | sort -u | head -30; fail "Debug 
 xcodebuild test -project Greenroom.xcodeproj -scheme GreenroomTests \
   -destination 'platform=macOS' -derivedDataPath "$DD" >"$LOG" 2>&1
 rc=$?
-grep -E "error:|: error|Test Case .* failed|Executed [0-9]+ tests?" "$LOG" | sort -u | tail -40
+grep -E "^/.*: error:|^error:|Test Case .* failed" "$LOG" | sort -u | head -40
+grep -E "Executed [0-9]+ tests?" "$LOG" | tail -1 | sed 's/^[[:space:]]*//'
 [ $rc -eq 0 ] || fail "GreenroomTests"
 echo "CHECK OK"

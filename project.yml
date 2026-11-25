@@ -199,6 +199,19 @@ targets:
           if [ -f "${SRCROOT}/apptics-config.plist" ]; then
             cp "${SRCROOT}/apptics-config.plist" "${CODESIGNING_FOLDER_PATH}/Contents/Resources/apptics-config.plist"
           fi
+      # Debug only: stamps "branch @ commit" into the built Info.plist so the
+      # Home window can say which build it is (ContentView.homeSubtitle, behind
+      # #if DEBUG). Release never gets the key, so the string is not in a
+      # shipped binary. Runs before Xcode's final code signing.
+      - name: Stamp the Debug build
+        basedOnDependencyAnalysis: false
+        script: |
+          [ "${CONFIGURATION}" = "Debug" ] || exit 0
+          BRANCH=$(git -C "${SRCROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
+          SHA=$(git -C "${SRCROOT}" rev-parse --short HEAD 2>/dev/null || echo "?")
+          PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          /usr/libexec/PlistBuddy -c "Delete :GreenroomDebugBuild" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :GreenroomDebugBuild string ${BRANCH} @ ${SHA}" "$PLIST"
       - name: Embed remaining ZoomSDK support binaries
         script: |
           set -eu

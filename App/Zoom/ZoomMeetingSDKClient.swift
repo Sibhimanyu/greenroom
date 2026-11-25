@@ -341,7 +341,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                     + " others=\(otherHolders(of: userID, except: existing))")
             }
         }
-        tileWatch[userID] = watch
+        // Merged, not overwritten: a callback during the SDK calls above wrote tileWatch, not this copy.
+        tileWatch[userID] = ElementWatch.merged(pass: watch, stored: tileWatch[userID] ?? ElementWatch())
         return existing.getVideoView()
     }
 
@@ -513,7 +514,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                                             external: viewVideo.usage)["stage"] ?? .p360
             stageResolutionHeld = tier ?? .p360
             let asked = stageResolutionHeld == .p720 ? ZoomSDKVideoRenderResolution_720p : ZoomSDKVideoRenderResolution_360p
-            if let (setCode, result, implicit) = paceSubscribe(element, watch: &stageWatch, asked: asked, label: "stage") {
+            // A copy across the SDK calls: a callback inside them writes stageWatch (exclusivity).
+            var watch = stageWatch
+            let paced = paceSubscribe(element, watch: &watch, asked: asked, label: "stage")
+            stageWatch = ElementWatch.merged(pass: watch, stored: stageWatch)
+            if let (setCode, result, implicit) = paced {
                 if result == ZoomSDKError_Success {
                     _ = element.showVideo(true)
                     stageWatch.subscribed = true

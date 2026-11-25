@@ -221,8 +221,11 @@ extension ZoomMeetingSDKClient {
               entry.element.getVideoView().window?.isVisible == true else { return }
         entry.tier = tier
         let asked = Self.sdkResolution(tier)
-        guard let (setCode, sub, implicit) = paceSubscribe(entry.element, watch: &entry.watch, asked: asked,
-                                                 label: "View window: \(entry.key.text)") else { return }
+        // A copy across the SDK calls: a callback inside them writes entry.watch (exclusivity).
+        var watch = entry.watch
+        let paced = paceSubscribe(entry.element, watch: &watch, asked: asked, label: "View window: \(entry.key.text)")
+        entry.watch = ElementWatch.merged(pass: watch, stored: entry.watch)
+        guard let (setCode, sub, implicit) = paced else { return }
         let others = otherHolders(of: entry.userID, except: entry.element)
         if sub == ZoomSDKError_Success {
             let shown = entry.element.showVideo(true)

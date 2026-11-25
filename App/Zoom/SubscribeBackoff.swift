@@ -97,6 +97,23 @@ struct ElementWatch {
     func isRepeatRefusal(at now: Date) -> Bool {
         lastRefusalAt.map { now.timeIntervalSince($0) < 1 } ?? false
     }
+
+    /// A pass works on a copy of the watch while it calls the SDK, so a Zoom callback
+    /// (onRenderDataTypeChanged, a refusal) that fires inside the call writes the stored
+    /// watch, never one held inout (an exclusivity crash, Release too). Back in the store:
+    /// the pass's copy plus what the callback set meanwhile.
+    /// The callback only ever sets `freshPending` and `sawVideo`, or records a refusal newer than the pass's own.
+    static func merged(pass: ElementWatch, stored: ElementWatch) -> ElementWatch {
+        var w = pass
+        if stored.freshPending { w.freshPending = true }
+        if stored.sawVideo { w.sawVideo = true }
+        if let at = stored.lastRefusalAt, at > (w.lastRefusalAt ?? .distantPast) {
+            w.subscribed = false
+            w.refusedUntil = stored.refusedUntil
+            w.lastRefusalAt = at
+        }
+        return w
+    }
 }
 
 /// The rule the logs taught. On macOS, setting `userid` on a normal video

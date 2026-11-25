@@ -178,4 +178,50 @@ final class SubscribeBackoffTests: XCTestCase {
         w.subscribed = true
         XCTAssertEqual(w.noteDataType(.video), .keep)
     }
+
+    // MARK: ElementWatch.merged: a callback during the pass is not lost
+
+    func testACallbackThatSetFreshPendingDuringThePassIsKept() {
+        var before = ElementWatch()
+        before.subscribedByUserID = true   // subscribed by userid while it drew an avatar
+        var pass = before
+        pass.resolutionSet = true
+        var stored = before
+        XCTAssertEqual(stored.noteDataType(.video), .freshElement, "onRenderDataTypeChanged inside the SDK call")
+        let m = ElementWatch.merged(pass: pass, stored: stored)
+        XCTAssertTrue(m.freshPending, "the fresh element the callback asked for")
+        XCTAssertTrue(m.sawVideo)
+        XCTAssertTrue(m.resolutionSet, "and the pass's own work")
+    }
+
+    func testARefusalDuringThePassIsKept() {
+        let now = Date()
+        var pass = ElementWatch()
+        pass.subscribed = true
+        var stored = ElementWatch()
+        stored.subscribed = false
+        stored.refusedUntil = now.addingTimeInterval(10)
+        stored.lastRefusalAt = now
+        let m = ElementWatch.merged(pass: pass, stored: stored)
+        XCTAssertFalse(m.subscribed)
+        XCTAssertEqual(m.refusedUntil, now.addingTimeInterval(10))
+        XCTAssertEqual(m.lastRefusalAt, now)
+    }
+
+    func testWithNoCallbackThePassWins() {
+        let now = Date()
+        var before = ElementWatch()
+        before.refusedUntil = now
+        before.lastRefusalAt = now.addingTimeInterval(-5)
+        var pass = before
+        pass.readyToRetry()
+        pass.resolutionSet = true
+        pass.lastSublayers = 3
+        let m = ElementWatch.merged(pass: pass, stored: before)
+        XCTAssertNil(m.refusedUntil, "an older refusal does not come back")
+        XCTAssertTrue(m.retried)
+        XCTAssertTrue(m.resolutionSet)
+        XCTAssertEqual(m.lastSublayers, 3)
+        XCTAssertFalse(m.freshPending)
+    }
 }

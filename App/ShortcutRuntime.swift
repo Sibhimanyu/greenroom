@@ -110,7 +110,7 @@ final class ShortcutRuntime {
             case .toggleRecording:
                 // Idle (nothing live, nothing starting) starts a recording through
                 // Home's one flow: countdown, then the tape.
-                let idle = !c.isRunning && !c.sceneInUse && !c.isStopping
+                let idle = c.phase.canStart
                 guard !c.isSavingRecording,
                       idle || c.stageLive || c.isRecording || c.recordingCountdown != nil else { return }
                 c.toggleRecording()

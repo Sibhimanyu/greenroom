@@ -1670,7 +1670,7 @@ final class CoordinatorController: ObservableObject {
         // the button mid-session, but the global hotkey has no disabled
         // state - without the extra checks it could stack a second
         // meeting onto a live session.
-        guard !isRunning, !sceneInUse, !isStopping else { return }
+        guard phase.canStart else { return }
         if meetingMode == .record {
             startRecordingFlow()
             return
@@ -2597,7 +2597,7 @@ final class CoordinatorController: ObservableObject {
         }
         // Nothing live and nothing starting: the shortcut records, through the
         // same one flow as Home's Start Recording.
-        if !isRunning, !sceneInUse, !isRecording {
+        if !phase.hasSessionOrTakeOnScreen {
             startRecordingFlow()
             return
         }
@@ -2766,7 +2766,7 @@ final class CoordinatorController: ObservableObject {
     /// meeting, no chat window, no tiling. No folder is made until the tape is
     /// about to roll.
     func startRecordingFlow() {
-        guard !isRunning, !sceneInUse, !isStopping else { return }
+        guard phase.canStart else { return }
         apply(.recordStartRequested)
         let startID = phase.startID
         studioPreviewOn = true
@@ -4298,7 +4298,7 @@ final class CoordinatorController: ObservableObject {
     /// "Start Meeting" was clickable with no credentials and "Join
     /// Meeting" with no meeting ID (Codex design audit #1).
     var startActionDisabled: Bool {
-        if isRunning || sceneInUse || isStopping { return true }
+        if !phase.canStart { return true }
         switch meetingMode {
         // Needs nothing but the camera and screen permissions, which Start checks itself.
         case .record: return false

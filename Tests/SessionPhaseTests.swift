@@ -247,4 +247,14 @@ final class SessionPhaseTests: XCTestCase {
             XCTAssertEqual(p.isCameraBusy, p.stageLive || p.recordOnlyActive || p.isRunning, "\(p.session)")
         }
     }
+
+    func testCanStartMatchesOldExpressions() {
+        for p in reachableStates() {
+            XCTAssertEqual(p.canStart, !p.isRunning && !p.sceneInUse && !p.isStopping, "\(p.session)")
+            // startActionDisabled's spelling is the exact negation.
+            XCTAssertEqual(!p.canStart, p.isRunning || p.sceneInUse || p.isStopping)
+            // toggleRecording's variant: ignores isStopping (guarded earlier) and asks about the take.
+            XCTAssertEqual(!p.hasSessionOrTakeOnScreen, !p.isRunning && !p.sceneInUse && !p.isRecording, "\(p.session)")
+        }
+    }
 }

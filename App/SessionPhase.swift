@@ -251,4 +251,7 @@ struct SessionPhase: Equatable {
     /// The camera / stage is taken: a picture is up (either kind) or a start
     /// task is running.
     var isCameraBusy: Bool { sceneInUse || isRunning }
+
+    /// Start may begin: nothing running, no picture up, not stopping.
+    var canStart: Bool { !isRunning && !sceneInUse && !isStopping }
 }

@@ -37,3 +37,7 @@ every change to a question is a change to a flag, and the coordinator is its
 - `sceneInUse`: `stageLive || recordOnlyActive`, the picture is built (either kind).
 - `isCameraBusy`: `sceneInUse || isRunning`, also written `stageLive ||
   recordOnlyActive || isRunning`. Nothing may take the camera or stage while true.
+- `canStart`: `!isRunning && !sceneInUse && !isStopping`; Start (meeting or
+  Record), the Record shortcut and `startActionDisabled` ask it. The
+  toggle-recording check "nothing live, nothing starting" is the other variant:
+  it ignores `isStopping` and counts a take, so it reads `!hasSessionOrTakeOnScreen`.

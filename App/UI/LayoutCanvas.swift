@@ -193,6 +193,13 @@ struct LayoutCanvas: View {
     var slot: LayoutSlot = .one
     /// This is the display everyone sees (a two-display layout's "Everyone sees"): the header says so.
     var isShared = false
+    /// Header pieces the page supplies (Direction A): the second display's "Second" menu
+    /// in place of its name, the "Everyone sees this" tag on the shared canvas, and the
+    /// Preview and Show on screen, and the +.
+    var titleMenu: AnyView?
+    var sharedTag: AnyView?
+    var headerPreview: AnyView?
+    var headerAdd: AnyView?
     /// Drag between the two displays; nil on a one-display layout.
     var crossing: LayoutCrossing?
     /// A piece from the other display is over this canvas right now.
@@ -237,31 +244,46 @@ struct LayoutCanvas: View {
         }
     }
 
+    /// The name (or, for the second display, its "Second" menu), the shared tag
+    /// where this canvas carries it, Preview and Show on screen, then the canvas's
+    /// own +. When the canvas is too narrow for one row, Preview and Show on
+    /// screen drop to a second row. The resolution is not drawn: it is in the
+    /// piece's inspector.
     private var header: some View {
-        HStack {
-            Text(display.name.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .tracking(0.8)
-                .foregroundStyle(Brand.text)
-            if isShared {
-                Text("SHARED")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .tracking(0.6)
-                    .foregroundStyle(Brand.text)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1.5)
-                    .background(Capsule().strokeBorder(Brand.text.opacity(0.6), lineWidth: 1))
-                    .help("Everyone in the meeting sees this display, and recordings film it.")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                headerLeading
+                if let headerPreview { headerPreview }
+                Spacer(minLength: 4)
+                if let headerAdd { headerAdd }
             }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    headerLeading
+                    Spacer(minLength: 4)
+                    if let headerAdd { headerAdd }
+                }
+                if let headerPreview { headerPreview }
+            }
+        }
+    }
+
+    private var headerLeading: some View {
+        HStack(spacing: 8) {
+            if let titleMenu {
+                titleMenu
+            } else {
+                Text(display.name.uppercased())
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tracking(0.8)
+                    .foregroundStyle(Brand.text)
+            }
+            if let sharedTag { sharedTag }
             if !display.connected {
                 Text("not connected")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Text("\(Int(display.size.width))\u{00D7}\(Int(display.size.height))")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -424,7 +446,7 @@ struct LayoutCanvas: View {
         VStack(spacing: 6) {
             Image(systemName: "rectangle.dashed")
                 .font(.system(size: 22, weight: .light))
-            Text("Drag a piece here, or use Add below")
+            Text("Drag a piece here, or use + above")
                 .font(.callout)
         }
         .foregroundStyle(.secondary)

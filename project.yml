@@ -292,6 +292,7 @@ targets:
       - path: App/Layout/LayoutGeometry.swift
       - path: App/Layout/RoomScreenRules.swift
       - path: App/Layout/LayoutDisplayCrossing.swift
+      - path: App/Layout/LayoutEditorRules.swift
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift
       - path: App/Stage/PresenceVisibility.swift

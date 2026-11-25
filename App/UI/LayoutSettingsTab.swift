@@ -169,7 +169,8 @@ struct LayoutPageContent: View {
     @State private var noticeTask: Task<Void, Never>?
     @State private var deleteCandidate: UUID?
     @State private var confirmReset = false
-    @State private var showsAddPanel = false
+    /// The canvas whose + panel is open.
+    @State private var addPanelSlot: LayoutSlot?
     // Dragging a piece between the two displays' canvases.
     @State private var canvasFrames: [LayoutSlot: CGRect] = [:]
     @State private var incoming: (slot: LayoutSlot, preview: LayoutCrossPreview)?
@@ -186,10 +187,14 @@ struct LayoutPageContent: View {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
                     cardStrip
-                    Text(caption)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // With a layout open, its description is the inspector's empty
+                    // state; the caption here is only for None.
+                    if LayoutEditorRules.captionUnderCards(hasActiveLayout: library.active != nil) {
+                        Text(caption)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .padding(.vertical, 4)
             } header: {
@@ -421,30 +426,39 @@ struct LayoutPageContent: View {
     private func editor(_ template: LayoutTemplate) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             titleRow(template)
-            previewPicker
             canvases(template)
-            whatsSharedRow(template)
-            paletteRow(template)
+            noticeRow(template)
             inspector(template)
         }
     }
 
     /// Which picture the canvas draws: what you see, or what the meeting sees.
-    private var previewPicker: some View {
-        HStack(spacing: 8) {
-            Text("Preview")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+    /// Beside it, Show on screen (no shortcut).
+    private func previewControls(_ template: LayoutTemplate) -> AnyView {
+        AnyView(HStack(spacing: 6) {
             Picker("Preview", selection: $previewEveryone) {
                 Text("My screen").tag(false)
                 Text("Everyone").tag(true)
             }
             .pickerStyle(.segmented)
+            .controlSize(.small)
             .labelsHidden()
             .fixedSize()
-            .help("My screen shows what you see. Everyone shows the meeting\u{2019}s picture: only what everyone sees.")
+            .help("Preview. My screen shows what you see. Everyone shows the meeting\u{2019}s picture: only what everyone sees.")
             .accessibilityLabel("Preview")
-        }
+            Button {
+                showOnScreen(template, look)
+                if template.twoDisplays != nil, secondSize(template.twoDisplays?.secondUUID ?? "") == nil {
+                    say("No second display is connected, so this shows the one-display version.")
+                }
+            } label: {
+                Image(systemName: "rectangle.dashed.badge.record")
+            }
+            .controlSize(.small)
+            .disabled(!LayoutEditorRules.canShowOnScreen(pieceCount: template.pieceCount))
+            .help("Show on screen: outlines where each piece would go, on your real displays, for a moment.")
+            .accessibilityLabel("Show on screen")
+        })
     }
 
     private var activeIndex: Int? {
@@ -490,6 +504,12 @@ struct LayoutPageContent: View {
                     library.templates[i].name = "Untitled layout"
                 }
             }
+            layoutMenu(template)
+            if LayoutEditorRules.offersApplyNow(liveLayoutID: liveLayoutID, templateID: template.id) {
+                Button("Apply now") { applyNow(template.id) }
+                    .controlSize(.small)
+                    .help("A meeting is running another layout. This moves it to this one now; otherwise this layout starts with the next meeting.")
+            }
             Spacer(minLength: 8)
             if template.twoDisplays != nil {
                 GreenroomSegmented("Layout for", selection: Binding(get: { showsTwo },
@@ -499,21 +519,35 @@ struct LayoutPageContent: View {
                                    options: [false, true]) { two in
                     Text(two ? "Two displays" : "One display")
                 }
-            } else {
-                Button {
-                    withAnimation(anim) {
-                        if let i = activeIndex { library.templates[i].addTwoDisplayVersion() }
-                        showsTwo = true
-                        activeSlot = .main
-                        selection = nil
-                    }
-                } label: {
-                    Label("Add a two-display version", systemImage: "display.2")
-                }
-                .controlSize(.small)
-                .help("A second arrangement for when a reference display is connected.")
             }
         }
+    }
+
+    /// Rename, Duplicate, Restore original (built-in layouts, when it can be done) and Delete.
+    private func layoutMenu(_ template: LayoutTemplate) -> some View {
+        Menu {
+            ForEach(LayoutEditorRules.layoutMenu(isBuiltIn: template.starter != nil, canRestore: false), id: \.self) { action in
+                switch action {
+                case .rename:
+                    Button("Rename") { focus = .name }
+                case .duplicate:
+                    Button("Duplicate") { duplicate(template.id) }
+                        .keyboardShortcut("d", modifiers: .command)
+                case .restoreOriginal:
+                    EmptyView()
+                case .delete:
+                    Divider()
+                    Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Rename, duplicate or delete this layout")
+        .accessibilityLabel("Layout actions")
     }
 
     private var nameBinding: Binding<String> {
@@ -545,20 +579,173 @@ struct LayoutPageContent: View {
     @ViewBuilder
     private func canvases(_ template: LayoutTemplate) -> some View {
         if showsTwo, let two = template.twoDisplays {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
-                    canvas(.main, space: mainSpace, template: template)
-                    canvas(.second, space: secondSpace(two), template: template)
-                }
-                .coordinateSpace(name: LayoutCrossing.space)
-                .onPreferenceChange(LayoutCanvasFrames.self) { canvasFrames = $0 }
-                secondDisplayRow(two, template: template)
+            HStack(alignment: .top, spacing: 12) {
+                canvas(.main, space: mainSpace, template: template)
+                canvas(.second, space: secondSpace(two), template: template)
             }
+            .coordinateSpace(name: LayoutCrossing.space)
+            .onPreferenceChange(LayoutCanvasFrames.self) { canvasFrames = $0 }
+        } else if LayoutEditorRules.showsGhostSecondCanvas(hasTwoDisplays: template.twoDisplays != nil) {
+            HStack(alignment: .top, spacing: 12) {
+                canvas(.one, space: mainSpace, template: template)
+                ghostSecondCanvas
+            }
+            .frame(maxWidth: 760)
         } else {
-            canvas(.one, space: mainSpace)
+            canvas(.one, space: mainSpace, template: template)
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
         }
+    }
+
+    /// "+ Second display": a dashed canvas where the two-display version would be.
+    private var ghostSecondCanvas: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Color.clear.frame(height: 22)
+            Button {
+                withAnimation(anim) {
+                    if let i = activeIndex { library.templates[i].addTwoDisplayVersion() }
+                    showsTwo = true
+                    activeSlot = .main
+                    selection = nil
+                }
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                    Label("Second display", systemImage: "plus")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .aspectRatio(mainSpace.aspect, contentMode: .fit)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("A second arrangement for when a reference display is connected.")
+        }
+    }
+
+    // MARK: Canvas header controls
+
+    private func sharedSlotBinding() -> Binding<LayoutSlot> {
+        Binding(get: { library.active?.effectiveSharedSlot ?? .main },
+                set: { v in
+                    guard let i = activeIndex else { return }
+                    if v == .second, !library.templates[i].canShareSecondDisplay {
+                        say("The Room screen is on the second display and would show itself. Remove it first.")
+                        return
+                    }
+                    withAnimation(anim) { library.templates[i].twoDisplays?.sharedSlot = v }
+                })
+    }
+
+    /// "Everyone sees this": the shared display (two displays) and what is shared, saved with the
+    /// layout. A live change in Home or the bar changes only the running meeting.
+    private func sharedTag(_ template: LayoutTemplate) -> AnyView {
+        let current = template.share ?? fallbackShare
+        let set: (ShareTarget) -> Void = { new in
+            if let i = activeIndex { library.templates[i].share = new }
+        }
+        let rows = LayoutEditorRules.sharedMenu(hasTwoDisplays: showsTwo && template.twoDisplays != nil,
+                                                kind: current.kind == .app ? .display : current.kind)
+        return AnyView(Menu {
+            ForEach(rows, id: \.self) { row in
+                switch row {
+                case .sharedDisplay:
+                    Picker("Shared display", selection: sharedSlotBinding()) {
+                        Text("Main display").tag(LayoutSlot.main)
+                        Text("Second display").tag(LayoutSlot.second)
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                case .whatsShared:
+                    Picker("What\u{2019}s shared", selection: Binding(
+                        get: { current.kind == .app ? .display : current.kind },
+                        set: { kind in var t = current; t.kind = kind; set(t) })) {
+                        ForEach(ShareTarget.Kind.pickable) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                case .windowApp:
+                    Divider()
+                    Picker("Window of", selection: Binding(
+                        get: { current.appBundleID },
+                        set: { id in
+                            var t = current
+                            t.appBundleID = id
+                            t.appName = apps.first { $0.bundleID == id }?.name ?? ""
+                            t.windowTitle = ""
+                            set(t)
+                        })) {
+                        Text("Choose an app").tag("")
+                        ForEach(apps) { Text($0.name).tag($0.bundleID) }
+                    }
+                case .followSlideShow:
+                    Toggle("Follow the slide show", isOn: Binding(
+                        get: { current.followsSlideShow },
+                        set: { on in var t = current; t.followsSlideShow = on; set(t) }))
+                }
+            }
+        } label: {
+            Text("Everyone sees this")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("What everyone sees when you start this layout: \(current.kind == .app ? ShareTarget.Kind.display.label : current.kind.label)"
+              + (showsTwo ? ", from the display marked here. Recordings film it too." : ".")
+              + " Changing it in Home or on the bar during a meeting does not change what is saved here."))
+    }
+
+    /// "Second": the second display's picker and Remove two-display version.
+    private func secondMenu(_ two: TwoDisplay) -> AnyView {
+        let others = displays.filter { !$0.isMain }
+        let items = LayoutEditorRules.secondMenu(connectedNonMainIDs: others.map(\.id), savedUUID: two.secondUUID)
+        return AnyView(Menu {
+            Picker("Second display", selection: Binding(
+                get: { two.secondUUID },
+                set: { v in if let i = activeIndex { library.templates[i].twoDisplays?.secondUUID = v } })) {
+                ForEach(items, id: \.self) { item in
+                    switch item {
+                    case .automatic: Text("Automatic").tag("")
+                    case let .display(id): Text(others.first { $0.id == id }?.name ?? id).tag(id)
+                    case let .savedNotConnected(id): Text("Saved display (not connected)").tag(id)
+                    case .remove: EmptyView()
+                    }
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            Button("Remove two-display version", role: .destructive) {
+                withAnimation(anim) {
+                    if let i = activeIndex { library.templates[i].removeTwoDisplayVersion() }
+                    showsTwo = false
+                    activeSlot = .one
+                    selection = nil
+                }
+            }
+        } label: {
+            Text("SECOND")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .tracking(0.8)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Which display is the second one (Automatic is the first that is not your main one), or remove the two-display version."))
+    }
+
+    /// The + on one canvas: it adds to that canvas's display.
+    private func addButton(slot: LayoutSlot, template: LayoutTemplate) -> AnyView {
+        let target = LayoutEditorRules.addSlot(canvas: slot)
+        return AnyView(Button { addPanelSlot = addPanelSlot == target ? nil : target } label: {
+            Image(systemName: "plus")
+        }
+        .controlSize(.small)
+        .help(MeetingViewPieces.enabled ? "Add the meeting, a view of it, chat or an app to this display" : "Add the meeting, chat or an app to this display")
+        .accessibilityLabel("Add to \(slot == .second ? "second display" : "this display")")
+        .greenroomPopover(isPresented: Binding(get: { addPanelSlot == target },
+                                               set: { if !$0 && addPanelSlot == target { addPanelSlot = nil } })) {
+            addPanel(slot: target, template: template)
+        })
     }
 
     private func canvas(_ slot: LayoutSlot, space: LayoutDisplaySpace, template: LayoutTemplate? = nil) -> some View {
@@ -572,13 +759,19 @@ struct LayoutPageContent: View {
                         if case .view = kind, !MeetingViewPieces.enabled { return false }
                         return library.active?.canAdd(kind, to: slot) ?? false
                      },
-                     onActivate: { activeSlot = slot; showsAddPanel = false },
+                     onActivate: { activeSlot = slot; addPanelSlot = nil },
                      onNotice: { say($0) },
                      // The camera sits on the display everyone sees ("Everyone sees"); it is
                      // not a piece, so it never crosses displays by itself.
                      camera: slot == sharedSlot || slot == .one ? camera : nil,
                      slot: slot,
                      isShared: two && slot == (template?.effectiveSharedSlot ?? .main),
+                     titleMenu: (two && slot == .second) ? template?.twoDisplays.map { secondMenu($0) } : nil,
+                     sharedTag: template.flatMap { t in
+                         LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? sharedTag(t) : nil },
+                     headerPreview: template.flatMap { t in
+                         LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? previewControls(t) : nil },
+                     headerAdd: template.map { addButton(slot: slot, template: $0) },
                      crossing: two ? crossing(from: slot) : nil,
                      incoming: incoming?.slot == slot ? incoming?.preview : nil,
                      refusal: refusal?.slot == slot ? refusal?.text : nil,
@@ -655,143 +848,27 @@ struct LayoutPageContent: View {
         }
     }
 
-    /// What this layout shares at Start. A live change in Home or the bar changes only the
-    /// running meeting; this is the saved one.
-    private func whatsSharedRow(_ template: LayoutTemplate) -> some View {
-        let current = template.share ?? fallbackShare
-        let set: (ShareTarget) -> Void = { new in
-            if let i = activeIndex { library.templates[i].share = new }
-        }
-        return HStack(spacing: 10) {
-            GreenroomSegmented("What\u{2019}s shared", selection: Binding(
-                get: { current.kind == .app ? .display : current.kind },
-                set: { kind in var t = current; t.kind = kind; set(t) }),
-                options: ShareTarget.Kind.pickable) { kind in
-                Text(kind.label)
-            }
-            .help("What everyone sees when you start this layout. Changing it in Home or on the bar during a meeting does not change what is saved here.")
-            Text("is shared when you start")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            if current.kind == .window {
-                Picker("Window of", selection: Binding(
-                    get: { current.appBundleID },
-                    set: { id in
-                        var t = current
-                        t.appBundleID = id
-                        t.appName = apps.first { $0.bundleID == id }?.name ?? ""
-                        t.windowTitle = ""
-                        set(t)
-                    })) {
-                    Text("Choose an app").tag("")
-                    ForEach(apps) { Text($0.name).tag($0.bundleID) }
-                }
-                .labelsHidden()
-                .fixedSize()
-                Toggle("Follow the slide show", isOn: Binding(
-                    get: { current.followsSlideShow },
-                    set: { on in var t = current; t.followsSlideShow = on; set(t) }))
-                    .font(.callout)
-                    .help("When the app opens a full-screen slide show, everyone sees it, and the window again when it ends.")
-            }
-            Spacer()
-        }
-    }
-
-    private func secondDisplayRow(_ two: TwoDisplay, template: LayoutTemplate) -> some View {
-        HStack(spacing: 10) {
-            GreenroomSegmented("Everyone sees", selection: Binding(
-                get: { template.effectiveSharedSlot },
-                set: { v in
-                    guard let i = activeIndex else { return }
-                    if v == .second, !library.templates[i].canShareSecondDisplay {
-                        say("The Room screen is on the second display and would show itself. Remove it first.")
-                        return
-                    }
-                    withAnimation(anim) { library.templates[i].twoDisplays?.sharedSlot = v }
-                }),
-                options: [LayoutSlot.main, .second]) { slot in
-                Text(slot == .main ? "Main display" : "Second display")
-            }
-            .help("The display the meeting sees, and the one recordings film. Needs the second display connected; otherwise the main display is shared.")
-            Text("is what everyone sees")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Divider().frame(height: 16)
-            Text("Second display")
-                .font(.callout)
-            Picker("Second display", selection: Binding(
-                get: { two.secondUUID },
-                set: { v in if let i = activeIndex { library.templates[i].twoDisplays?.secondUUID = v } })) {
-                Text("Automatic").tag("")
-                ForEach(displays.filter { !$0.isMain }) { Text($0.name).tag($0.id) }
-                // A saved display that is unplugged stays visible and valid.
-                if !two.secondUUID.isEmpty, !displays.contains(where: { $0.id == two.secondUUID }) {
-                    Text("Saved display (not connected)").tag(two.secondUUID)
-                }
-            }
-            .labelsHidden()
-            .fixedSize()
-            .help("Automatic is the first display that is not your main one.")
-            Spacer()
-            Button("Remove two-display version") {
-                withAnimation(anim) {
-                    if let i = activeIndex { library.templates[i].removeTwoDisplayVersion() }
-                    showsTwo = false
-                    activeSlot = .one
-                    selection = nil
-                }
-            }
-            .controlSize(.small)
-        }
-    }
-
     // MARK: Palette
 
-    private func paletteRow(_ template: LayoutTemplate) -> some View {
+    /// Notices from the canvases, and (off-screen render only) the Add panel drawn in place.
+    @ViewBuilder
+    private func noticeRow(_ template: LayoutTemplate) -> some View {
         let slot = showsTwo ? activeSlot : .one
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Button { showsAddPanel.toggle() } label: {
-                    Label("Add", systemImage: "plus")
-                }
-                .help(MeetingViewPieces.enabled ? "Add the meeting, a view of it, chat or an app" : "Add the meeting, chat or an app")
-                .accessibilityLabel("Add to layout")
-                .greenroomPopover(isPresented: $showsAddPanel) {
-                    addPanel(slot: slot, template: template)
-                }
+        if previewsAddPanel {
+            // The off-screen render cannot show a popover window, so it draws
+            // the same panel in place.
+            HStack {
+                addPanel(slot: slot, template: template, note: "meeting")
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .windowBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.3)))
+                    .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
                 Spacer()
-                Button {
-                    showOnScreen(template, look)
-                    if template.twoDisplays != nil, secondSize(template.twoDisplays?.secondUUID ?? "") == nil {
-                        say("No second display is connected, so this shows the one-display version.")
-                    }
-                } label: {
-                    Label("Show on screen", systemImage: "rectangle.dashed.badge.record")
-                }
-                .disabled(template.pieceCount == 0)
-                .help("Outlines where each piece would go, on your real displays, for a moment.")
-                if let live = liveLayoutID, live != template.id {
-                    Button("Apply now") { applyNow(template.id) }
-                        .help("A meeting is running another layout. This moves it to this one now; otherwise this layout starts with the next meeting.")
-                }
             }
-            if previewsAddPanel {
-                // The off-screen render cannot show a popover window, so it draws
-                // the same panel in place.
-                HStack {
-                    addPanel(slot: slot, template: template, note: "meeting")
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .windowBackgroundColor)))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.3)))
-                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-                    Spacer()
-                }
-                .padding(.bottom, 6)
-            }
-            if let notice {
-                StatusBadge(text: notice, tone: .waiting)
-                    .transition(.opacity)
-            }
+            .padding(.bottom, 6)
+        }
+        if let notice {
+            StatusBadge(text: notice, tone: .waiting)
+                .transition(.opacity)
         }
     }
 
@@ -802,10 +879,10 @@ struct LayoutPageContent: View {
             reason: { blockReason($0, template: template, slot: slot) },
             isPlaced: { kind in version.contains { sameKind($0.kind, kind) } },
             add: { kind in
-                showsAddPanel = false
+                addPanelSlot = nil
                 add(kind, slot: slot, template: template)
             },
-            close: { showsAddPanel = false },
+            close: { addPanelSlot = nil },
             initialNote: note)
     }
 
@@ -980,13 +1057,13 @@ struct LayoutPageContent: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "cursorarrow.click.2")
-                        .foregroundStyle(.secondary)
-                    Text("Select a piece (or your camera) to change what it does. Arrows move it, \u{21E7}-arrows resize it, \u{232B} removes it\(showsTwo ? ", \u{2325}\u{2190} \u{2325}\u{2192} sends it to the other display" : "").")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                // Nothing selected: what this layout does, in a sentence. The key
+                // hints are the canvas's tooltip.
+                Text(caption)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(LayoutEditorRules.keyboardHelp(twoDisplays: showsTwo))
             }
         }
         .padding(12)

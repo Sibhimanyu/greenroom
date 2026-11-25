@@ -308,6 +308,14 @@ targets:
       - path: App/UI/PreviewFrameRules.swift
       - path: App/UI/MainWindow.swift
       - path: App/UI/LayoutAppOrdering.swift
+      - path: App/Settings/SettingsTransfer.swift
+      - path: App/Settings/MeetingPreset.swift
+      - path: App/Stage/CameraDirectorSettings.swift
+      - path: App/Stage/CameraBackgroundChoice.swift
+      - path: App/Stage/ShareTarget.swift
+      - path: App/Stage/ScreenWindowRules.swift
+      - path: App/Layout/AppCatalog.swift
+      - path: App/Layout/WorkspaceLayout.swift
       - path: App/ShortcutModel.swift
       - path: App/MeetingBarPlacement.swift
       - path: App/MeetingMorph.swift

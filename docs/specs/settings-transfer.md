@@ -39,8 +39,8 @@ The transfer struct, catalog, import rules and the defaults bridge import Founda
 
 Acceptance: `xcodebuild test -scheme GreenroomTests` builds and runs them; `grep "struct SettingsTransfer" App/CoordinatorController.swift` finds nothing.
 
-Tests: every test in `SettingsTransferTests.swift` compiles only if this holds.
-Status: planned.
+Tests: the Settings tests compile only if this holds.
+Status: built.
 
 ### R2. The existing fields round-trip and keep their JSON keys
 
@@ -49,7 +49,7 @@ Every field that exists today encodes under its current name and decodes back eq
 Acceptance: a transfer with every field set round-trips; the encoded key set equals the list of today's keys plus the D1 keys.
 
 Tests: `testEveryFieldRoundTrips`, `testEncodingIsPrettyPrintedAndSorted`, `testExistingKeysKeepTheirNames`.
-Status: planned.
+Status: built.
 
 ### R3. Existing validations hold
 
@@ -59,8 +59,8 @@ Status: planned.
 - A layout template's saved second display is cleared when that display is not connected.
 - Unknown keys are ignored; a file that omits a field leaves that setting alone.
 
-Tests: `testCuesEnabledNeedsARelease`, `testWhisperIsAndedWithAvailability`, `testWhisperCarriedWhenNotCheckable`, `testCountdownMustBeOneOfTheOffered`, `testSecondDisplayClearedWhenNotConnected`, `testUnknownKeysAreIgnored`.
-Status: planned.
+Tests: `testCuesEnabledNeedsARelease`, `testWhisperIsAndedWithAvailability`, `testWhisperCarriedWhenNotCheckable`, `testCountdownMustBeOneOfTheOffered`, `testSecondDisplayClearedWhenNotConnected`, `testImportedLibraryGetsLocalDisplays`, `testOmittedFieldsStayNil`, `testUnknownKeysAreIgnored`.
+Status: built.
 
 ### R4. Every persisted key is classified (guard)
 
@@ -68,8 +68,8 @@ Each persisted key is in the catalog as `travels`, `importOnly` or `excluded(rea
 
 Acceptance: adding a persisted key without classifying it fails the test and names the key.
 
-Tests: `testEveryPersistedKeyIsClassified`, `testEveryTransferFieldIsInTheCatalog`, `testEveryTravellingEntryHasATransferField`, `testExcludedEntriesGiveAReason`, `testCatalogHasNoStaleKeys`.
-Status: planned.
+Tests: `testEveryPersistedKeyIsClassified`, `testEveryTransferFieldIsInTheCatalog`, `testEveryTravellingEntryHasATransferField`, `testExcludedEntriesGiveAReason`, `testCatalogHasNoStaleKeys`, `testKeysAreListedOnce`.
+Status: built.
 
 ### R5. The D1 settings travel
 
@@ -77,8 +77,8 @@ Export carries them; import applies them (through the published property where o
 
 Acceptance: a transfer with the D1 fields applied to an empty defaults suite writes each key; read back into a transfer, it equals the original.
 
-Tests: `testDefaultsBridgeRoundTripsTheKeptOnlyInDefaults`, `testMeetingWindowSplitIsClamped`, `testUnknownMeetingViewIsDropped`, `testUnknownBackgroundNameIsDropped`.
-Status: planned.
+Tests: `testBridgeRoundTripsTheKeptOnlyInDefaults`, `testUnsavedSettingsExportTheirDefaults`, `testApplyTouchesOnlyWhatTheFileCarries`, `testKeysMatchTheViewsOwnConstants` (SettingsDefaultsBridgeTests); `testMeetingWindowSplitIsClamped`, `testUnknownMeetingViewIsDropped`, `testUnknownBackgroundNameIsDropped` (SettingsImportRulesTests). `meetingMode` is checked against `MeetingMode` by the coordinator, as `webcamShape` is.
+Status: built.
 
 ### R6. A missing custom picture falls back to Blur, and says so
 
@@ -87,28 +87,28 @@ With `cameraBackground == Image` and a `custom-...` picture, and no custom pictu
 The note reads: "The background picture did not travel (it is a file on the other Mac), so your background is set to Blur." The Transfer page shows it after "Imported from <file>"; Onboarding shows it after the same sentence.
 
 Tests: `testCustomPictureMissingFallsBackToBlur`, `testCustomPictureMissingWhileNotInUseNeedsNoNote`, `testCustomPicturePresentIsKept`, `testPresetPictureNeverFallsBack`.
-Status: planned.
+Status: built.
 
 ### R7. The microphone applies only if it is connected
 
 `micDeviceUID` is applied if it is empty (the system input) or names a microphone connected now; otherwise this Mac keeps its own.
 
 Tests: `testMicrophoneAppliedWhenConnected`, `testMicrophoneDroppedWhenNotConnected`, `testSystemInputMicrophoneAlwaysApplies`.
-Status: planned.
+Status: built.
 
 ### R8. Old files still import
 
 A fixture file written in today's format (before this work) decodes, sanitizes and applies without error. Keys the fixture lacks stay nil.
 
-Tests: `testTodaysExportFixtureStillDecodes`, `testLegacyOnlyKeysStillDecode`.
-Status: planned.
+Tests: `testTodaysExportFixtureStillDecodes`, `testOldFileLeavesEveryNewSettingAlone`, `testLegacyOnlyKeysStillDecode`, `testNewKeysAreAdditiveOnly`.
+Status: built.
 
 ### R9. Import assigns through the published properties
 
 Import still assigns through the coordinator's `@Published` properties so `didSet` runs, mutes analytics setting events during import, and keeps the legacy-layout migration.
 
 Acceptance: code review plus the Debug build; the manual check below.
-Status: planned (verified live waits on the owner).
+Status: built (verified live waits on the owner).
 
 ## Excluded settings
 
@@ -130,7 +130,12 @@ Status: planned (verified live waits on the owner).
 
 ## Open questions
 
+- `participantPanelOnMainDisplay` is a retired field (setting gone, key still decoded); the catalog lists it under `retiredTransferFields`.
 - None blocking. `speakerTileShortcutEnabled` stays import-only on purpose (older files carry it; nothing writes it).
+
+### Verification state
+
+Unit tests and the Debug build pass. Nothing is verified live; see the manual check.
 
 ## Manual check (owner)
 

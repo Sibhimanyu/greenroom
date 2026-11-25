@@ -65,7 +65,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/WebcamPage.swift (+ WebcamShapePreview, CameraSwitchSection, MicrophoneSection, ShareTargetSettings) | Webcam tab: `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer`; `CameraSwitchSection` (two-camera cut) |
 | UI/LayoutSettingsTab.swift (+ LayoutCanvas, LayoutAddPanel, LayoutAppOrdering, LayoutScreenPreview) | Layout creator: `LayoutSettingsTab`/`LayoutPageContent`, `LayoutCanvas`, `LayoutPieceTile`, `LayoutAddPanel` |
 | UI/ShortcutsSettingsTab.swift | `ShortcutRecorderField` |
-| UI/ZoomSettingsTab.swift (Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift | other tabs; `Cues*` rows reused by onboarding |
+| UI/ZoomSettingsTab.swift (Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift (import result: one badge plus a `.waiting` badge per note from `SettingsImportReport`) | other tabs; `Cues*` rows reused by onboarding |
 | UI/AccountSettingsTab.swift | DEBUG only (mock Thriveni account) |
 | UI/SettingsKit.swift | Shared Settings parts: `Collapsible`, `Collapse`, `ChoiceTile`, `PictureChip`, `StatusBadge` |
 

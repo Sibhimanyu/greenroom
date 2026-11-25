@@ -24,6 +24,18 @@ One recording file, made while a session is up. It is **none**, **rolling**,
 the session's state: a meeting can run with no take, and **saving can outlive
 the session** (End Session stops the tape and closes the file in the background).
 
+## Settings file
+
+The one JSON file Settings -> Transfer exports and imports (`App/Settings/`).
+Each persisted setting either **travels** in it (export writes it, import
+applies it), is **import-only** (an old file may carry it, nothing writes it),
+or is **excluded** with a written reason (consent, tokens, window positions,
+tips seen). `SettingsCatalog` lists them all; a test fails when a persisted key
+is in none of the three. Import **sanitizes** first: anything invalid or not
+available on this Mac (a microphone not plugged in, a custom background picture
+that is a file on the other Mac) is dropped, and the person is told when it
+matters.
+
 ## Questions about the phase
 
 Callers ask `coordinator.phase.<question>` (a read-only value on `SessionPhase`)

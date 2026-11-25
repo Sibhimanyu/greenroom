@@ -71,3 +71,21 @@ every change to a question is a change to a flag, and the coordinator is its
   `isStartOrStopInFlight`: `isRunning || isStopping` (Try again waits on it; Start
   warm-up skips while it is true). `hasNoLiveMeetingOrTake`: `!stageLive &&
   !isRecording` (Home's Record button is disabled with it, or while saving).
+
+## Meeting surfaces
+
+While a meeting is live, the controls are in exactly one place. Code:
+`App/Meeting/MeetingSurface.swift` (the pure model), `MeetingSurfaceOwner.swift`
+(the one value, the settle, the safety hooks). Spec: `docs/specs/meeting-surface.md`.
+
+- **Meeting window**: the one titled Greenroom window that shows the meeting and
+  carries its own controls (`ParticipantGridWindowController`).
+- **Bar**: the floating control bar (`MeetingControlBarController`) that holds
+  all the controls when the Meeting window is not up. It can fold to a puck; that
+  is not a surface change.
+- **Surface**: one of those two. A live meeting always has exactly one that is
+  the answer to "where are the controls" (`MeetingSurface.surface`), never none.
+  Both are on screen only during a settle or a morph.
+- **Settle**: the 0.5 s wait after a cover or desktop change before the surface
+  switches. A new change while it waits starts the wait again.
+- **Morph**: the shrink or expand animation between Meeting window and Bar.

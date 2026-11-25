@@ -65,38 +65,7 @@ final class MeetingCollapseRulesTests: XCTestCase {
         XCTAssertEqual(MeetingView.allCases.count, 9)
     }
 
-    // MARK: One control surface at a time
-
-    func testExactlyOneSurfaceForEveryStateWithABar() {
-        for window in [true, false] {
-            XCTAssertTrue(MeetingSurfaces.isSound(windowShowing: window, barExists: true), "window \(window)")
-        }
-    }
-
-    func testTheBarFillsInOnlyWhenTheWindowIsNotUp() {
-        XCTAssertTrue(MeetingSurfaces.barVisible(windowShowing: false))
-        XCTAssertFalse(MeetingSurfaces.barVisible(windowShowing: true))
-    }
-
-    func testNoBarAndNoWindowIsNoSurfaceAtAll() {
-        XCTAssertEqual(MeetingSurfaces.visibleCount(windowShowing: false, barExists: false), 0)
-        XCTAssertFalse(MeetingSurfaces.isSound(windowShowing: false, barExists: false))
-    }
-
-    func testEveryWayBackLandsOnSomethingThatExists() {
-        XCTAssertEqual(MeetingSurfaces.wayBack(windowExists: true, barExists: true), .window)
-        XCTAssertEqual(MeetingSurfaces.wayBack(windowExists: false, barExists: true), .bar)
-        XCTAssertNil(MeetingSurfaces.wayBack(windowExists: false, barExists: false))
-    }
-
     // MARK: Other desktops
-
-    func testThePopOutsComeToThisDesktop() {
-        XCTAssertTrue(MeetingSurfaces.comesHereFirst(visible: true, onActiveSpace: false))
-        XCTAssertFalse(MeetingSurfaces.comesHereFirst(visible: true, onActiveSpace: true))
-        // Hidden (shrunk to the bar): ordering it in already lands it here.
-        XCTAssertFalse(MeetingSurfaces.comesHereFirst(visible: false, onActiveSpace: false))
-    }
 
     func testTheMeetingWindowOnAnotherDesktopTakesYouThere() {
         XCTAssertTrue(MeetingSurfaces.meetingWindowElsewhere(visible: true, miniaturized: false, onActiveSpace: false))
@@ -116,42 +85,15 @@ final class MeetingCollapseRulesTests: XCTestCase {
         XCTAssertFalse(MeetingSurfaces.foldsPopOutChat(windowShowing: true, popOutOpen: true, arranged: true))
     }
 
-    // MARK: Who carries the controls
+    // MARK: What the views a layout places draw
 
-    private func plan(_ layout: Bool, _ hasMain: Bool, _ shown: Bool) -> MeetingSurfacePlan {
-        MeetingSurfacePlan.decide(layoutActive: layout, layoutHasMainWindow: hasMain, mainWindowShown: shown)
+    func testNoLayoutKeepsTheViewsControls() {
+        XCTAssertEqual(MeetingSurfacePlan.decide(layoutActive: false).viewsChrome, .full)
     }
 
-    func testNoLayoutKeepsWindowOrBar() {
-        XCTAssertFalse(plan(false, false, true).barVisible)
-        XCTAssertTrue(plan(false, false, false).barVisible)
-        XCTAssertEqual(plan(false, false, true).viewsChrome, .full)
-        XCTAssertEqual(plan(false, false, false).viewsChrome, .full)
-    }
-
-    func testLayoutWithMainWindowShownHidesBarAndKeepsItsControls() {
-        let p = plan(true, true, true)
-        XCTAssertFalse(p.barVisible)
-        XCTAssertEqual(p.mainWindowChrome, .full)
-        XCTAssertEqual(p.viewsChrome, .contentOnly)
-    }
-
-    func testLayoutWithMainWindowCollapsedShowsBar() {
-        let p = plan(true, true, false)
-        XCTAssertTrue(p.barVisible)
-        XCTAssertEqual(p.viewsChrome, .contentOnly)
-    }
-
-    func testLayoutOfOnlyContentViewsShowsBarAndContentOnly() {
-        let p = plan(true, false, false)
-        XCTAssertTrue(p.barVisible)
+    func testALayoutMakesTheViewsContentOnly() {
+        let p = MeetingSurfacePlan.decide(layoutActive: true)
         XCTAssertEqual(p.viewsChrome, .contentOnly)
         XCTAssertFalse(p.viewsChrome.showsControls)
-    }
-
-    func testLayoutWithoutMeetingPieceButWindowOpenedByHandKeepsItsControls() {
-        let p = plan(true, false, true)
-        XCTAssertFalse(p.barVisible)
-        XCTAssertEqual(p.mainWindowChrome, .full)
     }
 }

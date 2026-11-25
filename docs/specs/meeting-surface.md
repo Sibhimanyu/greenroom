@@ -98,7 +98,7 @@ As their own labelled commit: (a) a real minimise when the window cannot shrink 
 Acceptance: neither case leaves zero surfaces while live; checked by the model's `screenMatches` in DEBUG.
 Status: built (not verified live).
 
-## Wiring (later, after the Zoom-window-mode deletion lands)
+## Wiring (done)
 
 Calls into the model (each is one `apply`, then draw `visible`):
 
@@ -114,7 +114,7 @@ Deleted when wired:
 
 - `MeetingControlBarController.healIfNeeded` and its once-a-second call in the coordinator follow loop (replaced by a DEBUG-logging check with `screenMatches`).
 - The `pending` debounce in `reconcile` (the model carries the settle).
-- Test-only rules that become redundant: `MeetingSurfaces.barVisible`, `visibleCount`, `isSound`, `wayBack`, `MeetingCollapse`, and their tests, once nothing outside tests calls them; `MeetingSurfacePlan.barVisible` stays until the chrome decision reads the model.
+- Test-only rules that become redundant: `MeetingSurfaces.barVisible`, `visibleCount`, `isSound`, `wayBack`, `comesHereFirst`, `MeetingSurfacePlan.barVisible` and `mainWindowChrome`, and their tests, once nothing outside tests calls them (`MeetingCollapse.next/neighbourTakesRoom` stay: they decide sizes).
 
 ## Manual check (owner)
 
@@ -130,4 +130,8 @@ Run the Debug build from DerivedData (after wiring) and try:
 
 ### Verification state
 
-The model is built and unit tested (`Tests/MeetingSurfaceTests.swift`, 25 tests, plus the full suite). Nothing is wired or verified live. R13 and R14 stay planned.
+The model is built and unit tested (`Tests/MeetingSurfaceTests.swift`, plus the full suite). R13 and R14 are wired (`MeetingSurfaceOwner`, the coordinator, the bar controller) and build, but nothing is verified live yet: the manual check above is the evidence still owed.
+
+Deleted by the wiring: `healIfNeeded` and its follow-loop call, the `pending` debounce, `MeetingSurfaces.barVisible/visibleCount/isSound/wayBack/comesHereFirst`, `MeetingSurfacePlan.barVisible/mainWindowChrome` and their tests. Kept: `MeetingCollapse.next/neighbourTakesRoom` (sizes), `MeetingMinimize`, `LiveExit` (prompts, and its `reopenTarget` which now reads the model's answer), `MeetingSurfaces.meetingWindowElsewhere/foldsPopOutChat`.
+
+Note on events: toggle (`toggleMeetingShrunk`) reaches the model as `collapse` or `expand`, which have the same effect; the close sheet's Shrink runs the shrink first and then sends `closeShrink`.

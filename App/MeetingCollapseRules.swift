@@ -51,38 +51,24 @@ enum MeetingSurfaceChrome: Equatable {
     var showsControls: Bool { self == .full }
 }
 
-/// Who carries the controls (owner, 2026-11-17). The main Meeting window is the
-/// control surface: while it is shown it keeps its controls and the Control bar
-/// stays hidden. In every other case the bar is up and holds all the controls,
-/// and the content views a layout places (Active speaker, gallery, Chat...) show
-/// content only. Without a layout the views keep theirs: today's window <-> bar.
+/// What the content views a layout places draw (owner, 2026-11-17). The main
+/// Meeting window always carries its own controls; which surface is up is
+/// `MeetingSurface`'s call (App/Meeting/MeetingSurface.swift). With a layout the
+/// content views (Active speaker, gallery, Chat...) show content only, the
+/// controls being on the window or the bar; without one the views keep theirs.
 struct MeetingSurfacePlan: Equatable {
-    var barVisible: Bool
-    var mainWindowChrome: MeetingSurfaceChrome
     var viewsChrome: MeetingSurfaceChrome
 
-    /// `layoutHasMainWindow`: the layout has a Meeting window piece. A window
-    /// that piece placed but that is collapsed or covered is not shown, so the
-    /// bar is up for it: no way to reach a control may depend on a hidden window.
-    static func decide(layoutActive: Bool, layoutHasMainWindow: Bool, mainWindowShown: Bool) -> MeetingSurfacePlan {
-        MeetingSurfacePlan(barVisible: !mainWindowShown,
-                           mainWindowChrome: .full,
-                           viewsChrome: layoutActive ? .contentOnly : .full)
+    static func decide(layoutActive: Bool) -> MeetingSurfacePlan {
+        MeetingSurfacePlan(viewsChrome: layoutActive ? .contentOnly : .full)
     }
 }
 
 // MARK: - One control surface at a time
 
-/// While a meeting is live exactly one of the Meeting window and the Control
-/// bar is on screen, and every way back lands on one that exists.
+/// Small rules around the two surfaces. Which one shows, and the "exactly one,
+/// never none" rule, are `MeetingSurface` (App/Meeting/MeetingSurface.swift).
 enum MeetingSurfaces {
-    /// The small windows that follow the bar (the chat and People pop-outs):
-    /// left on another desktop, they are taken off it first, so they come in
-    /// on the desktop being looked at.
-    static func comesHereFirst(visible: Bool, onActiveSpace: Bool) -> Bool {
-        visible && !onActiveSpace
-    }
-
     /// The Meeting window is up on another desktop: open there, not shrunk or
     /// minimised. Then Expand, Chat, People and the island's waiting notice bring
     /// it to the desktop the teacher is on, full-screen apps included, without
@@ -97,30 +83,6 @@ enum MeetingSurfaces {
     /// own and is left alone.
     static func foldsPopOutChat(windowShowing: Bool, popOutOpen: Bool, arranged: Bool) -> Bool {
         windowShowing && popOutOpen && !arranged
-    }
-
-    /// The bar is the one that fills in: it shows only when the window is not up.
-    static func barVisible(windowShowing: Bool) -> Bool {
-        !windowShowing
-    }
-
-    /// How many control surfaces are on screen. `barExists` is whether the bar
-    /// has been installed for this meeting.
-    static func visibleCount(windowShowing: Bool, barExists: Bool) -> Int {
-        (windowShowing ? 1 : 0) + (barExists && barVisible(windowShowing: windowShowing) ? 1 : 0)
-    }
-
-    /// The invariant: one, never none and never two.
-    static func isSound(windowShowing: Bool, barExists: Bool) -> Bool {
-        visibleCount(windowShowing: windowShowing, barExists: barExists) == 1
-    }
-
-    /// Where a Dock click, a menu choice or the status tracker lands: the first
-    /// of window, bar that exists. Nil only with nothing built at all.
-    static func wayBack(windowExists: Bool, barExists: Bool) -> MeetingSize? {
-        if windowExists { return .window }
-        if barExists { return .bar }
-        return nil
     }
 }
 

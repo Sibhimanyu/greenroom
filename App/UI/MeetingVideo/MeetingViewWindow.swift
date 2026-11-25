@@ -235,7 +235,7 @@ enum MeetingViewWindows {
     /// A layout is running: its view windows show their video and nothing else
     /// (MeetingSurfaceChrome). Set by the coordinator at the start of a session.
     static var layoutActive = false
-    private static var chrome: MeetingSurfaceChrome { MeetingSurfacePlan.decide(layoutActive: layoutActive, layoutHasMainWindow: false, mainWindowShown: false).viewsChrome }
+    private static var chrome: MeetingSurfaceChrome { MeetingSurfacePlan.decide(layoutActive: layoutActive).viewsChrome }
     /// What each picker offers right now, kept so the Control bar can show it
     /// as a menu while the window's own picker is not drawn.
     private static var pickerOffers: [MeetingView: (title: String, items: [(title: String, selected: Bool, action: () -> Void)])] = [:]

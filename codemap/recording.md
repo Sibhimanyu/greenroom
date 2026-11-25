@@ -7,6 +7,7 @@ Everything that turns the Stage's composited picture into files on disk, plus th
 | Path | Owns | Key types / functions |
 |---|---|---|
 | `App/Recording/SessionRecorder.swift` | The recorder: start/stop/pause, clip-buffer arm/save, audio routing, frame hand-off, disk watchdog | `SessionRecorder` (`start(in:)`, `stop()`, `pause()`/`resume()`, `armClipBuffer`, `disarmClipBuffer`, `saveClipBuffer`, `stageDidRender`, `appendSystemAudio`, `elapsedMilliseconds`, `onRecordingStarted/Ended`, `onUnexpectedStop`, `clipBufferFolder`) |
+| `App/Recording/StageEncoderRules.swift` | Pure encoder numbers: 3.5 Mbps average at 1080p (scaled by pixels, 1 Mbps floor, 4x cap), 6 Mbps peak cap (`DataRateLimits`, bytes per 1 s), AAC 128 kbps, 2 s keyframes and 2 s fragments | `StageEncoderRules` (`averageBitrate`, `peakBitrate`, `dataRateLimit`), `StageEncoderRulesTests` |
 | `App/Recording/StageEncoder.swift` | One `AVAssetWriter`, two shapes (`.file` fragmented MP4; `.segments` in-memory HLS) | `StageEncoder` (`appendVideo`, `appendAudio`, `finish`, `cancel`), `StageEncoder.videoBitrate(for:)`, `RecorderError` |
 | `App/Recording/PauseClock.swift` | Pause arithmetic: drop samples while paused, shift later ones back by total paused time | `PauseClock` (`pause/resume(at:)`, `offset(at:)`, `pausedSeconds`, `fileTime(of:firstFrame:)`), `PauseClock.retimed(_:by:)`, `.shifted(_:by:)` |
 | `App/Recording/AudioMixer.swift` | Mixes mic + system sound onto a 48 kHz grid by host-clock timestamp; emits 10 ms chunks | `AudioMixer` (`add(_:at:from:)`, `flush()`, `onChunk`), `AudioMixer.floats(from:)`, `.sampleBuffer(samples:at:)` |
@@ -60,7 +61,7 @@ Threading: `SessionRecorder` flags read by the render queue sit behind `lock` (`
 
 ## To change X, go to Y
 
-- Bitrate, keyframe interval, profile, AAC settings: `StageEncoder.init`, `StageEncoder.videoBitrate(for:)`.
+- Bitrate, peak cap, keyframe/fragment seconds, AAC rate: `StageEncoderRules` (tested); profile and the rest: `StageEncoder.init`. Keyframe and fragment intervals must stay equal (crash safety). Crash check: a swiftc harness over `SessionRecorder` + synthetic frames, `kill -9` at 20 s, recovered 18 s (2 s fragment lost).
 - Recording file name or collision suffix: `SessionRecorder.fileName(for:prefix:)` and `start(in:)`.
 - Folder naming, stamp format, name sanitising (60 chars, `/ : \`): `SessionFolders.sessionFolderName`, `sanitizedClassName`, `sessionStampFormatter`; uniqueness `uniqueSessionFolder`.
 - Disk-space thresholds (4 GB critical / 12 GB low) and the mid-record 200 MB auto-stop: `SessionFolders.SpaceLevel`, `SessionRecorder.minimumFreeBytes`.

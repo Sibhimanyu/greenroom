@@ -15,17 +15,18 @@
 //
 //  Not thread safe: the recorder calls it from one serial queue.
 //
-//  Settings: hardware H.264 at 6 Mbps for a 1080p
-//  picture, scaled up with the pixel count to at most 12 Mbps, so a larger
-//  canvas does not go soft. High
+//  Settings (numbers in `StageEncoderRules`): hardware H.264 averaging 3.5 Mbps
+//  at 1080p, scaled with the pixel count, and capped at 6 Mbps over any one
+//  second. High
 //  profile, no B-frames (so every timestamp is a presentation timestamp and a
 //  passthrough cut never needs a frame from after the cut), a keyframe every
-//  two seconds, AAC at 160 kbps, 48 kHz stereo.
+//  two seconds, AAC at 128 kbps, 48 kHz stereo.
 //
 
 import AVFoundation
 import CoreMedia
 import CoreVideo
+import VideoToolbox
 import Foundation
 
 final class StageEncoder {
@@ -58,10 +59,7 @@ final class StageEncoder {
         writer.status == .failed ? (writer.error?.localizedDescription ?? "the writer failed") : nil
     }
 
-    static func videoBitrate(for size: CGSize) -> Int {
-        let ratio = (size.width * size.height) / (1920 * 1080)
-        return Int(6_000_000 * min(max(ratio, 1), 2))
-    }
+    static func videoBitrate(for size: CGSize) -> Int { StageEncoderRules.averageBitrate(for: size) }
 
     /// Creates the writer; for `.file` also opens the file for writing. The
     /// session itself starts at the first video frame.
@@ -71,7 +69,7 @@ final class StageEncoder {
         switch output {
         case .file(let url):
             writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-            writer.movieFragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
+            writer.movieFragmentInterval = CMTime(seconds: StageEncoderRules.fragmentSeconds, preferredTimescale: 600)
             isSegmented = false
         case .segments(let interval, let start, let delegate):
             writer = AVAssetWriter(contentType: .mpeg4Movie)
@@ -85,7 +83,8 @@ final class StageEncoder {
 
         // Declared before `writer` is configured, but only read here: the
         // segment shape decides it (see `.segments`).
-        let keyframeSeconds: Double = { if case .segments(let i, _, _) = output { return min(2, i) } else { return 2 } }()
+        let keyframeSeconds: Double = { if case .segments(let i, _, _) = output { return min(StageEncoderRules.keyframeSeconds, i) } else { return StageEncoderRules.keyframeSeconds } }()
+        let limit = StageEncoderRules.dataRateLimit(for: size)
         let keyframes = max(Int(Double(frameRate) * keyframeSeconds), 1)
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
@@ -98,6 +97,8 @@ final class StageEncoder {
             ],
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: Self.videoBitrate(for: size),
+                // Peak cap: no more than this many bytes in any one second.
+                kVTCompressionPropertyKey_DataRateLimits as String: [limit.bytes, limit.seconds],
                 AVVideoMaxKeyFrameIntervalKey: keyframes,
                 AVVideoMaxKeyFrameIntervalDurationKey: keyframeSeconds,
                 AVVideoExpectedSourceFrameRateKey: frameRate,
@@ -122,7 +123,7 @@ final class StageEncoder {
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVSampleRateKey: 48_000,
                 AVNumberOfChannelsKey: 2,
-                AVEncoderBitRateKey: 160_000,
+                AVEncoderBitRateKey: StageEncoderRules.audioBitrate,
             ])
             input.expectsMediaDataInRealTime = true
             guard writer.canAdd(input) else { throw RecorderError.writerRejected("audio input") }

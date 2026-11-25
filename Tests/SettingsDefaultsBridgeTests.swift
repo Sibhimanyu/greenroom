@@ -17,7 +17,6 @@ final class SettingsDefaultsBridgeTests: XCTestCase {
         original.copyInviteOnStart = false
         original.sessionNotesEnabled = true
         original.mirrorSelfView = false
-        original.visibleToRecorders = false
         original.meetingViewsEnabled = false
         original.meetingWindowView = MeetingViewMode.allCases.last!.rawValue
         original.meetingWindowShareLayout = MeetingShareLayout.allCases.last!.rawValue
@@ -38,7 +37,6 @@ final class SettingsDefaultsBridgeTests: XCTestCase {
         XCTAssertEqual(read.copyInviteOnStart, true)
         XCTAssertEqual(read.sessionNotesEnabled, false)
         XCTAssertEqual(read.mirrorSelfView, true)
-        XCTAssertEqual(read.visibleToRecorders, true)
         XCTAssertEqual(read.meetingViewsEnabled, true)
         XCTAssertEqual(read.meetingWindowShareSplit, MeetingSplit.defaultFraction)
     }
@@ -60,7 +58,6 @@ final class SettingsDefaultsBridgeTests: XCTestCase {
         XCTAssertEqual(SettingsKeys.meetingWindowShareSplit, MeetingViewPrefs.splitKey)
         XCTAssertEqual(SettingsKeys.meetingWindowHideSelfView, MeetingViewPrefs.hideSelfKey)
         XCTAssertEqual(SettingsKeys.meetingWindowHideVideoOff, MeetingViewPrefs.hideNoVideoKey)
-        XCTAssertEqual(SettingsKeys.visibleToRecorders, PresenceRecorderRules.key)
         XCTAssertEqual(SettingsKeys.meetingViewsEnabled, MeetingViewPieces.defaultsKey)
     }
 }

@@ -68,7 +68,6 @@ enum SettingsKeys {
     static let copyInviteOnStart = "copyInviteOnStart"
     static let sessionNotesEnabled = "sessionNotesEnabled"
     static let mirrorSelfView = "camera.mirrorSelfView"
-    static let visibleToRecorders = "presence.visibleToRecorders"
     static let meetingWindowView = "meetingWindow.view"
     static let meetingWindowShareLayout = "meetingWindow.shareLayout"
     static let meetingWindowShareSplit = "meetingWindow.shareSplit"
@@ -150,7 +149,6 @@ enum SettingsCatalog {
         travels(SettingsKeys.copyInviteOnStart, .bool(true), as: "copyInviteOnStart"),
         travels(SettingsKeys.sessionNotesEnabled, .bool(false), as: "sessionNotesEnabled"),
         travels(SettingsKeys.mirrorSelfView, .bool(true), as: "mirrorSelfView"),
-        travels(SettingsKeys.visibleToRecorders, .bool(true), as: "visibleToRecorders"),
         travels(SettingsKeys.meetingWindowView, .string("gallery"), as: "meetingWindowView"),
         travels(SettingsKeys.meetingWindowShareLayout, .string("standard"), as: "meetingWindowShareLayout"),
         travels(SettingsKeys.meetingWindowShareSplit, .derived("MeetingSplit.defaultFraction"), as: "meetingWindowShareSplit"),
@@ -209,6 +207,7 @@ enum SettingsCatalog {
     /// still reads, then ignored.
     static let retiredTransferFields: [String: String] = [
         "participantPanelOnMainDisplay": "The setting was removed; old files still carry the key.",
+        "visibleToRecorders": "The switch was removed: other apps always see Greenroom as you do. Old files carry the key; it is decoded and ignored, and nothing writes it.",
         "customUIMode": "Zoom's own meeting window was removed (2026-11-25); Greenroom's meeting window is the only mode. Old files carry the key; it is decoded and ignored, and nothing writes it.",
     ]
 

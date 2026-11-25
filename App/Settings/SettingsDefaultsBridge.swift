@@ -20,8 +20,6 @@ struct SettingsDefaultsBridge {
         transfer.copyInviteOnStart = bool(SettingsKeys.copyInviteOnStart, default: true)
         transfer.sessionNotesEnabled = bool(SettingsKeys.sessionNotesEnabled, default: false)
         transfer.mirrorSelfView = bool(SettingsKeys.mirrorSelfView, default: true)
-        transfer.visibleToRecorders = PresenceRecorderRules.visibleToRecorders(
-            stored: defaults.object(forKey: SettingsKeys.visibleToRecorders) as? Bool)
         transfer.meetingViewsEnabled = bool(SettingsKeys.meetingViewsEnabled, default: true)
         let prefs = MeetingViewPrefs(defaults: defaults)
         transfer.meetingWindowView = prefs.view.rawValue
@@ -37,7 +35,6 @@ struct SettingsDefaultsBridge {
         if let v = transfer.copyInviteOnStart { defaults.set(v, forKey: SettingsKeys.copyInviteOnStart) }
         if let v = transfer.sessionNotesEnabled { defaults.set(v, forKey: SettingsKeys.sessionNotesEnabled) }
         if let v = transfer.mirrorSelfView { defaults.set(v, forKey: SettingsKeys.mirrorSelfView) }
-        if let v = transfer.visibleToRecorders { defaults.set(v, forKey: SettingsKeys.visibleToRecorders) }
         if let v = transfer.meetingViewsEnabled { defaults.set(v, forKey: SettingsKeys.meetingViewsEnabled) }
         let prefs = MeetingViewPrefs(defaults: defaults)
         if let raw = transfer.meetingWindowView, let v = MeetingViewMode(rawValue: raw) { prefs.view = v }

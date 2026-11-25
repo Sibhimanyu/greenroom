@@ -245,14 +245,9 @@ final class LayoutViewPieceTests: XCTestCase {
         XCTAssertTrue(alone.oneDisplay[0].kind.isMeeting)
     }
 
-    func testRuntimeCustomUIBeatsTheSavedSetting() {
-        func can(_ saved: Bool, _ runtime: Bool?, only: Bool = false) -> Bool {
-            LayoutResolver.viewsCanOpen(viewsEnabled: true, customUISaved: saved, customUIRuntime: runtime, meetingWindowOnly: only)
-        }
-        XCTAssertTrue(can(true, nil)); XCTAssertFalse(can(false, nil))
-        XCTAssertFalse(can(true, false), "saved on, SDK fell back to Zoom's UI")
-        XCTAssertTrue(can(false, true))
-        XCTAssertFalse(can(true, true, only: true))
-        XCTAssertFalse(LayoutResolver.viewsCanOpen(viewsEnabled: false, customUISaved: true, customUIRuntime: true, meetingWindowOnly: false))
+    func testViewsOpenOnlyWhenEnabledAndNotMeetingWindowOnly() {
+        XCTAssertTrue(LayoutResolver.viewsCanOpen(viewsEnabled: true, meetingWindowOnly: false))
+        XCTAssertFalse(LayoutResolver.viewsCanOpen(viewsEnabled: true, meetingWindowOnly: true))
+        XCTAssertFalse(LayoutResolver.viewsCanOpen(viewsEnabled: false, meetingWindowOnly: false))
     }
 }

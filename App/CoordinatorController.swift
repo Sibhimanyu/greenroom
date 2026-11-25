@@ -2129,7 +2129,6 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.onParticipantCountChanged = nil
                 if failure == nil { ParticipantGridWindowController.close() }
             RoomScreen.close()
-            LayoutEngine.customUIRuntime = nil
             MeetingViewWindows.reset()
             meetingWindowWanted = true
             zoomChatClient.releaseCustomUIVideo()

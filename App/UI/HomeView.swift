@@ -367,7 +367,7 @@ struct HomeView: View {
                 Spacer(minLength: 0)
                 if footer.showsOutline {
                     Button {
-                        LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
+                        LayoutPageContent.showOnScreen(template,
                                                        canMoveApps: AppWindowManager.hasAccessibilityPermission)
                     } label: {
                         Label(VisibilitySymbol.showOnScreen.words, systemImage: VisibilitySymbol.showOnScreen.name)

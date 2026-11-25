@@ -1195,10 +1195,7 @@ struct LayoutPageContent: View {
         let size = space(for: slot, template).size
         let span = LayoutGeometry.cellSpan(of: piece.rect)
         let points = LayoutGeometry.pointSize(of: piece.rect, display: size)
-        var tip = PieceInspectorRules.tooltip(for: piece.kind)
-        if case .meeting = piece.kind, !customUIMode {
-            tip = "Zoom\u{2019}s own meeting window is on (experimental), so this is Zoom\u{2019}s window, moved into this space."
-        }
+        let tip = PieceInspectorRules.tooltip(for: piece.kind)
         return PieceInspectorHeader(
             name: l.name, readout: PieceInspectorRules.readout(points: points),
             readoutHelp: PieceInspectorRules.readoutHelp(columns: span.cols, rows: span.rows, points: points),

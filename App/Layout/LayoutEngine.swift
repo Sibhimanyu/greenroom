@@ -44,18 +44,9 @@ final class LayoutEngine {
 
     /// `logNotes` is for the moments a layout is actually applied; the loops that
     /// ask every second pass false, or the log would repeat a fallback forever.
-    /// What the SDK reported about custom UI once it initialised; nil before that and after the meeting.
-    /// The coordinator sets it before placing, so a saved-on custom UI that fell back to Zoom's own UI
-    /// resolves with the Meeting window standing in for the Active speaker.
-    static var customUIRuntime: Bool?
-
     func resolve(_ template: LayoutTemplate, logNotes: Bool = false) -> Resolution {
         let primaryHeight = DisplayResolver.mainDisplayScreen()?.frame.height ?? 0
-        // Views open only in custom UI with views on (MeetingViewWindows.isEnabled, but read from
-        // the saved setting, because the SDK's answer arrives after Start).
-        let customUI = (UserDefaults.standard.object(forKey: "customUIMode") as? Bool) ?? true
-        let viewsCanOpen = LayoutResolver.viewsCanOpen(viewsEnabled: MeetingViewPieces.enabled, customUISaved: customUI,
-                                                       customUIRuntime: Self.customUIRuntime,
+        let viewsCanOpen = LayoutResolver.viewsCanOpen(viewsEnabled: MeetingViewPieces.enabled,
                                                        meetingWindowOnly: MeetingViewWindows.meetingWindowOnly)
         let screens = Self.connectedScreens()
         let template = LayoutResolver.substitutingMeetingForActiveSpeaker(

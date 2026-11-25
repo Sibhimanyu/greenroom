@@ -473,12 +473,10 @@ enum LayoutResolver {
         return copy
     }
 
-    /// Whether view windows can open. `customUIRuntime` is what the SDK reported once it
-    /// initialised (nil before that): it beats the saved setting, so a layout saved for
-    /// custom UI falls back to the Meeting window when Zoom's own UI is what actually runs.
-    static func viewsCanOpen(viewsEnabled: Bool, customUISaved: Bool, customUIRuntime: Bool?,
-                             meetingWindowOnly: Bool) -> Bool {
-        viewsEnabled && (customUIRuntime ?? customUISaved) && !meetingWindowOnly
+    /// Whether view windows can open: Greenroom's meeting window is the only mode now,
+    /// so only the views switch and a meeting-window-only session decide.
+    static func viewsCanOpen(viewsEnabled: Bool, meetingWindowOnly: Bool) -> Bool {
+        viewsEnabled && !meetingWindowOnly
     }
 
     /// Whether the template's second arrangement has a display to go on right now (R26).

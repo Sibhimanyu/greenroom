@@ -134,6 +134,15 @@ extension LayoutLibrary {
 enum CameraLookRules {
     static let sameInEveryLayout = "Same in every layout"
 
+    /// Mirror my camera (R11.4): the toggle flips the owner's camera bubble on their screen, like a
+    /// mirror, in every layout and in Only me. The meeting's picture (Stage) and Greenroom's
+    /// recordings are never flipped. Other apps' screen recordings may show the flipped bubble.
+    static func mirrorsBubble(mirror: Bool) -> Bool { mirror }
+    static let mirrorTitle = "Mirror my camera"
+    static let mirrorHelp = "Flips your camera on your screen only. The meeting and Greenroom\u{2019}s recordings always see you the right way round."
+    static let stageMirrors = false
+    static let recordingsMirror = false
+
     /// Normal / Blur / Image are for the bubble shapes. Cutout and Presenter take the background away themselves.
     static func showsBackground(shape: WebcamShape) -> Bool { !shape.usesChromaKey }
     static func showsRemoval(shape: WebcamShape) -> Bool { shape.usesChromaKey }

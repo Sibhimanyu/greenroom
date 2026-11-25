@@ -96,6 +96,8 @@ struct CameraLookGroup: View {
                     }
                     .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
                 }
+                Toggle(CameraLookRules.mirrorTitle, isOn: look.mirror)
+                    .help(CameraLookRules.mirrorHelp)
             }
         }
     }

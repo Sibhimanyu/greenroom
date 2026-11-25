@@ -23,6 +23,9 @@ struct LayoutSettingsTab: View {
     @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
     @State private var hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
 
+    /// "Mirror my camera", one setting for every layout (the camera look).
+    @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
+
     // AXIsProcessTrusted() has no change notification, so poll it while
     // the tab is visible - the warning disappears on its own once the user
     // flips the switch in System Settings.
@@ -43,7 +46,7 @@ struct LayoutSettingsTab: View {
                                      background: $coordinator.cameraBackground,
                                      backgroundImage: $coordinator.cameraBackgroundImage,
                                      removal: $coordinator.backgroundRemoval,
-                                     mirror: .constant(false), // no "Mirror my camera" setting: other apps record the bubble, so it is never mirrored
+                                     mirror: $mirror,
                                      chooseImage: { coordinator.chooseCameraBackgroundImage() }),
                                  preview: CameraPreviewModel(feed: coordinator.shapePreview,
                                                              aspect: coordinator.shapePreviewAspect,

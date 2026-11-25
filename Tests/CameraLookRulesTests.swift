@@ -21,4 +21,21 @@ final class CameraLookRulesTests: XCTestCase {
         XCTAssertEqual(CameraLookRules.summary(shape: .presenterLarge, backgroundName: "Image", removal: .automatic, mirror: true),
                        "Automatic removal \u{00B7} Mirror on")
     }
+
+    // R11.4: Mirror flips only the owner's bubble. The Stage (the meeting's picture) and
+    // Greenroom's recordings are never flipped, whatever the toggle says.
+    func testMirrorFlipsOnlyTheBubble() {
+        for on in [true, false] {
+            XCTAssertEqual(CameraLookRules.mirrorsBubble(mirror: on), on)
+        }
+        XCTAssertFalse(CameraLookRules.stageMirrors)
+        XCTAssertFalse(CameraLookRules.recordingsMirror)
+    }
+
+    // R11.4: one plain toggle, the same words in the inspector and on Home.
+    func testMirrorToggleWords() {
+        XCTAssertEqual(CameraLookRules.mirrorTitle, "Mirror my camera")
+        XCTAssertEqual(CameraLookRules.mirrorHelp,
+                       "Flips your camera on your screen only. The meeting and Greenroom\u{2019}s recordings always see you the right way round.")
+    }
 }

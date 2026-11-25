@@ -10,6 +10,7 @@
 import SwiftUI
 
 struct HomeCameraPanel: View {
+    @AppStorage(PresenceFeed.mirrorKey) private var mirrorSelfView = true
     @ObservedObject var coordinator: CoordinatorController
     let cameras: [LocalDeviceResolver.Camera]
     let more: () -> Void
@@ -112,6 +113,10 @@ struct HomeCameraPanel: View {
                         pick: { coordinator.cameraDirectorSettings.transition = CameraTransition.allCases[$0] })
                 }
             }
+
+            // The same setting as the Camera look in Settings > Layouts, one click from Start.
+            HomeTileToggleRow(title: CameraLookRules.mirrorTitle, isOn: $mirrorSelfView,
+                              help: CameraLookRules.mirrorHelp)
         }
         .frame(width: 330)
     }

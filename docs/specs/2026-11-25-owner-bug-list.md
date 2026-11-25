@@ -261,8 +261,10 @@ Greenroom window except the camera bubble while the camera state is Only me.
   `SecureField`, dotted while typed and displayed; pasting works. Client IDs and Account IDs stay readable.
 - R14.6 The "Show Greenroom on screen in other apps' recordings" switch is removed (decided 2026-11-25).
   Every Greenroom window is always `.readOnly`; only the camera bubble in Only me is `.none`. The bubble
-  always draws unmirrored, feeds at its real pixel size (max 1920, no cheap cap) and keeps the 0.5 s chrome fade.
-  The old defaults key is ignored.
+  feeds at its real pixel size (max 1920, no cheap cap) and keeps the 0.5 s chrome fade.
+  The old recordings-switch key is ignored. Mirror is kept (owner, 2026-11-25): "Mirror my camera" is back in
+  the Camera look and Home, flips only the bubble on the owner's screen, never the Stage, recordings or Room
+  screen (layouts-builder R11.4).
 - R14.5 No secret is logged. If a reveal control is ever added: a text "Show" / "Hide" button (never
   the eye), re-masking after about 10 s and when the window loses focus.
 

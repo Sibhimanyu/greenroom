@@ -16,7 +16,7 @@
 //     Loom, OBS, a native Zoom share) see it is `sharingType`: `.readOnly`, except
 //     `.none` in Only me (PresenceRecorderRules, applied by RecorderVisibility).
 //     Those apps do not read our filter, so they need the bubble to be a real
-//     picture: unmirrored, sharp at its on-screen pixel size, and with its chrome
+//     picture: sharp at its on-screen pixel size, and with its chrome
 //     shown only while it is being grabbed. Greenroom's own picture never has
 //     the bubble twice: the filter keeps it out whatever sharingType says.
 //   - The picture it shows is the compositor's own camera picture (effects and
@@ -29,12 +29,20 @@ import SwiftUI
 
 /// The live camera picture, throttled and shrunk for a small window.
 final class PresenceFeed: @unchecked Sendable {
-    /// Main thread. The picture is unmirrored: other apps record the bubble.
+    /// Main thread. Unmirrored unless "Mirror my camera" is on (`mirrorsSelfView`).
     var onPicture: ((CGImage) -> Void)?
     /// Crop to a centred square before showing (the Circle shape).
     var cropsToSquare: Bool {
         get { lock.withLock { _square } }
         set { lock.withLock { _square = newValue } }
+    }
+    /// Settings -> Layouts -> Camera look -> "Mirror my camera" (default on, like Zoom's "Mirror my
+    /// video"). Flips only this bubble on the owner's screen; the meeting, the recordings and the
+    /// Room screen get the true picture (`CameraLookRules.mirrorsBubble`). Read per frame, so
+    /// flipping it shows at once.
+    static let mirrorKey = "camera.mirrorSelfView"
+    static var mirrorsSelfView: Bool {
+        CameraLookRules.mirrorsBubble(mirror: (UserDefaults.standard.object(forKey: mirrorKey) as? Bool) ?? true)
     }
     /// Pixel width cap of the shown picture (PresenceRecorderRules.feedWidth).
     var maxWidth: CGFloat {
@@ -74,6 +82,10 @@ final class PresenceFeed: @unchecked Sendable {
             image = image.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY))
             let s = min(1, maxWidth / e.width)
             if s < 1 { image = image.transformed(by: CGAffineTransform(scaleX: s, y: s)) }
+            if Self.mirrorsSelfView {
+                image = image.transformed(by: CGAffineTransform(scaleX: -1, y: 1)
+                    .translatedBy(x: -image.extent.width, y: 0))
+            }
             guard let cg = context.createCGImage(image, from: image.extent) else { return }
             DispatchQueue.main.async { [weak self] in self?.onPicture?(cg) }
         }

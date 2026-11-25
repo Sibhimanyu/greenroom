@@ -216,6 +216,12 @@ different order; this table is the authority.
   Reset size and position), who sees it (camera state), shape and S/M/L size, then
   "Camera look · every layout" (background, removal mode, mirror), folded. (Owner, 2026-11-25:
   two rows at rest, no hint paragraph; this replaces "shape, size, camera state".)
+- R11.4 "Mirror my camera" is a plain toggle in the Camera look group and in Home's Camera panel
+  (tooltip: "Flips your camera on your screen only. The meeting and Greenroom's recordings always see you
+  the right way round."). It flips only the owner's bubble, in every layout and in Only me
+  (`CameraLookRules.mirrorsBubble`); the Stage, Greenroom's recordings and the Room screen are never
+  flipped (`stageMirrors == false`). Other apps' screen recordings may show the flipped bubble
+  (accepted, owner 2026-11-25). It has no "off while other apps can record" condition. Undo: "Change Mirror".
 - R11.2 The Webcam tab is gone; every "Adjust webcam…" link opens Layouts with
   the camera piece selected.
 - R11.3 The camera preview runs only in Preview: Everyone or while the camera

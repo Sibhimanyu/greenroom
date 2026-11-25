@@ -173,9 +173,11 @@ struct ShareTarget: Codable, Equatable {
     /// menus, the Dock and status items. Greenroom's own windows are left
     /// out, because sharing the window you are presenting from shows the
     /// class itself, endlessly.
-    static func windows() -> [Window] {
+    /// Walks the system window list, which is slow enough to hitch the main
+    /// thread: callers off the main thread pass `displaySizes` themselves
+    /// (read `NSScreen` on main first).
+    static func windows(displaySizes: [CGSize] = NSScreen.screens.map(\.frame.size)) -> [Window] {
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        let displaySizes = NSScreen.screens.map(\.frame.size)
         let listed = windowList(.optionAll).compactMap { info -> Window? in
             guard let id = info[kCGWindowNumber as String] as? CGWindowID,
                   let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,

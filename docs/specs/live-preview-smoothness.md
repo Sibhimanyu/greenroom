@@ -49,8 +49,8 @@ Status: built. Not done: skipping the mask when Home's outlines are not on scree
 
 `HomeView.refreshShareLists()` runs `ShareTarget.windows()` off the main actor and publishes `windows` only when the list changed.
 
-Acceptance: the 2 s tick does not call `ShareTarget.windows()` on main; no publish when unchanged.
-Status: open.
+Acceptance: the 2 s tick does not call `ShareTarget.windows()` on main; no publish when unchanged. `ShareTarget.windows(displaySizes:)` takes the screen sizes so `NSScreen` is read on main.
+Status: built.
 
 ### R5. The mic meter does not re-render Home
 

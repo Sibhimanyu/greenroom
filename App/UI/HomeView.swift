@@ -113,6 +113,7 @@ struct HomeView: View {
     @State private var displays: [DisplayInfo] = []
     @State private var apps: [(bundleID: String, name: String)] = []
     @State private var windows: [ShareTarget.Window] = []
+    @State private var walkingWindows = false
     @State private var screenAllowed = StageCompositor.screenRecordingGranted
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -1360,15 +1361,25 @@ struct HomeView: View {
 
     /// Both lists, whatever is picked now: the Share menu offers every app and
     /// every window at once. Set only when they changed, so the 2s tick does
-    /// not redraw Home for nothing.
+    /// not redraw Home for nothing. Windows arrive a moment later.
     private func refreshShareLists() {
         let freshApps = ShareTarget.runningApps()
         if freshApps.map(\.bundleID) != apps.map(\.bundleID) || freshApps.map(\.name) != apps.map(\.name) {
             apps = freshApps
         }
-        var seen = Set<String>()
-        let freshWindows = ShareTarget.windows().filter { seen.insert($0.key).inserted }
-        if freshWindows != windows { windows = freshWindows }
+        // The window list is the slow one (it walks every window on the
+        // system), so it is read off the main thread; one walk at a time.
+        guard !walkingWindows else { return }
+        walkingWindows = true
+        let sizes = NSScreen.screens.map(\.frame.size)
+        Task.detached(priority: .utility) {
+            var seen = Set<String>()
+            let fresh = ShareTarget.windows(displaySizes: sizes).filter { seen.insert($0.key).inserted }
+            await MainActor.run {
+                walkingWindows = false
+                if fresh != windows { windows = fresh }
+            }
+        }
     }
 
     private func openWebcamSettings() {

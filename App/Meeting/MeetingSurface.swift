@@ -122,6 +122,10 @@ struct MeetingSurface: Hashable {
         }
     }
 
+    /// A layout pass (placing, re-placing) may bring the window forward. Not over a Bar
+    /// the person chose: the pass only updates the frame the window will use next time.
+    var layoutMayRaiseWindow: Bool { reopenTarget != .bar || phase == .starting }
+
     /// Does the screen agree with the model? Live: something is up and all of it
     /// is allowed. Not live: nothing is up.
     func screenMatches(_ onScreen: Set<Surface>) -> Bool {

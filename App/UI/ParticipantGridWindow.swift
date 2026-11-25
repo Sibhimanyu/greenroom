@@ -371,6 +371,8 @@ enum ParticipantGridWindowController {
         // and then had it jump back on top a second later - a tug-of-war with
         // the person using the Mac. A window that is merely BEHIND another is
         // still `isVisible`, so this leaves it where the user put it.
+        // Over a Bar the person chose, a layout pass only updates the frame.
+        if !MeetingSurfaceOwner.layoutMayRaiseWindow { return }
         if isNewWindow {
             hosting.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
         } else if (!hosting.isVisible && !hosting.isMiniaturized && !userHidden) {
@@ -494,6 +496,8 @@ enum ParticipantGridWindowController {
     /// (`takingYouThere: false`) only raises it where it is: that can run on a
     /// display change, which no one clicked.
     static func show(takingYouThere: Bool = true) {
+        // A placing pass (takingYouThere false) never undoes a Bar the person chose.
+        if !takingYouThere, !MeetingSurfaceOwner.layoutMayRaiseWindow { return }
         userHidden = false
         guard let panel else { return }
         if takingYouThere, isElsewhere {
@@ -525,7 +529,7 @@ enum ParticipantGridWindowController {
         // sees the mismatch and builds the window the new size needs.
         if sameClass { currentForm = .placed(frame) }
         panel.setFrame(frame, display: true)
-        if !userHidden { panel.orderFrontRegardless() }
+        if !userHidden, MeetingSurfaceOwner.layoutMayRaiseWindow { panel.orderFrontRegardless() }
         return sameClass
     }
 

@@ -32,6 +32,9 @@ enum MeetingSurfaceOwner {
     /// the speaker tile, started small while alone). A layout pass must not undo it.
     static var personChoseTheBar: Bool { model.isLive && model.reopenTarget == .bar }
 
+    /// A layout pass may order the window front (see `MeetingSurface.layoutMayRaiseWindow`).
+    static var layoutMayRaiseWindow: Bool { model.layoutMayRaiseWindow }
+
     /// Held so the safety check can build a Bar that was never installed.
     static weak var coordinator: CoordinatorController?
 

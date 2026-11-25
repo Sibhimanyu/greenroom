@@ -218,6 +218,18 @@ final class MeetingSurfaceTests: XCTestCase {
         m.apply(.expand)
         XCTAssertFalse(m.isCovered); XCTAssertFalse(m.onOtherDesktop); XCTAssertFalse(m.isMinimised)
     }
+    func testALayoutPassMayNotRaiseTheWindowOverAChosenBar() {
+        XCTAssertTrue(M().layoutMayRaiseWindow)
+        XCTAssertTrue(liveWindow().layoutMayRaiseWindow)
+        var covered = liveWindow(); covered.apply(.covered); covered.apply(.settleElapsed)
+        XCTAssertTrue(covered.layoutMayRaiseWindow)
+        for events in [[M.Event.collapse], [.closeRequested, .closeShrink], [.tileHidden]] {
+            var m = liveWindow()
+            for e in events { m.apply(e) }
+            XCTAssertFalse(m.layoutMayRaiseWindow, "\(events)")
+        }
+        XCTAssertFalse(model(.startBegan, .wentLiveAlone).layoutMayRaiseWindow)
+    }
     func testReopenOfTheBarChangesNothing() {
         var m = liveWindow()
         m.apply(.collapse); m.apply(.morphFinished)

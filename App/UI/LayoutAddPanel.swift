@@ -92,7 +92,7 @@ struct LayoutAddPanel: View {
     private var visible: Visible {
         let meeting = MeetingViewPieces.addEntries(viewsEnabled: viewsEnabled).map { entry -> Item in
             let view = entry.kind.view
-            return item(entry.id, entry.title, entry.kind, symbol: view?.symbol ?? "video.fill", view: view)
+            return item(entry.id, entry.title, entry.kind, symbol: view?.symbol ?? "person.2.fill", view: view)
         }
         let chat = item("chat", "Chat", .chat, symbol: "bubble.left.and.bubble.right.fill")
         let room = item("roomScreen", RoomScreenRules.title, .roomScreen, symbol: RoomScreenRules.symbol)

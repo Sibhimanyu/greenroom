@@ -47,7 +47,7 @@ struct HomeLayoutPanel: View {
             note: LayoutPanelRules.twoDisplayNote(
                 hasTwoDisplays: active?.twoDisplays != nil,
                 secondConnected: active?.twoDisplays.map { LayoutScreenPreview.secondScreen(uuid: $0.secondUUID) != nil } ?? false
-            ).map { (symbol: "rectangle.on.rectangle", text: $0) },
+            ).map { (symbol: VisibilitySymbol.share.name, text: $0) },
             art: DockHintVisual.layout(active?.oneDisplay) { [coordinator] piece in
                 LayoutPageContent.look(piece, canMoveApps: AppWindowManager.hasAccessibilityPermission)
             },
@@ -64,7 +64,7 @@ struct HomeLayoutPanel: View {
                 case .actions:
                     HomeTileSection(title: "Actions") {
                         if let active, LayoutPanelRules.showsShowOnScreen(activePieceCount: active.pieceCount) {
-                            actionRow("Show on screen", symbol: "rectangle.on.rectangle",
+                            actionRow(VisibilitySymbol.showOnScreen.words, symbol: VisibilitySymbol.showOnScreen.name,
                                       help: "Preview this layout on your screen") {
                                 LayoutPageContent.showOnScreen(active, canMoveApps: AppWindowManager.hasAccessibilityPermission)
                                 close()
@@ -128,7 +128,7 @@ struct HomeLayoutPanel: View {
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
             if choice.template?.twoDisplays != nil {
-                Image(systemName: "rectangle.on.rectangle")
+                Image(systemName: VisibilitySymbol.share.name)
                     .font(.system(size: 9)).foregroundStyle(.secondary)
                     .padding(4)
                     .help(LayoutPanelRules.twoDisplayBadgeHelp)

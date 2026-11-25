@@ -409,7 +409,7 @@ struct EditorTimelineView: View {
                             .environmentObject(vm)
                     }
                     .help("Play this stretch faster or slower")
-                pillButton("Blur", icon: "eye.slash") { vm.beginAnnotationPlacement(.blur) }
+                pillButton("Blur", icon: VisibilitySymbol.blur.name) { vm.beginAnnotationPlacement(.blur) }
                     .help("Hide something on screen for this stretch (B)")
             }
             .padding(.horizontal, 6)
@@ -447,7 +447,7 @@ struct EditorTimelineView: View {
                 laneBar(start: item.start, end: item.end, top: annotationTop + row * (laneHeight + laneGap),
                         width: width,
                         fill: Brand.green.opacity(0.55),
-                        icon: item.kind == .blur ? "eye.slash" : item.kind == .text ? "textformat" : "arrow.up.right",
+                        icon: item.kind == .blur ? VisibilitySymbol.blur.name : item.kind == .text ? "textformat" : "arrow.up.right",
                         label: item.kind == .blur ? "Blur" : item.kind == .text ? (item.text.isEmpty ? "Text" : item.text) : "Arrow",
                         selected: vm.selectedAnnotationID == item.id,
                         onSelect: { vm.selectedAnnotationID = item.id; vm.selectedCutID = nil; vm.selectedSpeedID = nil },

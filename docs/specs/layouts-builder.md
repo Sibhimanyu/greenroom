@@ -56,11 +56,11 @@ different order; this table is the authority.
 | Q1 | One canvas, one truth. What you arrange is what everyone sees, except what you hide. |
 | Q2 | Each layout saves its camera piece (spot, size, shape). The camera look is shared by every layout. |
 | Q3 | "None" goes. Leave my windows alone replaces it and only places the camera. One layout is always active. |
-| Q4 | Built-in layouts: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, Raj Mode. |
+| Q4 | Built-in layouts: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, Raj San Mode. |
 | Q5 | The merged tab is called Layouts. The Webcam tab goes away. |
 | Q6 | Each built-in layout has Restore original. Reset all stays as a last resort, behind a confirmation. |
 | Q7 | Migration copies today's camera spot, size and shape into every layout. Nothing looks different on day one. |
-| Q8 | Existing installs: Raj Mode stays as edited. Teach from a browser and Meeting and chat are replaced; the old Meeting and chat is kept as your own layout. Nothing is deleted. |
+| Q8 | Existing installs: Raj San Mode stays as edited. Teach from a browser and Meeting and chat are replaced; the old Meeting and chat is kept as your own layout. Nothing is deleted. |
 | Q9 | Each layout picks its own shared display, Main by default. Room + laptop shares Main and puts the Room screen on Second. |
 | Q10 | Room + laptop with no second display uses its one-display version, and Home says "Connect the room display". It never blocks Start. |
 | Q11 | Every piece has two badges, 👁 (on your screen) and 📡 (everyone), each a click to flip. 📡 stays amber when on. Hidden from everyone is striped; camera for everyone only is dashed. Only the camera can be "everyone but not me". |
@@ -86,7 +86,8 @@ different order; this table is the authority.
 | R | Requirement | Phase | Status |
 | --- | --- | --- | --- |
 | R1 | One rule for who sees what | P1 | built; the camera answers through it too (`cameraEveryoneSees`) |
-| R2 | Two badges per piece | P1 | built |
+| R2 | One eye per piece (was two badges; superseded by Q28 to Q29) | P1 | built; single-eye model with R17 |
+| R17 | One icon language | P11 | built |
 | R3 | Preview: My screen / Everyone | P1, P5 | built |
 | R4 | Each layout owns its camera piece | P3 | built; new layouts own a camera from creation |
 | R5 | Each layout owns what's shared and its shared display | P3 | built; Layouts is the only writer (Webcam tab gone in P8) |
@@ -111,11 +112,13 @@ different order; this table is the authority.
   equals what the capture filter lets through (the table test).
 - R1.4 The Greenroom Browser is fixed on in a whole-display share.
 
-**R2. Two badges per piece.** (Q11, Q25)
-- R2.1 Every piece shows 👁 and 📡. A click flips a badge that can change.
-- R2.2 A badge the current share target can't honour is drawn fixed, with its
+**R2. One eye per piece.** (Q11, Q25, Q28, Q29; replaces the two-badge model)
+- R2.1 Every piece shows one icon, the eye (`everyoneSees`). A click flips it when it can change.
+  "Starts hidden on my screen" is no icon: the piece is drawn with a dashed outline, and the
+  switch is in the inspector and the right-click menu.
+- R2.2 An eye the current share target can't honour is drawn fixed, with its
   reason as hover help, and is never clickable.
-- R2.3 Turning a window's 👁 off turns its 📡 off; turning 📡 on turns 👁 on.
+- R2.3 A window that starts hidden is not in everyone's picture; turning the eye on makes it start shown.
 - R2.4 Only the camera can be in everyone's picture and off the owner's screen;
   it then has a dashed outline. Pieces hidden from everyone look hidden.
 
@@ -215,7 +218,7 @@ different order; this table is the authority.
 - R13.2 Reset all layouts asks first.
 
 **R14. Built-ins on existing installs.** (Q8)
-- R14.1 Raj Mode is untouched. An edited Teach from a browser is kept as your
+- R14.1 Raj San Mode is untouched. An edited Teach from a browser is kept as your
   own layout. Meeting and chat becomes yours. Nothing is deleted.
 
 **R15. Room + laptop.** (Q9, Q10)
@@ -228,6 +231,23 @@ different order; this table is the authority.
   re-run changes nothing.
 - R16.2 Old keys are kept in step for one release, so a downgrade still works.
 - R16.3 Older settings files decode with today's values.
+
+**R17. One icon language.** (Q28 to Q33)
+- R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)
+  in the picture, `eye.slash` neutral for only you. No `dot.radiowaves.left.and.right` anywhere.
+- R17.2 A piece that starts hidden on the owner's screen (own windows start hidden; other apps open
+  minimised) has a dashed outline like the camera's "Only everyone". The toggle is in the inspector
+  ("Starts hidden on my screen" / "Opens minimised") and the right-click menu. One icon per piece.
+- R17.3 The camera uses Zoom's icons: `video.fill` on, `video.slash` off. Only everyone: `video.fill` and the dashed
+  look; Only me: `video.fill` with an `eye.slash` badge; Off: `video.slash`. Never `eye` alone, never `camera`.
+  No camera connected is `video` with a `questionmark.circle.fill` badge.
+- R17.4 `App/UI/VisibilitySymbols.swift` is the only place these symbol names are spelled; a test greps
+  `App/` and fails on strays (allowed: physical `display` glyph, Cues/Zoom/Debug word lists, the Screenroom
+  Recording diagram node).
+- R17.5 One icon per action: Share `rectangle.on.rectangle` (stop: `.slash`), Show on screen `rectangle.dashed`,
+  screen-recording permission `rectangle.dashed.badge.record`, Blur `aqi.medium`, Just my camera `video`,
+  hide the meeting window `rectangle.slash`.
+- R17.6 Tooltips and VoiceOver say "Everyone sees this" / "Only you" and "Starts hidden on your screen". Never "class".
 
 ## Guarantees
 
@@ -260,6 +280,7 @@ different order; this table is the authority.
 | P8 Camera look into Layouts | R11 | built | |
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | planned | |
 | P10 Room + laptop | R15 | planned | |
+| P11 One icon language | R17 | built | |
 
 ## Known gaps
 

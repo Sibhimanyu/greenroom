@@ -421,7 +421,7 @@ struct EditToolRow: View {
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
-                    effectButton("Blur", "eye.slash", .blur)
+                    effectButton("Blur", VisibilitySymbol.blur.name, .blur)
                     effectButton("Text", "textformat", .text)
                     effectButton("Arrow", "arrow.up.right", .arrow)
                 }
@@ -724,7 +724,7 @@ struct EditsPanel: View {
                                     onRemove: { vm.removeAnnotation(id: annotation.id) }) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 6) {
-                                        Image(systemName: annotation.kind == .blur ? "eye.slash"
+                                        Image(systemName: annotation.kind == .blur ? VisibilitySymbol.blur.name
                                               : annotation.kind == .text ? "textformat" : "arrow.up.right")
                                             .foregroundStyle(Brand.text)
                                         Text("\(TimeFormatting.clock(annotation.start)) – \(TimeFormatting.clock(annotation.end))")

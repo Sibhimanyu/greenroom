@@ -47,10 +47,11 @@ struct HomeCameraPanel: View {
             HomeTileSection(title: "Who sees my camera") {
                 HomeTileChoiceRow(
                     choices: CameraState.allCases.map { state in
-                        HomeTileChoice(id: state.raw, title: state.name, symbol: state.symbol,
+                        HomeTileChoice(id: state.raw, title: state.name, symbol: VisibilitySymbol.camera(state).name,
                                        selected: state == coordinator.cameraState,
                                        enabled: !state.noCamera || CameraPanelRules.noCameraEnabled(
-                                           shareIsNothing: coordinator.shareTarget.sharesNothing))
+                                           shareIsNothing: coordinator.shareTarget.sharesNothing),
+                                       badge: VisibilitySymbol.camera(state).badge)
                     },
                     tileWidth: 76,
                     pick: { coordinator.setLiveCameraState(CameraState.allCases[$0]) })

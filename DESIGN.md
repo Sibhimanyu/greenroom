@@ -415,6 +415,17 @@ comfortably: angle readout beside switching controls, upload behavior beside
 visibility. Device selection belongs in a native dropdown rather than a grid of
 cards. Keep device names, disconnected selections and refresh actions available.
 
+## Who-sees icons
+
+One language everywhere (title bars, the Layouts canvas, the bar, Home, menus), from `App/UI/VisibilitySymbols.swift`.
+Never spell these SF Symbol names elsewhere.
+
+- Eye: `eye` in amber (`Brand.netText`, `MeetingTheme.netNS` in the meeting) means everyone sees it; `eye.slash`, neutral, means only you. It means nothing else.
+- Starts hidden on my screen: a dashed outline (same dashes as the camera's Only everyone), never an icon.
+- Camera: `video.fill` on, `video.slash` off, Only me wears an `eye.slash` badge, no device is `video` with a `?` badge.
+- Share `rectangle.on.rectangle`, Show on screen `rectangle.dashed`, Blur `aqi.medium`, hide meeting window `rectangle.slash`.
+- Words: "Everyone sees this", "Only you", "Starts hidden on your screen". Never "class".
+
 ## Open drift to fix
 
 Ranked by user-visible impact. None of these block anything today.

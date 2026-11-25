@@ -174,7 +174,7 @@ enum MenuBarModel {
                 tools.append(action(.toggleDrawing, state.isDrawing ? "Stop Drawing" : "Draw on the Screen",
                                     "pencil.tip.crop.circle", key(.toggleDrawing)))
             }
-            tools.append(MenuBarItem(kind: .presentMenu, title: "Share", symbol: "rectangle.on.rectangle"))
+            tools.append(MenuBarItem(kind: .presentMenu, title: "Share", symbol: VisibilitySymbol.share.name))
             if !state.layoutLocked {
                 tools.append(MenuBarItem(kind: .layoutMenu, title: "Layout: \(state.layoutName)",
                                          symbol: "rectangle.3.group"))

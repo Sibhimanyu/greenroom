@@ -150,6 +150,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - No painted window background on pages (no `.windowBackgroundColor` over a page); keep `.scrollContentBackground(.hidden)`.
 - Chrome is the system's: toolbar/Back/search/sidebar are system; use `.navigationSubtitle` only, never `.navigationTitle` (window found by id via `MainWindow`).
 - Toolbar must never overflow into the "»" chevron: `HomeToolbarRules.need/minWindowWidth` pins it (Tests/SidebarRulesTests.swift). Adding a Home toolbar item means raising those numbers and the window minimum.
+- Any who-sees / camera / share / blur icon -> `VisibilitySymbol` (App/UI/VisibilitySymbols.swift), never a raw SF Symbol name; the guard test fails on strays. See DESIGN.md "Who-sees icons".
 - Settings: dependent controls collapse (removed, animated) when their toggle is off, via `Collapsible` + `animatedCollapse()`; not merely greyed. Reduce Motion = instant (`Collapse.animation`).
 - Debug UI never ships: Account tab, debug rows (HomeView, CuesSettingsTab, SessionsSidebar, SessionDetailContent, YouTubeSettingsTab, PeoplePopOut debug count, LaunchSplash) stay behind `#if DEBUG`; check release binary with `strings`.
 - UI words: "meeting", never "class", in user-visible strings (some old comments/identifiers still say class; do not copy into UI text).

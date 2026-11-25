@@ -75,15 +75,6 @@ enum CameraState: Equatable, CaseIterable {
         }
     }
 
-    var symbol: String {
-        switch self {
-        case .everyoneAndMe: return "person.2.circle"
-        case .onlyEveryone: return "person.crop.circle.badge.xmark"
-        case .onlyMe: return "person.crop.circle"
-        case .off: return "video.slash"
-        }
-    }
-
     var everyoneSees: Bool { self == .everyoneAndMe || self == .onlyEveryone }
     var iSee: Bool { self == .everyoneAndMe || self == .onlyMe }
 }

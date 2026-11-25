@@ -402,7 +402,7 @@ struct LayoutPageContent: View {
             pieces.contains { $0.kind.isChat } ? "chat" : nil,
         ].compactMap { $0 } + (MeetingViewPieces.enabled ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
         var sentence: String
-        // Raj Mode as shipped: the Active speaker view is the speaker (a Meeting window
+        // Raj San Mode as shipped: the Active speaker view is the speaker (a Meeting window
         // stands in for it where views cannot open).
         if isRajAsShipped(template), let browser = opens.first {
             sentence = "Greenroom opens \(browser), puts the active speaker top right with chat below, and your camera sits \((template.camera ?? LayoutCamera()).cornerPhrase)."
@@ -474,7 +474,7 @@ struct LayoutPageContent: View {
                     say("No second display is connected, so this shows the one-display version.")
                 }
             } label: {
-                Image(systemName: "rectangle.dashed.badge.record")
+                Image(systemName: VisibilitySymbol.showOnScreen.name)
             }
             .controlSize(.small)
             .disabled(!LayoutEditorRules.canShowOnScreen(pieceCount: template.pieceCount))
@@ -1006,7 +1006,7 @@ struct LayoutPageContent: View {
     static func look(_ piece: LayoutPiece, canMoveApps: Bool) -> LayoutPieceLook {
         switch piece.kind {
         case .meeting:
-            return LayoutPieceLook(name: "Meeting window", icon: nil, symbol: "video.fill")
+            return LayoutPieceLook(name: "Meeting window", icon: nil, symbol: "person.2.fill")
         case let .view(view, _):
             return LayoutPieceLook(name: view.title, icon: nil, symbol: view.symbol,
                                    meetingView: view,
@@ -1112,7 +1112,7 @@ struct LayoutPageContent: View {
     @ViewBuilder
     private func cameraInspector(_ camera: LayoutCameraModel) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: camera.cameraOff ? "eye.slash" : "video")
+            VisibilityGlyph(meaning: .camera(camera.state), size: 15, tinted: false)
                 .foregroundStyle(.secondary)
                 .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
@@ -1260,6 +1260,13 @@ struct LayoutPageContent: View {
                 get: { app.closesOnStop },
                 set: { v in update(piece.id) { p in if var a = p.kind.app { a.closesOnStop = v; p.kind = .app(a) } } }))
                 .help(isBrowser ? "Only the window Start opened. Your other windows and tabs stay open." : "Quits only what Start opened.")
+            if !Visibility.onMyScreen(piece: piece).isFixed {
+                // The dashed outline on the canvas (R17.2); the same switch is in the right-click menu.
+                Toggle("Opens minimised", isOn: Binding(
+                    get: { app.opensMinimised },
+                    set: { v in update(piece.id) { p in if var a = p.kind.app { a.opensMinimised = v; p.kind = .app(a) } } }))
+                    .help("Opens minimised, out of your way. \(VisibilitySymbol.startsHidden.words).")
+            }
             Spacer()
         }
         if isBuiltIn {
@@ -1276,7 +1283,7 @@ struct LayoutPageContent: View {
     @ViewBuilder
     private func viewControls(_ piece: LayoutPiece, view: MeetingView, hidden: Bool) -> some View {
         HStack(spacing: 24) {
-            Toggle(view == .selfView ? "Start with my Self view hidden" : "Starts hidden", isOn: Binding(
+            Toggle(view == .selfView ? "Start with my Self view hidden" : "Starts hidden on my screen", isOn: Binding(
                 get: { hidden },
                 set: { v in update(piece.id) { $0.kind = .view(view, startsHidden: v) } }))
                 .help(view == .selfView
@@ -1302,17 +1309,12 @@ struct LayoutPageContent: View {
                 Toggle("Fill this display", isOn: Binding(
                     get: { fills },
                     set: { v in withAnimation(anim) {
-                        update(piece.id) { p in
-                            p.kind = .meeting(fillsDisplay: v, startsHidden: hidden)
-                            if v { p.rect = .full }
-                        }
+                        update(piece.id) { p in p = LayoutEditorRules.settingFill(p, on: v) }
                     } }))
                     .disabled(!others.isEmpty && !fills)
-                    .help(others.isEmpty
-                          ? "The whole display shows the meeting and the people in it."
-                          : "Remove the other pieces on this display first.")
+                    .help(LayoutEditorRules.fillHint(othersOnDisplay: !others.isEmpty))
             }
-            Toggle("Start hidden", isOn: Binding(
+            Toggle("Starts hidden on my screen", isOn: Binding(
                 get: { hidden },
                 set: { v in update(piece.id) { $0.kind = .meeting(fillsDisplay: fills, startsHidden: v) } }))
                 .help("The meeting starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")

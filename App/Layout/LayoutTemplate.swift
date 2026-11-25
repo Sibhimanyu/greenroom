@@ -624,7 +624,7 @@ struct LayoutLibrary: Codable, Equatable {
             // (LayoutResolver.substitutingMeetingForActiveSpeaker). The second
             // display keeps a full-display Meeting: the reference display.
             LayoutTemplate(
-                name: "Raj Mode", starter: rajMode,
+                name: "Raj San Mode", starter: rajMode,
                 oneDisplay: [
                     LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
                                 rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
@@ -743,10 +743,13 @@ extension LayoutLibrary {
                 saved.showAppsToEveryone()
                 changed = true
             }
+            // Raj Mode became Raj San Mode; a name the owner changed is left alone.
+            if !defaults.bool(forKey: rajRenamedKey), saved.renameRajMode() { changed = true }
             // The keys follow a successful save (R16.1); with nothing to change they are simply set.
             if !changed || saved.save(to: defaults) {
                 defaults.set(true, forKey: shownToEveryoneMigratedKey)
                 defaults.set(true, forKey: appsShownMigratedKey)
+                defaults.set(true, forKey: rajRenamedKey)
             }
             recordKnownStarters(in: defaults)
             return saved
@@ -755,6 +758,7 @@ extension LayoutLibrary {
         if library.save(to: defaults) {
             defaults.set(true, forKey: shownToEveryoneMigratedKey)
             defaults.set(true, forKey: appsShownMigratedKey)
+            defaults.set(true, forKey: rajRenamedKey)
         }
         recordKnownStarters(in: defaults)
         return library
@@ -764,6 +768,19 @@ extension LayoutLibrary {
     /// a piece hidden afterwards stays hidden.
     static let shownToEveryoneMigratedKey = "layoutLibrary.shownToEveryoneMigrated"
     static let appsShownMigratedKey = "layoutLibrary.appsShownToEveryoneMigrated"
+    /// Set once "Raj Mode" has become "Raj San Mode" (after a successful save).
+    static let rajRenamedKey = "layoutLibrary.rajSanModeRenamed"
+
+    /// Pure: the starter `raj` whose name is still exactly "Raj Mode" is renamed. True if it changed.
+    @discardableResult
+    mutating func renameRajMode() -> Bool {
+        var changed = false
+        for i in templates.indices where templates[i].starter == Self.rajMode && templates[i].name == "Raj Mode" {
+            templates[i].name = "Raj San Mode"
+            changed = true
+        }
+        return changed
+    }
 
     /// Pure: every piece that offers the switch (Meeting window, Chat, views), in
     /// every template, one- and two-display, is set to shown.

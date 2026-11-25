@@ -371,7 +371,7 @@ enum DockHintVisual {
         AnyView(ZStack {
             stage
             HStack(spacing: 10) {
-                orb(off ? "video.slash" : "camera")
+                orb((off ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name)
                 Flow()
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)

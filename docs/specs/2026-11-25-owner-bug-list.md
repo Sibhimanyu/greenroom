@@ -14,7 +14,7 @@ commit on this branch records a check in a real meeting.
 
 | R | Item | Commit | Status |
 | --- | --- | --- | --- |
-| R1 | Raj Mode is editable | 02169d9 | built |
+| R1 | Raj San Mode is editable | 02169d9 | built |
 | R2 | Built-in layouts use the Active speaker view | 02169d9, a7e3082 | built |
 | R3 | The camera can start hidden on my screen | 02169d9, then f9fe057 | built |
 | R4 | Room screen piece | 02169d9, a7e3082 | built |
@@ -28,13 +28,13 @@ commit on this branch records a check in a real meeting.
 | R12 | Smaller recordings, same crash safety | 494a79b | built |
 | R13 | Screenroom's WAV stays WAV | 494a79b | built |
 
-## R1. Raj Mode is editable
+## R1. Raj San Mode is editable
 
-The default Raj Mode layout was locked. It does not need to be.
+The default Raj San Mode layout was locked. It does not need to be.
 
-- R1.1 Raj Mode can be moved, resized and changed in Settings like any layout.
-- R1.2 No lock banner or lock guard remains for Raj Mode.
-- R1.3 Reset to defaults still brings back the shipped Raj Mode.
+- R1.1 Raj San Mode can be moved, resized and changed in Settings like any layout.
+- R1.2 No lock banner or lock guard remains for Raj San Mode.
+- R1.3 Reset to defaults still brings back the shipped Raj San Mode.
 
 Commit 02169d9. Status: built.
 
@@ -43,13 +43,13 @@ Commit 02169d9. Status: built.
 In the built-in layouts, the meeting was the Meeting window tile. It should be
 the Active speaker view.
 
-Decision: Raj Mode's two-display version keeps the full-display Meeting
+Decision: Raj San Mode's two-display version keeps the full-display Meeting
 window on its second display. When views can't open, the Meeting window falls
 back into the Active speaker's spot.
 
 - R2.1 On one display, each built-in layout places the Active speaker view, not
   the Meeting window.
-- R2.2 Raj Mode's second display still holds the Meeting window filling that
+- R2.2 Raj San Mode's second display still holds the Meeting window filling that
   display.
 - R2.3 Given views can't open (including custom UI falling back while the
   meeting runs), the Meeting window takes the Active speaker's spot.

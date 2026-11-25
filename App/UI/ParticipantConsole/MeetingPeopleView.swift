@@ -244,7 +244,7 @@ private struct ParticipantRowView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(person.hasAudio && !person.muted ? Color.white : (person.hasAudio ? MeetingTheme.red : MeetingTheme.secondaryText))
                     .frame(width: 18)
-                Image(systemName: person.cameraOff ? "video.slash" : "video")
+                Image(systemName: (person.cameraOff ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name)
                     .font(.system(size: 13))
                     .foregroundStyle(person.cameraOff ? MeetingTheme.red : Color.white)
                     .frame(width: 20)

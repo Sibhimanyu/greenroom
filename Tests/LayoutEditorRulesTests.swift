@@ -138,14 +138,14 @@ final class LayoutEditorRulesTests: XCTestCase {
                        [.remove])
     }
 
-    // R9.7
+    // R9.7, R17.6: the single-eye words.
     func testAPieceIsSpokenWithItsSizeAndWhoSeesIt() {
         XCTAssertEqual(LayoutEditorRules.spokenPiece(name: "Chat", columns: 3, everyone: true, onMyScreen: true),
-                       "Chat, 3 of 12 columns, everyone sees it")
+                       "Chat, 3 of 12 columns, Everyone sees this")
         XCTAssertEqual(LayoutEditorRules.spokenPiece(name: "Chat", columns: 3, everyone: false, onMyScreen: true),
-                       "Chat, 3 of 12 columns, hidden from everyone")
+                       "Chat, 3 of 12 columns, Only you")
         XCTAssertEqual(LayoutEditorRules.spokenPiece(name: "Chat", columns: 3, everyone: true, onMyScreen: false),
-                       "Chat, 3 of 12 columns, everyone sees it, not on your screen")
+                       "Chat, 3 of 12 columns, Everyone sees this, Starts hidden on your screen")
     }
 
     // R9.7
@@ -161,10 +161,64 @@ final class LayoutEditorRulesTests: XCTestCase {
         XCTAssertEqual(R.title(for: .moveToOtherDisplay(toSecond: false), isApp: false), "Move to main display")
         XCTAssertEqual(R.title(for: .showToEveryone, isApp: false), "Show to everyone")
         XCTAssertEqual(R.title(for: .hideFromEveryone, isApp: false), "Hide from everyone")
-        XCTAssertEqual(R.title(for: .showOnMyScreen, isApp: false), "Show on my screen")
-        XCTAssertEqual(R.title(for: .hideOnMyScreen, isApp: false), "Hide on my screen")
+        XCTAssertEqual(R.title(for: .showOnMyScreen, isApp: false), "Starts on my screen")
+        XCTAssertEqual(R.title(for: .hideOnMyScreen, isApp: false), "Starts hidden on my screen")
         XCTAssertEqual(R.title(for: .showOnMyScreen, isApp: true), "Open on my screen")
         XCTAssertEqual(R.title(for: .hideOnMyScreen, isApp: true), "Open minimised")
         XCTAssertEqual(R.title(for: .remove, isApp: false), "Remove")
+    }
+}
+
+/// A Meeting window that fills its display is an ordinary piece the owner can resize.
+final class LayoutFillDisplayTests: XCTestCase {
+    private let filling = LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: true), rect: .full)
+    private let smaller = UnitRect(x: 0.1, y: 0.1, w: 0.6, h: 0.6)
+
+    // Owner request: resizing a filling piece turns fill off and keeps the rest.
+    func testResizingAFillingMeetingTurnsFillOffAtTheNewRect() {
+        let r = LayoutEditorRules.adjusting(filling, to: smaller)
+        XCTAssertEqual(r.rect, smaller)
+        XCTAssertEqual(r.kind, .meeting(fillsDisplay: false, startsHidden: true))
+        XCTAssertEqual(r.id, filling.id)
+    }
+
+    // A drag that ends where it began changes nothing.
+    func testAnUnchangedRectKeepsFill() {
+        XCTAssertEqual(LayoutEditorRules.adjusting(filling, to: .full), filling)
+    }
+
+    func testOtherPiecesJustTakeTheRect() {
+        let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0, y: 0, w: 0.2, h: 0.2))
+        XCTAssertEqual(LayoutEditorRules.adjusting(chat, to: smaller).rect, smaller)
+        XCTAssertEqual(LayoutEditorRules.adjusting(chat, to: smaller).kind, .chat)
+    }
+
+    // The toggle: on fills the display, off keeps the rect.
+    func testTheFillToggle() {
+        var p = LayoutEditorRules.adjusting(filling, to: smaller)
+        p = LayoutEditorRules.settingFill(p, on: true)
+        XCTAssertEqual(p.rect, .full)
+        XCTAssertEqual(p.kind, .meeting(fillsDisplay: true, startsHidden: true))
+        let off = LayoutEditorRules.settingFill(p, on: false)
+        XCTAssertEqual(off.kind, .meeting(fillsDisplay: false, startsHidden: true))
+        XCTAssertEqual(off.rect, .full)
+    }
+
+    func testTheHintSaysWhatTurningFillOffChanges() {
+        XCTAssertTrue(LayoutEditorRules.fillHint(othersOnDisplay: false).contains("people"))
+        XCTAssertTrue(LayoutEditorRules.fillHint(othersOnDisplay: true).contains("Remove the other pieces"))
+    }
+
+    // One undo step named "Resize Meeting window"; undo puts back rect and fill.
+    func testResizeIsOneNamedUndoStepAndUndoRestoresBoth() {
+        let t = LayoutTemplate(name: "T", oneDisplay: [filling])
+        let old = LayoutLibrary(templates: [t], activeID: t.id)
+        var new = old
+        new.templates[0].oneDisplay[0] = LayoutEditorRules.adjusting(filling, to: smaller)
+        let step = LayoutEditHistory.describe(from: old, to: new) { _ in "Meeting window" }
+        XCTAssertEqual(step?.name, "Resize Meeting window")
+        let back = LayoutEditHistory.restoring(old, undoing: new, onto: new)
+        XCTAssertEqual(back.templates[0].oneDisplay[0].rect, .full)
+        XCTAssertEqual(back.templates[0].oneDisplay[0].kind, .meeting(fillsDisplay: true, startsHidden: true))
     }
 }

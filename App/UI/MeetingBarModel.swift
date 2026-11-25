@@ -187,6 +187,8 @@ enum MeetingBarModel {
         var help: String
         var spoken: String
         var on = false
+        /// The corner badge of the symbol (Only me: the struck eye).
+        var symbolBadge: String? = nil
     }
 
     /// Notes: lit while the notes bar is open.
@@ -200,12 +202,12 @@ enum MeetingBarModel {
     /// Who sees your camera: one button for the four camera states, a menu rather than
     /// a cycle (four steps round is slow and a mis-click would put you in front of
     /// the meeting without a look). For this meeting only; the saved default is in
-    /// Settings -> Layouts. The symbol is a person, never the eye, which belongs
-    /// to "Show on my share".
+    /// Settings -> Layouts. The symbol is Zoom\u{2019}s camera (VisibilitySymbols.swift); Only me wears the struck eye.
     static func cameraStateCell(_ state: CameraState) -> IconCell {
-        IconCell(symbol: state.symbol,
+        IconCell(symbol: VisibilitySymbol.camera(state).name,
                  help: "Who sees your camera: \(state.name). \(state.detail) Click to change it for this meeting.",
-                 spoken: "Camera: \(state.name). Menu", on: state != .everyoneAndMe)
+                 spoken: "Camera: \(state.name). Menu", on: state != .everyoneAndMe,
+                 symbolBadge: VisibilitySymbol.camera(state).badge)
     }
 
     /// The four states as a menu. The two that hide you from the meeting are off while

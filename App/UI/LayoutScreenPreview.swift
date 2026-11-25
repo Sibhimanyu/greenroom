@@ -62,7 +62,7 @@ enum LayoutScreenPreview {
         let local = geometry.frame(for: camera.box, aspect: aspect)     // y up, display at the origin
         let rect = local.offsetBy(dx: frame.minX, dy: frame.minY)
         return Item(frame: rect, title: camera.cameraOff ? "Hidden on your screen" : "Your camera", detail: "",
-                    icon: NSImage(systemSymbolName: camera.cameraOff ? "eye.slash" : "video.fill",
+                    icon: NSImage(systemSymbolName: VisibilitySymbol.camera(camera.state).name,
                                   accessibilityDescription: nil))
     }
 

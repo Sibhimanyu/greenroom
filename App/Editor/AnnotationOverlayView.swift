@@ -35,7 +35,7 @@ struct AnnotationPlacementOverlay: View {
             } else {
                 VStack(spacing: 6) {
                     Image(systemName: vm.pendingAnnotationKind == .blur
-                          ? "eye.slash" : vm.pendingAnnotationKind == .text
+                          ? VisibilitySymbol.blur.name : vm.pendingAnnotationKind == .text
                           ? "textformat" : "arrow.up.right")
                         .font(.title2)
                     Text(placementHint)

@@ -55,7 +55,7 @@ struct HomeScreenPanel: View {
 
     private func symbol(_ tile: ScreenPanelRules.Tile) -> String {
         switch tile {
-        case .screen: return "display"
+        case .screen: return VisibilitySymbol.share.name
         case .window: return "macwindow"
         case .whiteboard: return "scribble"
         case .camera: return "person.crop.rectangle"

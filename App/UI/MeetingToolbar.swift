@@ -180,7 +180,7 @@ struct MeetingToolbarBar: View {
             }
         case .video:
             withCaret(menus.video, label: "Choose camera") {
-                cell(symbol: state.cameraOn ? "video" : "video.slash",
+                cell(symbol: (state.cameraOn ? VisibilitySymbol.cameraOn : VisibilitySymbol.cameraOff).name,
                      caption: state.cameraOn ? "Stop Video" : "Start Video",
                      tint: state.cameraOn ? .white : MeetingTheme.red, action: actions.toggleVideo)
                     .disabled(!state.inMeeting)
@@ -190,7 +190,7 @@ struct MeetingToolbarBar: View {
             // camera off there is no bubble, so the cell keeps its place (the
             // row never changes width) but is empty and out of the accessibility tree.
             let cam = MeetingBarModel.cameraStateCell(state.cameraState)
-            menuCell(symbol: cam.symbol, caption: state.cameraState.name, on: cam.on,
+            menuCell(symbol: cam.symbol, caption: state.cameraState.name, on: cam.on, symbolBadge: cam.symbolBadge,
                      enabled: state.cameraOn, entries: menus.cameraState)
                 .help(cam.help)
                 .accessibilityLabel(cam.spoken)
@@ -216,7 +216,7 @@ struct MeetingToolbarBar: View {
             // Sharing, the button stops it and the caret keeps the options.
             if state.sharing {
                 withCaret(menus.share, label: "Sharing options") {
-                    cell(symbol: "rectangle.on.rectangle.slash", caption: "Stop Share", tint: MeetingTheme.red,
+                    cell(symbol: VisibilitySymbol.stopShare.name, caption: "Stop Share", tint: MeetingTheme.red,
                          action: actions.stopSharing)
                 }
             } else {
@@ -313,8 +313,9 @@ struct MeetingToolbarBar: View {
     /// The one control shape. Every cell on the bar is this: the glyph above its
     /// caption, with Zoom's hover wash behind it.
     private func glyph(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
-                       badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false) -> some View {
-        ToolbarGlyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge,
+                       badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
+                       symbolBadge: String? = nil) -> some View {
+        ToolbarGlyph(symbol: symbol, symbolBadge: symbolBadge, caption: caption, tint: tint, on: on, badge: badge,
                      badgeFilled: badgeFilled, captionPill: captionPill, height: Self.cellHeight)
     }
 
@@ -332,8 +333,9 @@ struct MeetingToolbarBar: View {
     }
 
     private func menuCell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
-                          badge: String? = nil, enabled: Bool = true, entries: @escaping () -> [MenuEntry]) -> some View {
-        glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge)
+                          badge: String? = nil, symbolBadge: String? = nil, enabled: Bool = true,
+                          entries: @escaping () -> [MenuEntry]) -> some View {
+        glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge, symbolBadge: symbolBadge)
             .opacity(enabled ? 1 : 0.4)
             // An AppKit overlay ignores SwiftUI's .disabled, so it is switched off here.
             .overlay { if enabled { MenuPopUpOverlay(label: caption, entries: entries) } }
@@ -411,6 +413,7 @@ private struct ToolbarCaret: View {
 /// while the pointer is over it or its panel is open.
 private struct ToolbarGlyph: View {
     let symbol: String
+    var symbolBadge: String?
     let caption: String
     let tint: Color
     let on: Bool
@@ -425,6 +428,7 @@ private struct ToolbarGlyph: View {
             Image(systemName: symbol)
                 .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(tint)
+                .symbolBadge(symbolBadge, size: 10)
                 .frame(height: 24)
                 .overlay(alignment: .topTrailing) { badgeView.offset(x: 14, y: -5) }
             Text(caption)

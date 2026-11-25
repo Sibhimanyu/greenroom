@@ -124,15 +124,6 @@ enum LayoutPalettePayload {
     }
 }
 
-extension LayoutPiece {
-    /// A Meeting that fills its display is the Participants form: not placed
-    /// by hand.
-    var isFixed: Bool {
-        if case .meeting(true, _) = kind { return true }
-        return false
-    }
-}
-
 // MARK: - Crossing to the other display
 
 /// What the two canvases of a two-display layout share so a piece can be dragged from one to
@@ -333,7 +324,7 @@ struct LayoutCanvas: View {
                     ForEach(pieces) { piece in badges(piece, canvas: canvas) }
                 }
 
-                if let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
+                if let selected = pieces.first(where: { $0.id == selection }) {
                     ForEach(LayoutGeometry.Handle.allCases, id: \.self) { handle in
                         handleView(handle, piece: selected, canvas: canvas)
                     }
@@ -409,7 +400,7 @@ struct LayoutCanvas: View {
         let drawn = LayoutPieceTile(piece: piece, look: appearance, size: box.size,
                                pointSize: readout, columns: span.cols.count,
                                selected: isSelected, invalid: isDragging && (drag?.invalid ?? false),
-                               covered: covered)
+                               covered: covered, startsHidden: VisibilitySymbol.startsHidden.dashed && !Visibility.onMyScreen(piece: piece).isOn)
             .frame(width: box.width, height: box.height)
         // The gesture goes before .position: that modifier fills its parent, so a
         // gesture added after it would answer across the whole canvas.
@@ -423,7 +414,7 @@ struct LayoutCanvas: View {
             .contextMenu { pieceMenu(piece) }
             .onHover { inside in
                 if inside { hoverID = piece.id } else if hoverID == piece.id { hoverID = nil }
-                (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
+                (inside ? (NSCursor.openHand) : NSCursor.arrow).set()
             }
             .opacity(isDragging && (drag?.crossing ?? false) ? 0.35 : (hiddenFromEveryone(piece) ? 0.5 : 1))
             .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
@@ -439,8 +430,8 @@ struct LayoutCanvas: View {
                 nudge: { nudge(piece.id, cols: $0, rows: $1) },
                 grow: { grow(piece.id, cols: $0, rows: $1) },
                 remove: { remove(piece.id) },
-                flipEveryone: piece.isFixed ? nil : { flip(.everyone, piece) },
-                flipMine: piece.isFixed ? nil : { flip(.me, piece) },
+                flipEveryone: { flip(.everyone, piece) },
+                flipMine: { flip(.me, piece) },
                 sendAcross: crossing == nil ? nil : { crossing?.send(piece.id) }))
     }
 
@@ -458,7 +449,14 @@ struct LayoutCanvas: View {
                 case .showOnMyScreen, .hideOnMyScreen: flip(.me, piece)
                 case .remove: remove(piece.id)
                 }
-            } label: { Text(LayoutEditorRules.title(for: action, isApp: isApp)) }
+            } label: {
+                let title = LayoutEditorRules.title(for: action, isApp: isApp)
+                switch action {
+                case .showToEveryone: Label(title, systemImage: VisibilitySymbol.everyoneSees(true).name)
+                case .hideFromEveryone: Label(title, systemImage: VisibilitySymbol.everyoneSees(false).name)
+                default: Text(title)
+                }
+            }
         }
     }
 
@@ -569,19 +567,17 @@ struct LayoutCanvas: View {
 
     private enum BadgeKind { case me, everyone }
 
-    /// Two small badges in the tile's top-right corner: the eye (on your screen) and
-    /// the broadcast mark (everyone, amber when on). Siblings of the tile, so each
+    /// One small badge in the tile's top-right corner: the eye (open and amber: everyone sees it;
+    /// struck: only you). Where a piece starts hidden on your screen the tile is dashed instead,
+    /// never a second icon (R17.2). A sibling of the tile, so it
     /// answers its own click and not a tile drag. A fixed answer is drawn as a fact
     /// (no button, no hover highlight) with its reason as help.
     @ViewBuilder
     private func badges(_ piece: LayoutPiece, canvas: CGSize) -> some View {
         let box = frame(of: liveRect(piece), canvas: canvas)
-        if box.width >= 64, box.height >= 40, !piece.isFixed {
-            HStack(spacing: 0) {
-                badge(.me, Visibility.onMyScreen(piece: piece), piece: piece)
-                badge(.everyone, Visibility.everyoneSees(piece: piece, target: share), piece: piece)
-            }
-            .position(x: box.maxX - 27, y: box.minY + 15)
+        if box.width >= 64, box.height >= 40 {
+            badge(.everyone, Visibility.everyoneSees(piece: piece, target: share), piece: piece)
+                .position(x: box.maxX - 15, y: box.minY + 15)
             .zIndex(3)
         }
     }
@@ -589,13 +585,11 @@ struct LayoutCanvas: View {
     @ViewBuilder
     private func badge(_ which: BadgeKind, _ state: Visibility.Badge, piece: LayoutPiece) -> some View {
         let on = state.isOn
-        let symbol = which == .me ? (on ? "eye" : "eye.slash")
-                                  : (on ? "dot.radiowaves.left.and.right" : "dot.radiowaves.left.and.right.slash")
+        let meaning = VisibilitySymbol.everyoneSees(on)
         let isApp = piece.kind.app != nil
-        let words = which == .me ? (isApp ? "Opens on your screen" : "On your screen")
-                                 : (isApp ? "Everyone sees this app" : "Everyone sees")
-        let tint: Color = on ? (which == .everyone ? Brand.netText : Color.primary.opacity(0.7)) : Color.secondary.opacity(0.6)
-        let glyph = Image(systemName: symbol)
+        let words = meaning.words
+        let tint: Color = on ? meaning.tint.color : meaning.tint.color.opacity(0.6)
+        let glyph = Image(systemName: meaning.name)
             .font(.system(size: 11))
             .foregroundStyle(tint)
             .frame(width: 22, height: 22)
@@ -621,7 +615,7 @@ struct LayoutCanvas: View {
         case (.me, true): return "Opens on your screen. Click to open it minimised."
         case (.me, false): return "Opens minimised. Click to open it on your screen."
         case (.everyone, true): return "Everyone sees this app when you share your whole screen. Click to keep it out of everyone\u{2019}s picture and recordings."
-        case (.everyone, false): return "Kept out of everyone\u{2019}s picture and recordings. Click to let everyone see it."
+        case (.everyone, false): return "Only you: kept out of everyone\u{2019}s picture and recordings. Click to let everyone see it."
         }
     }
 
@@ -663,7 +657,7 @@ struct LayoutCanvas: View {
                 onStep: camera.onStep, onCommit: camera.onCommit,
                 selected: selection == LayoutCameraModel.selectionID,
                 onSelect: { selection = LayoutCameraModel.selectionID; takeKeyboard(); onActivate() },
-                fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff && !previewEveryone,
+                fill: { size in AnyView(CameraStandIn(shape: camera.shape, meaning: .camera(camera.state), off: camera.cameraOff && !previewEveryone,
                                                       dashed: camera.cameraOff && camera.everyoneSees && !previewEveryone, size: size)) })
                 .frame(width: canvas.width, height: canvas.height)
                 .zIndex(6)
@@ -674,7 +668,7 @@ struct LayoutCanvas: View {
     /// right): shown, not draggable, and click-through so the tiles stay usable.
     private func presenterStandIn(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
         let h = canvas.height, w = min(h * 0.62, canvas.width * 0.3)
-        return CameraStandIn(shape: .presenterLarge, off: camera.cameraOff && !previewEveryone,
+        return CameraStandIn(shape: .presenterLarge, meaning: .camera(camera.state), off: camera.cameraOff && !previewEveryone,
                              dashed: camera.cameraOff && camera.everyoneSees && !previewEveryone, size: CGSize(width: w, height: h))
             .frame(width: w, height: h)
             .position(x: canvas.width * 0.24, y: canvas.height / 2)
@@ -757,11 +751,7 @@ struct LayoutCanvas: View {
                 if dragCancelled { return }
                 if drag == nil {
                     select(piece.id)
-                    // A piece that fills its display stays put here, but can still be
-                    // carried to the other display.
-                    if !piece.isFixed || crossing != nil {
-                        drag = DragState(id: piece.id, mode: .move, start: piece.rect, rect: piece.rect)
-                    }
+                    drag = DragState(id: piece.id, mode: .move, start: piece.rect, rect: piece.rect)
                 }
                 guard var d = drag, d.id == piece.id, d.mode == .move else { return }
                 let t = value.translation
@@ -772,7 +762,7 @@ struct LayoutCanvas: View {
                 // Over the other display's canvas the tile waits where it was; that canvas
                 // shows where it would land.
                 d.crossing = crossing?.hover(piece.id, pairPoint(value.location)) ?? false
-                if d.crossing || piece.isFixed {
+                if d.crossing {
                     d.rect = d.start
                     d.guidesX = []
                     d.guidesY = []
@@ -804,7 +794,6 @@ struct LayoutCanvas: View {
             withAnimation(animation(moved ? .snappy(duration: 0.25) : .easeInOut(duration: 0.25))) { drag = nil }
             return
         }
-        if piece.isFixed { drag = nil; return }
         guard d.invalid else {
             commit(d.rect, for: piece.id)
             drag = nil
@@ -857,7 +846,7 @@ struct LayoutCanvas: View {
 
     private func commit(_ rect: UnitRect, for id: UUID) {
         guard let i = pieces.firstIndex(where: { $0.id == id }) else { return }
-        pieces[i].rect = rect
+        pieces[i] = LayoutEditorRules.adjusting(pieces[i], to: rect)
     }
 
     // MARK: Keyboard and VoiceOver
@@ -910,14 +899,14 @@ struct LayoutCanvas: View {
     }
 
     private func nudge(_ id: UUID, cols: Int, rows: Int) {
-        guard let piece = pieces.first(where: { $0.id == id }), !piece.isFixed,
+        guard let piece = pieces.first(where: { $0.id == id }),
               let moved = LayoutGeometry.moved(piece.rect, cols: cols, rows: rows, neighbours: neighbours(of: id))
         else { return }
         withAnimation(animation(.snappy(duration: 0.25))) { commit(moved, for: id) }
     }
 
     private func grow(_ id: UUID, cols: Int, rows: Int) {
-        guard let piece = pieces.first(where: { $0.id == id }), !piece.isFixed,
+        guard let piece = pieces.first(where: { $0.id == id }),
               let resized = LayoutGeometry.resized(
                 piece.rect, cols: cols, rows: rows, neighbours: neighbours(of: id),
                 minimum: LayoutGeometry.minimumUnitSize(for: piece.kind, display: display.size))
@@ -1055,6 +1044,9 @@ struct LayoutPieceTile: View {
     /// The part of the tile the camera covers (tile points), or nil. The content is laid out in
     /// the largest part left free, so the caption and the camera's own label never draw over each other.
     var covered: CGRect?
+    /// Starts hidden on the owner's screen (opens minimised): a dashed outline, the same look as the
+    /// camera's "Only everyone" (R17.2).
+    var startsHidden = false
 
     private var free: CGRect {
         LayoutCaptionRules.freeRegion(tile: CGRect(origin: .zero, size: size), covered: covered)
@@ -1162,7 +1154,7 @@ struct LayoutPieceTile: View {
     private var caption: String {
         if look.missing { return "Not on this Mac" }
         if look.comingLater { return "Views are turned off" }
-        if piece.isFixed { return "Fills this display" }
+        if case .meeting(true, _) = piece.kind { return "Fills this display" }
         return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
     }
 
@@ -1197,6 +1189,13 @@ struct LayoutPieceTile: View {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(border, style: StrokeStyle(lineWidth: selected ? 2 : 1,
                                                          dash: (look.missing || look.comingLater || invalid) ? [4, 3] : []))
+        }
+        .overlay {
+            if startsHidden {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Brand.net, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .allowsHitTesting(false)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if look.warning != nil {
@@ -1349,6 +1348,8 @@ struct MeetingViewDiagram: Shape {
 /// and "Your camera". A Cutout is a person standing on the bottom edge.
 private struct CameraStandIn: View {
     let shape: WebcamShape
+    /// Which camera state this stands for: its icon is Zoom's, never the eye (R17.3).
+    let meaning: VisibilitySymbol
     let off: Bool
     /// Hidden from me but shown to everyone: a dashed outline says so.
     var dashed = false
@@ -1409,8 +1410,9 @@ private struct CameraStandIn: View {
     private var label: some View {
         let small = min(size.width, size.height) < 64
         return VStack(spacing: 2) {
-            Image(systemName: off ? "eye.slash" : "video.fill")
+            Image(systemName: meaning.name)
                 .font(.system(size: small ? 11 : 15, weight: .medium))
+                .symbolBadge(meaning.badge, size: small ? 7 : 9)
             if !small && size.width > 84 {
                 Text(off ? "Hidden on your screen" : "Your camera")
                     .font(.system(size: 10, weight: .semibold))

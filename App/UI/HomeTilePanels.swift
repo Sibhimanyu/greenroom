@@ -119,6 +119,8 @@ struct HomeTileChoice: Identifiable {
     var symbol: String
     var selected: Bool
     var enabled = true
+    /// A small second symbol on the corner (Only me wears the struck eye).
+    var badge: String? = nil
 }
 
 /// A row of choice tiles: arrows move, Return picks, Esc closes the popover.
@@ -138,6 +140,7 @@ struct HomeTileChoiceRow: View {
                     VStack(spacing: 6) {
                         Image(systemName: choice.symbol)
                             .font(.system(size: 22, weight: .regular))
+                            .symbolBadge(choice.badge, size: 13)
                             .frame(width: 58, height: 40)
                         Text(choice.title)
                             .font(.system(size: 11, weight: choice.selected ? .semibold : .regular))

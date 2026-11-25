@@ -28,10 +28,10 @@ enum ShareVisibility: Equatable {
     init(marked: Bool) { self = marked ? .classSees : .onlyYou }
 
     /// The switch's words.
-    var label: String { self == .classSees ? "Everyone sees this" : "Only you" }
+    var label: String { VisibilitySymbol.everyoneSees(self == .classSees).words }
 
-    /// An eye open or struck through.
-    var symbol: String { self == .classSees ? "eye" : "eye.slash" }
+    /// An eye open or struck through (VisibilitySymbols.swift).
+    var symbol: String { VisibilitySymbol.everyoneSees(self == .classSees).name }
 
     /// Frosted while hidden from the meeting, solid while it is in the picture.
     var backdrop: WindowBackdrop { self == .classSees ? .solid : .frosted }

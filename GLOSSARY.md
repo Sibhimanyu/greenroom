@@ -102,11 +102,13 @@ While a meeting is live, the controls are in exactly one place. Code:
 
 **Camera look**: the owner's background, effects and framing. One camera look for all layouts.
 
-**Built-in layout**: a layout Greenroom ships with: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, and Raj Mode. Editable like any other; Reset brings the originals back.
+**Built-in layout**: a layout Greenroom ships with: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, and Raj San Mode. Editable like any other; Reset brings the originals back.
 
 **Leave my windows alone**: the built-in layout that does not move the owner's windows and only places the camera. Replaces "None".
 
-**Everyone sees**: what the meeting gets: the shared display (or window, or whiteboard) with hidden windows left out. "Hidden" here means hidden from everyone, not from the owner.
+**Everyone sees**: what the meeting gets: the shared display (or window, or whiteboard) with hidden windows left out. "Hidden" here means hidden from everyone, not from the owner. Shown everywhere in the app by the eye (open: everyone sees it; struck: only you); the eye means nothing else.
+
+**Starts hidden**: a window placed by a layout that does not appear on the owner's screen at Start (an app opens minimised). Shown by a dashed outline, never by the eye.
 
 **Shared display**: the display a layout gives to everyone (Main unless the layout says otherwise). Each layout has its own.
 

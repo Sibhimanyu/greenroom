@@ -86,7 +86,7 @@ struct BarPresentButton: View {
     static let help = "What everyone sees, your look and the layout"
 
     var body: some View {
-        BarIconButton(symbol: "rectangle.on.rectangle", width: width,
+        BarIconButton(symbol: VisibilitySymbol.share.name, width: width,
                       help: Self.help, spoken: "Share. What everyone sees, your look and the layout",
                       action: {})
             .overlay { MenuPopUpOverlay(label: "Share. What everyone sees, your look and the layout", entries: entries) }
@@ -157,6 +157,7 @@ struct BarIconButton: View {
     var width: CGFloat = MeetingBarLayout.icon
     /// Lit with the brand tint while it is on (Draw).
     var on = false
+    var symbolBadge: String? = nil
     var help: String
     var spoken: String? = nil
     var action: () -> Void
@@ -166,6 +167,7 @@ struct BarIconButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 14))
                 .foregroundStyle(tint)
+                .symbolBadge(symbolBadge, size: 8)
                 .frame(width: width, height: 32)
                 .background(on ? Brand.green.opacity(0.28) : Color.clear, in: Circle())
                 .contentShape(Rectangle())
@@ -325,7 +327,7 @@ struct MeetingBarContent: View {
 
     private var cameraButton: some View {
         let name = s.cameraOn ? "Stop Video" : "Start Video"
-        return BarIconButton(symbol: s.cameraOn ? "video.fill" : "video.slash.fill",
+        return BarIconButton(symbol: (s.cameraOn ? VisibilitySymbol.cameraOn : VisibilitySymbol.cameraOff).name,
                              tint: s.cameraOn ? .primary : .red,
                              help: help(s.cameraOn ? "Turn your camera off" : "Turn your camera on", .toggleCamera),
                              spoken: name, action: a.toggleCamera)
@@ -337,7 +339,7 @@ struct MeetingBarContent: View {
     /// width) but is empty and out of the accessibility tree.
     private var bubbleButton: some View {
         let cell = MeetingBarModel.cameraStateCell(s.cameraState)
-        return BarIconButton(symbol: cell.symbol, on: cell.on, help: cell.help, spoken: cell.spoken, action: {})
+        return BarIconButton(symbol: cell.symbol, on: cell.on, symbolBadge: cell.symbolBadge, help: cell.help, spoken: cell.spoken, action: {})
             .overlay { if s.cameraOn { MenuPopUpOverlay(label: cell.spoken, entries: a.cameraStateMenu) } }
             .opacity(s.cameraOn ? 1 : 0)
             .allowsHitTesting(s.cameraOn)

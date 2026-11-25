@@ -123,13 +123,42 @@ enum LayoutEditorRules {
         return items
     }
 
+    // MARK: A Meeting window that fills its display
+
+    /// The piece after a hand edit puts it at `rect`. A Meeting window that fills its display is
+    /// then an ordinary piece at that rect (`fillsDisplay` off); a rect that did not change
+    /// leaves it as it was. One change, so undo restores the rect and the fill together.
+    static func adjusting(_ piece: LayoutPiece, to rect: UnitRect) -> LayoutPiece {
+        guard rect != piece.rect else { return piece }
+        var p = piece
+        p.rect = rect
+        if case let .meeting(true, hidden) = p.kind { p.kind = .meeting(fillsDisplay: false, startsHidden: hidden) }
+        return p
+    }
+
+    /// The "Fill this display" switch. On takes the whole display; off keeps the rect it has.
+    static func settingFill(_ piece: LayoutPiece, on: Bool) -> LayoutPiece {
+        guard case let .meeting(_, hidden) = piece.kind else { return piece }
+        var p = piece
+        p.kind = .meeting(fillsDisplay: on, startsHidden: hidden)
+        if on { p.rect = .full }
+        return p
+    }
+
+    /// The switch's hint. The people gallery follows a filled display, so say what off does.
+    static func fillHint(othersOnDisplay: Bool) -> String {
+        othersOnDisplay
+            ? "Remove the other pieces on this display first."
+            : "The whole display shows the meeting and the people in it. Off, this is an ordinary piece and the people gallery no longer opens on this display."
+    }
+
     // MARK: What VoiceOver says
 
-    /// "Chat, 3 of 12 columns, everyone sees it". The state words follow the two badges.
+    /// "Chat, 3 of 12 columns, Everyone sees this". One eye says who sees it; a dashed piece also says it starts hidden.
     static func spokenPiece(name: String, columns: Int, everyone: Bool, onMyScreen: Bool) -> String {
         var words = "\(name), \(columns) of \(LayoutGeometry.divisions) columns, "
-            + (everyone ? "everyone sees it" : "hidden from everyone")
-        if !onMyScreen { words += ", not on your screen" }
+            + VisibilitySymbol.everyoneSees(everyone).words
+        if !onMyScreen { words += ", " + VisibilitySymbol.startsHidden.words }
         return words
     }
 
@@ -144,8 +173,8 @@ enum LayoutEditorRules {
         case let .moveToOtherDisplay(toSecond): return toSecond ? "Move to second display" : "Move to main display"
         case .showToEveryone: return "Show to everyone"
         case .hideFromEveryone: return "Hide from everyone"
-        case .showOnMyScreen: return isApp ? "Open on my screen" : "Show on my screen"
-        case .hideOnMyScreen: return isApp ? "Open minimised" : "Hide on my screen"
+        case .showOnMyScreen: return isApp ? "Open on my screen" : "Starts on my screen"
+        case .hideOnMyScreen: return isApp ? "Open minimised" : "Starts hidden on my screen"
         case .remove: return "Remove"
         }
     }

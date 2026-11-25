@@ -134,7 +134,16 @@ enum CameraTileRules {
     }
 
     static func symbol(_ state: State, onSymbol: String) -> String {
-        state == .on ? onSymbol : "video.slash"
+        switch state {
+        case .on: return onSymbol
+        case .offBySetting: return VisibilitySymbol.cameraOff.name
+        case .noDevice: return VisibilitySymbol.noCameraDevice.name
+        }
+    }
+
+    /// The corner badge: a question mark when no camera is connected.
+    static func badge(_ state: State) -> String? {
+        state == .noDevice ? VisibilitySymbol.noCameraDevice.badge : nil
     }
 
     /// A tap turns the camera on only from the off-by-setting state.

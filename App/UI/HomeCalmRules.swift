@@ -39,7 +39,7 @@ enum SetupSummary {
         items.append(SetupSummaryItem(kind: .share, symbol: shareSymbol, text: shareText, attention: shareGone,
                                       help: shareGone ? shareGoneHelp : nil))
         let noCamera = cameraMissing && !cameraOff
-        items.append(SetupSummaryItem(kind: .camera, symbol: cameraOff ? "video.slash" : "camera",
+        items.append(SetupSummaryItem(kind: .camera, symbol: (cameraOff ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name,
                                       text: cameraText, attention: noCamera,
                                       help: noCamera ? cameraMissingHelp : nil))
         items.append(SetupSummaryItem(kind: .microphone, symbol: "mic", text: micText))

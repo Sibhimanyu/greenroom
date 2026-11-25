@@ -67,6 +67,42 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertFalse(again.templates.first { $0.name == "Mine" }!.oneDisplay[1].showsToEveryone)
     }
 
+    // Owner request: Raj Mode is now "Raj San Mode"; a saved layout still named "Raj Mode" follows, once.
+    func testSavedRajModeIsRenamedOnceAndAnEditedNameIsLeftAlone() {
+        let d = defaults()
+        var lib = LayoutLibrary(templates: LayoutLibrary.starters())
+        let ri = lib.templates.firstIndex { $0.starter == LayoutLibrary.rajMode }!
+        lib.templates[ri].name = "Raj Mode"
+        var mine = LayoutLibrary.starters()[1]; mine.name = "Raj Mode"; mine.starter = nil   // yours, not a starter
+        lib.templates.append(mine)
+        lib.save(to: d)
+        let after = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        XCTAssertEqual(after.templates.first { $0.starter == LayoutLibrary.rajMode }?.name, "Raj San Mode")
+        XCTAssertEqual(after.templates.last?.name, "Raj Mode", "only the starter is renamed")
+        XCTAssertTrue(d.bool(forKey: LayoutLibrary.rajRenamedKey))
+
+        var edited = LayoutLibrary(templates: LayoutLibrary.starters())
+        let ei = edited.templates.firstIndex { $0.starter == LayoutLibrary.rajMode }!
+        edited.templates[ei].name = "My Raj"
+        let d2 = defaults()
+        edited.save(to: d2)
+        XCTAssertEqual(LayoutLibrary.loadOrMigrate(from: d2, defaultSiteURL: site)
+            .templates.first { $0.starter == LayoutLibrary.rajMode }?.name, "My Raj")
+    }
+
+    func testTheRenameRunsOnlyOnce() {
+        let d = defaults()
+        var lib = LayoutLibrary(templates: LayoutLibrary.starters())
+        lib.save(to: d)
+        _ = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        var saved = LayoutLibrary.load(from: d)!
+        let i = saved.templates.firstIndex { $0.starter == LayoutLibrary.rajMode }!
+        saved.templates[i].name = "Raj Mode"   // the owner typed the old name back
+        saved.save(to: d)
+        XCTAssertEqual(LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+            .templates.first { $0.starter == LayoutLibrary.rajMode }?.name, "Raj Mode")
+    }
+
     func testFreshInstallRecordsTheFlipAsDone() {
         let d = defaults()
         _ = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
@@ -76,7 +112,7 @@ final class LayoutMigrationTests: XCTestCase {
     func testDefaultSettingsMakeOnlyStartersAndNoneIsActive() {
         let d = defaults()
         let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.map(\.name), ["Raj Mode", "Teach from a browser", "Meeting and chat"])
+        XCTAssertEqual(lib.templates.map(\.name), ["Raj San Mode", "Teach from a browser", "Meeting and chat"])
         XCTAssertNil(lib.activeID)
         XCTAssertNotNil(d.data(forKey: "layoutLibrary"), "written back so it runs once")
     }
@@ -98,7 +134,7 @@ final class LayoutMigrationTests: XCTestCase {
         d.set(workspaceJSON(#"{"zoomSlotRatio":0.29933763586956524,"sideShowsZoomTile":true,"mainOnLeft":true,"mainFraction":0.75,"sideShowsChat":true}"#),
               forKey: "workspaceLayout")
         let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.map(\.name), ["Raj Mode", "Teach from a browser", "Meeting and chat", "Your previous layout"])
+        XCTAssertEqual(lib.templates.map(\.name), ["Raj San Mode", "Teach from a browser", "Meeting and chat", "Your previous layout"])
         XCTAssertNil(lib.activeID, "arrange was off, so None")
         let t = try XCTUnwrap(lib.templates.last)
 
@@ -245,11 +281,11 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertNil(lib.template(id: mine))
         XCTAssertEqual(lib.templates.map(\.starter), LayoutLibrary.starters().map(\.starter))
         XCTAssertEqual(lib.templates.map(\.oneDisplay.count), LayoutLibrary.starters().map(\.oneDisplay.count))
-        XCTAssertNotNil(lib.templates.first { $0.starter == LayoutLibrary.rajMode }, "Raj Mode is back")
+        XCTAssertNotNil(lib.templates.first { $0.starter == LayoutLibrary.rajMode }, "Raj San Mode is back")
     }
 
     func testRajModeIsAppendedOnceToAnExistingLibrary() throws {
-        // A library saved before Raj Mode: the two original starters, one deleted, one of yours.
+        // A library saved before Raj San Mode: the two original starters, one deleted, one of yours.
         var old = LayoutLibrary(templates: LayoutLibrary.starters().filter { $0.starter != LayoutLibrary.rajMode })
         old.delete(old.templates.first { $0.starter == LayoutLibrary.meetingAndChat }!.id)
         let mine = old.addBlank()
@@ -263,7 +299,7 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(first.activeID, mine, "the Start layout is not changed")
         XCTAssertNil(first.templates.first { $0.starter == LayoutLibrary.meetingAndChat }, "a deleted starter stays deleted")
 
-        // Deleting Raj Mode sticks across launches.
+        // Deleting Raj San Mode sticks across launches.
         var again = first
         again.delete(again.templates.first { $0.starter == LayoutLibrary.rajMode }!.id)
         again.save(to: d)
@@ -292,7 +328,7 @@ final class LayoutMigrationTests: XCTestCase {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         let copyID = try XCTUnwrap(lib.duplicate(lib.templates[0].id))
         let copy = try XCTUnwrap(lib.template(id: copyID))
-        XCTAssertEqual(copy.name, "Raj Mode copy")
+        XCTAssertEqual(copy.name, "Raj San Mode copy")
         XCTAssertNil(copy.starter)
         XCTAssertTrue(Set(copy.oneDisplay.map(\.id)).isDisjoint(with: lib.templates[0].oneDisplay.map(\.id)))
     }
@@ -345,7 +381,7 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app?.rect.x ?? 0, 0.5, accuracy: 1e-9, "main pane on the right half")
     }
 
-    // MARK: Raj Mode is editable
+    // MARK: Raj San Mode is editable
 
     func testRajModeCanBeRenamedAndRearranged() {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
@@ -374,7 +410,7 @@ final class LayoutMigrationTests: XCTestCase {
         let raj = lib.templates.first { $0.starter == LayoutLibrary.rajMode }!
         let copyID = try XCTUnwrap(lib.duplicate(raj.id))
         var copy = try XCTUnwrap(lib.template(id: copyID))
-        XCTAssertEqual(copy.name, "Raj Mode copy")
+        XCTAssertEqual(copy.name, "Raj San Mode copy")
         lib.rename(copyID, to: "Mine")
         XCTAssertEqual(lib.template(id: copyID)?.name, "Mine")
         copy.setPieces(Array(copy.oneDisplay.dropFirst()), for: .one)
@@ -387,7 +423,7 @@ final class LayoutMigrationTests: XCTestCase {
         let id = lib.templates.first { $0.starter == LayoutLibrary.rajMode }!.id
         lib.rename(id, to: "Mine")
         lib.resetToDefaults()
-        XCTAssertEqual(lib.templates.first { $0.starter == LayoutLibrary.rajMode }?.name, "Raj Mode")
+        XCTAssertEqual(lib.templates.first { $0.starter == LayoutLibrary.rajMode }?.name, "Raj San Mode")
     }
 }
 

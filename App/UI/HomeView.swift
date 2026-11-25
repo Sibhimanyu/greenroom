@@ -696,9 +696,9 @@ struct HomeView: View {
     /// One dock button's face: a rounded orb with the glyph, the current value
     /// under it. `lit` fills the orb green (a setting that acts on its own);
     /// `warn` adds an amber dot and turns the value amber.
-    private func dockLabel(symbol: String, value: String, lit: Bool = false, warn: Bool = false,
-                           meter: MicLevelMonitor? = nil) -> some View {
-        DockFace(symbol: symbol, value: value, lit: lit, warn: warn, meter: meter)
+    private func dockLabel(symbol: String, symbolBadge: String? = nil, value: String, lit: Bool = false,
+                           warn: Bool = false, meter: MicLevelMonitor? = nil) -> some View {
+        DockFace(symbol: symbol, symbolBadge: symbolBadge, value: value, lit: lit, warn: warn, meter: meter)
     }
 
     /// "MacBook Pro Camera" is "MacBook Pro" on the tile; the hover help and
@@ -737,6 +737,7 @@ struct HomeView: View {
             lookOpen.toggle()
         } label: {
             dockLabel(symbol: CameraTileRules.symbol(state, onSymbol: Self.symbol(for: coordinator.webcamShape)),
+                      symbolBadge: CameraTileRules.badge(state),
                       value: CameraTileRules.value(state, onValue: coordinator.webcamShape.label))
         }
         .buttonStyle(DockButtonStyle())
@@ -797,11 +798,16 @@ struct HomeView: View {
     private func turnCameraOn() { coordinator.turnCameraOnFromHome() }
 
     /// Camera: the same list and the same rule as the Webcam page's cards.
+    /// The tile's icon: no camera connected, else the camera state's own (R17.3).
+    private var chipMeaning: VisibilitySymbol {
+        cameras.isEmpty && !coordinator.cameraIsOff ? .noCameraDevice : .camera(coordinator.cameraState)
+    }
+
     private var cameraChip: some View {
         let name = LookSummary.cameraText(coordinator, cameras: cameras)
         let warn = problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff)
         return Button { cameraOpen.toggle() } label: {
-            dockLabel(symbol: coordinator.cameraIsOff ? "video.slash" : "camera",
+            dockLabel(symbol: chipMeaning.name, symbolBadge: chipMeaning.badge,
                       value: coordinator.cameraIsOff ? "Off" : Self.shortDeviceName(name),
                       warn: warn)
         }
@@ -954,11 +960,11 @@ struct HomeView: View {
 
     private static func symbol(for kind: ShareTarget.Kind) -> String {
         switch kind {
-        case .display: return "display"
+        case .display: return VisibilitySymbol.share.name
         case .app: return "macwindow"
         case .window: return "macwindow.on.rectangle"
         case .whiteboard: return "pencil.and.outline"
-        case .nothing: return "eye.slash"
+        case .nothing: return VisibilitySymbol.shareNothing.name
         }
     }
 
@@ -1526,6 +1532,7 @@ private extension EnvironmentValues {
 /// The face of a dock button: orb and value, the whole cell clickable.
 private struct DockFace: View {
     let symbol: String
+    var symbolBadge: String?
     let value: String
     var lit = false
     var warn = false
@@ -1542,6 +1549,7 @@ private struct DockFace: View {
                         Image(systemName: symbol)
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(lit ? Color.white : Color.primary)
+                            .symbolBadge(symbolBadge, size: 9)
                     }
                 if warn {
                     Circle().fill(Brand.net)

@@ -2095,7 +2095,7 @@ private final class RootView: NSView {
                 }
             })
             controls.append(Self.button(entry.videoOn ? "Stop video" : "Ask to start video",
-                                        symbol: entry.videoOn ? "video.slash" : "video") {
+                                        symbol: (entry.videoOn ? VisibilitySymbol.cameraOff : VisibilitySymbol.cameraOn).name) {
                 let stop = entry.videoOn
                 Self.perform(stop ? "Stopped \(entry.name)'s video" : "Asked \(entry.name) to start video") {
                     $0.setVideoMuted(stop, userID: id)

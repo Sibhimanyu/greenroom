@@ -360,14 +360,14 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleDrawing: return "pencil.tip.crop.circle"
         case .clip1, .clip2, .clip5: return "scissors"
         case .toggleMic: return "mic.fill"
-        case .toggleCamera: return "video.fill"
+        case .toggleCamera: return VisibilitySymbol.cameraOn.name
         case .toggleChat: return "bubble.left.fill"
         case .toggleNotes: return "note.text"
         case .showMeetingWindow: return "macwindow"
         case .toggleMeetingBar: return "arrow.down.right.and.arrow.up.left"
         case .shrinkMeeting, .shrinkToBar: return "rectangle.bottomhalf.inset.filled"
         case .cycleMeetingView: return "square.grid.2x2"
-        case .toggleMeeting: return "eye.slash"
+        case .toggleMeeting: return VisibilitySymbol.hideMeetingWindow.name
         case .snapBack: return "arrow.uturn.backward"
         case .openGreenroom: return "house.fill"
         case .openSessions: return "rectangle.stack.fill"

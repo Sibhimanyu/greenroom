@@ -60,7 +60,7 @@ final class SelfPreviewView: NSView {
         addSubview(meter)
 
         for (button, symbol, label) in [(muteButton, "mic.slash.fill", "Mute me"),
-                                        (videoButton, "video.slash.fill", "Stop my video")] {
+                                        (videoButton, VisibilitySymbol.cameraOff.name, "Stop my video")] {
             button.isBordered = false
             button.imagePosition = .imageOnly
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
@@ -86,7 +86,7 @@ final class SelfPreviewView: NSView {
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         muteButton.contentTintColor = muted ? .systemRed : .white
         muteButton.toolTip = muted ? "Unmute me" : "Mute me"
-        videoButton.image = NSImage(systemSymbolName: videoOn ? "video.fill" : "video.slash.fill",
+        videoButton.image = NSImage(systemSymbolName: (videoOn ? VisibilitySymbol.cameraOn : VisibilitySymbol.cameraOff).name,
                                     accessibilityDescription: videoOn ? "Stop my video" : "Start my video")?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         videoButton.contentTintColor = videoOn ? .white : .systemRed

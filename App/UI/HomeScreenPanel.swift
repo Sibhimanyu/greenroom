@@ -120,7 +120,6 @@ struct HomeScreenPanel: View {
                 }
             }
         }
-        .frame(width: 330)
     }
 
     // MARK: Windows

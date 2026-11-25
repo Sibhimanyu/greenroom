@@ -24,7 +24,7 @@ struct HomeLayoutPanel: View {
 
     private struct Choice: Identifiable {
         var id: String
-        var template: LayoutTemplate?
+        var template: LayoutTemplate
         var name: String
     }
 
@@ -34,7 +34,7 @@ struct HomeLayoutPanel: View {
         library.templates.map { Choice(id: $0.id.uuidString, template: $0, name: $0.name) }
     }
 
-    private func isSelected(_ choice: Choice) -> Bool { choice.template?.id == library.activeID }
+    private func isSelected(_ choice: Choice) -> Bool { choice.template.id == library.activeID }
 
     var body: some View {
         let active = library.active
@@ -46,7 +46,7 @@ struct HomeLayoutPanel: View {
             note: LayoutPanelRules.twoDisplayNote(
                 hasTwoDisplays: active?.twoDisplays != nil,
                 secondConnected: active?.twoDisplays.map { LayoutScreenPreview.secondScreen(uuid: $0.secondUUID) != nil } ?? false
-            ).map { (symbol: VisibilitySymbol.share.name, text: $0) },
+            ).map { (symbol: VisibilitySymbol.twoDisplays.name, text: $0) },
             art: DockHintVisual.layout(active?.oneDisplay) { [coordinator] piece in
                 LayoutPageContent.look(piece, canMoveApps: AppWindowManager.hasAccessibilityPermission)
             },
@@ -80,7 +80,6 @@ struct HomeLayoutPanel: View {
                 }
             }
         }
-        .frame(width: 330)
     }
 
     // MARK: Tiles
@@ -93,7 +92,7 @@ struct HomeLayoutPanel: View {
                         .greenroomTile(role: .choice(selected: isSelected(choice)), radius: 10)
                         .overlay { HomeTileKeyRing(show: keyed && index == offset, radius: 10) }
                         .disabled(locked)
-                        .help(choice.template?.twoDisplays != nil ? "\(choice.name). \(LayoutPanelRules.twoDisplayBadgeHelp)" : choice.name)
+                        .help(choice.template.twoDisplays != nil ? "\(choice.name). \(LayoutPanelRules.twoDisplayBadgeHelp)" : choice.name)
                         .accessibilityLabel(choice.name)
                         .accessibilityAddTraits(isSelected(choice) ? .isSelected : [])
                 }
@@ -108,12 +107,12 @@ struct HomeLayoutPanel: View {
         let selected = isSelected(choice)
         return VStack(spacing: 5) {
             Group {
-                if let template = choice.template, !template.oneDisplay.isEmpty {
-                    LayoutThumbnail(pieces: template.oneDisplay, aspect: 1.6) { [coordinator] piece in
+                if !choice.template.oneDisplay.isEmpty {
+                    LayoutThumbnail(pieces: choice.template.oneDisplay, aspect: 1.6) { [coordinator] piece in
                         LayoutPageContent.look(piece, canMoveApps: AppWindowManager.hasAccessibilityPermission)
                     }
                 } else {
-                    Image(systemName: choice.template == nil ? "rectangle.dashed" : "rectangle.split.2x1")
+                    Image(systemName: VisibilitySymbol.noPieces.name)
                         .font(.system(size: 18)).foregroundStyle(.secondary)
                 }
             }
@@ -126,8 +125,8 @@ struct HomeLayoutPanel: View {
         .padding(.horizontal, 6).padding(.vertical, 6)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
-            if choice.template?.twoDisplays != nil {
-                Image(systemName: VisibilitySymbol.share.name)
+            if choice.template.twoDisplays != nil {
+                Image(systemName: VisibilitySymbol.twoDisplays.name)
                     .font(.system(size: 9)).foregroundStyle(.secondary)
                     .padding(4)
                     .help(LayoutPanelRules.twoDisplayBadgeHelp)
@@ -137,7 +136,7 @@ struct HomeLayoutPanel: View {
 
     private func pick(_ offset: Int) {
         guard !locked, choices.indices.contains(offset) else { return }
-        coordinator.layoutLibrary.select(choices[offset].template?.id)
+        coordinator.layoutLibrary.select(choices[offset].template.id)
     }
 
     private func actionRow(_ title: String, symbol: String, help: String, action: @escaping () -> Void) -> some View {

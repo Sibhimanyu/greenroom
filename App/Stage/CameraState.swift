@@ -85,11 +85,50 @@ struct CameraStateSession: Equatable {
     private(set) var saved: CameraState
     private(set) var live: CameraState?
 
-    init(saved: CameraState) { self.saved = saved }
+    init(saved: CameraState) {
+        self.saved = saved
+        lastOn = Self.onState(of: saved)
+    }
 
     var current: CameraState { live ?? saved }
 
-    mutating func setLive(_ state: CameraState) { live = state }
-    mutating func setSaved(_ state: CameraState) { saved = state }
-    mutating func resetToDefault() { live = nil }
+    /// The "on" state the camera comes back as after Off (R6.6): the last one that was not Off
+    /// this meeting, or the layout default's on-state after Start. Every live change (the bar, the
+    /// Meeting toolbar, Home) goes through `setLive`, so all of them feed it.
+    private(set) var lastOn: CameraState
+
+    private static func onState(of state: CameraState) -> CameraState { state == .off ? .everyoneAndMe : state }
+
+    /// What a click on the camera button changes the live state to (`MeetingBarModel.cameraClickTarget`).
+    func clickTarget(noCameraAllowed: Bool) -> CameraState {
+        Self.clickTarget(current: current, lastOn: lastOn, noCameraAllowed: noCameraAllowed)
+    }
+
+    /// Any "on" state goes Off; Off comes back as `lastOn` (Only everyone returns as Only everyone).
+    /// With nothing shared Off would leave an empty picture, so a click then leaves the state alone.
+    static func clickTarget(current: CameraState, lastOn: CameraState, noCameraAllowed: Bool) -> CameraState {
+        if current == .off { return lastOn == .off ? .everyoneAndMe : lastOn }
+        return noCameraAllowed ? .off : current
+    }
+
+    /// What Home's camera tile and camera choices turn the camera on to: from Off the last "on" state,
+    /// like the bar; from Only me the same, with the meeting seeing the camera. nil when already on.
+    var turnOnTarget: CameraState? {
+        guard current.noCamera else { return nil }
+        return current == .off ? lastOn : CameraState(noCamera: false, shownOnMyScreen: current.shownOnMyScreen)
+    }
+
+    mutating func setLive(_ state: CameraState) {
+        if current != .off { lastOn = current }
+        live = state
+    }
+    mutating func setSaved(_ state: CameraState) {
+        saved = state
+        if live == nil { lastOn = Self.onState(of: state) }
+    }
+    /// Start and Snap Back: the live change goes, and the memory returns to the default's on-state.
+    mutating func resetToDefault() {
+        live = nil
+        lastOn = Self.onState(of: saved)
+    }
 }

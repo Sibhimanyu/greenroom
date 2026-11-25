@@ -307,19 +307,10 @@ final class LayoutFillDisplayTests: XCTestCase {
     // on a connected display or on one that is not plugged in yet. Preview: Everyone is the
     // read-only picture of what the meeting sees.
     func testMyScreenPiecesAreAlwaysInteractive() {
-        for everyone in [true, false] {
-            for connected in [true, false] {
-                XCTAssertTrue(LayoutEditorRules.piecesAreInteractive(
-                    previewEveryone: false, everyoneSees: everyone, displayConnected: connected),
-                    "My screen, everyone=\(everyone), connected=\(connected)")
-            }
-        }
+        XCTAssertTrue(LayoutEditorRules.piecesAreInteractive(previewEveryone: false))
     }
 
     func testPreviewEveryoneIsReadOnly() {
-        for connected in [true, false] {
-            XCTAssertFalse(LayoutEditorRules.piecesAreInteractive(
-                previewEveryone: true, everyoneSees: true, displayConnected: connected))
-        }
+        XCTAssertFalse(LayoutEditorRules.piecesAreInteractive(previewEveryone: true))
     }
 }

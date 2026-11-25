@@ -473,7 +473,7 @@ struct LayoutCanvas: View {
 
     private var emptyHint: some View {
         VStack(spacing: 6) {
-            Image(systemName: "rectangle.dashed")
+            Image(systemName: VisibilitySymbol.noPieces.name)
                 .font(.system(size: 22, weight: .light))
             Text(emptyText)
                 .font(.callout)
@@ -569,10 +569,7 @@ struct LayoutCanvas: View {
 
     /// The rule for the pointer and the keyboard; the fade below never takes part in it.
     private func interactive(_ piece: LayoutPiece) -> Bool {
-        LayoutEditorRules.piecesAreInteractive(
-            previewEveryone: previewEveryone,
-            everyoneSees: Visibility.everyoneSees(piece: piece, target: share).isOn,
-            displayConnected: display.connected)
+        LayoutEditorRules.piecesAreInteractive(previewEveryone: previewEveryone)
     }
 
     /// A piece the meeting does not see looks faded on My screen. A look only.

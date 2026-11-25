@@ -425,7 +425,7 @@ enum DockHintVisual {
                     .padding(10)
             } else {
                 VStack(spacing: 5) {
-                    Image(systemName: "rectangle.dashed").font(.system(size: 22)).foregroundStyle(.white.opacity(0.4))
+                    Image(systemName: VisibilitySymbol.noPieces.name).font(.system(size: 22)).foregroundStyle(.white.opacity(0.4))
                     Text("Nothing moves").font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.5))
                 }
             }

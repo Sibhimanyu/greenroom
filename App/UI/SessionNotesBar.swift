@@ -280,12 +280,17 @@ final class SessionNotes: ObservableObject {
         var all = UserDefaults.standard.dictionary(forKey: NotesBarPlacement.defaultsKey) as? [String: String] ?? [:]
         NotesBarPlacement.save(NotesBarPlacement.offset(of: frame, in: area), for: key, into: &all)
         UserDefaults.standard.set(all, forKey: NotesBarPlacement.defaultsKey)
+        UserDefaults.standard.set(key, forKey: NotesBarPlacement.lastDisplayKey)
     }
 
-    /// The bar's frame now: the saved spot on the main display, clamped, or the
-    /// default.
+    /// The bar's frame now: the saved spot on the display it was last dropped on (when still connected,
+    /// else the main display), clamped, or the default.
     private func restingFrame() -> NSRect {
-        let screen = NSScreen.main ?? NSScreen.screens.first
+        let main = NSScreen.main ?? NSScreen.screens.first
+        let last = UserDefaults.standard.string(forKey: NotesBarPlacement.lastDisplayKey)
+        let connected = NSScreen.screens.compactMap(Self.displayKey)
+        let key = NotesBarPlacement.restingDisplay(lastDropped: last, connected: connected, main: main.flatMap(Self.displayKey))
+        let screen = NSScreen.screens.first { Self.displayKey($0) == key } ?? main
         let area = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let all = UserDefaults.standard.dictionary(forKey: NotesBarPlacement.defaultsKey) as? [String: String] ?? [:]
         let saved = screen.flatMap(Self.displayKey).flatMap { NotesBarPlacement.saved(for: $0, in: all) }

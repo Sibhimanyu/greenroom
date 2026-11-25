@@ -702,7 +702,8 @@ extension LayoutLibrary {
                 ?? Set(originalStarterKeys)
             var changed = saved.addStarters(notIn: known)
             // P9, once: the new built-ins, None becomes Leave my windows alone. Saves itself and sets its own key.
-            saved.migrateBuiltInsV2(defaults: defaults, save: { $0.save(to: defaults) })
+            saved.migrateBuiltInsV2(defaults: defaults, legacyCamera: .global(from: defaults),
+                                    legacyShare: LayoutCamera.globalShare(from: defaults), save: { $0.save(to: defaults) })
             // The old default was hidden; saved layouts hold it explicitly. Flip once.
             if !defaults.bool(forKey: shownToEveryoneMigratedKey) {
                 saved.showEverythingToEveryone()

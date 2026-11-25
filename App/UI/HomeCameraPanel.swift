@@ -21,6 +21,9 @@ struct HomeCameraPanel: View {
         var symbol: String
     }
 
+    /// Rows shown before the camera list scrolls on its own (34pt rows, 2pt apart).
+    private static let visibleCameraRows = 4
+
     private var settings: CameraDirectorSettings { coordinator.cameraDirectorSettings }
     private var single: String? { coordinator.sceneCameraUIDs(limit: 1).first }
     private var chosenCount: Int {
@@ -52,7 +55,7 @@ struct HomeCameraPanel: View {
                                            shareIsNothing: coordinator.shareTarget.sharesNothing),
                                        badge: VisibilitySymbol.camera(state).badge)
                     },
-                    tileWidth: 76,
+                    labelLines: 2,
                     pick: { coordinator.setLiveCameraState(CameraState.allCases[$0]) })
                 Text(coordinator.cameraState.detail + " Only for this meeting.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -64,14 +67,7 @@ struct HomeCameraPanel: View {
                     Text("No camera found. Plug one in, or turn the camera off.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                HomeTileList(rows: rows, selected: isSelected, autofocus: true, pick: pickRow) { row, keyed in
-                    HomeTileListRow(
-                        symbol: row.symbol, title: row.name,
-                        detail: CameraPanelRules.position(of: row.id, switchOn: switchOn, order: settings.cameraUIDs)
-                            .map { "\($0)" },
-                        selected: isSelected(row),
-                        keyFocused: keyed) { pickRow(rows.firstIndex { $0.id == row.id } ?? 0) }
-                }
+                cameraList(switchOn: switchOn)
             }
 
             if CameraPanelRules.showsSwitchToggle(availableCount: cameras.count) {
@@ -118,7 +114,23 @@ struct HomeCameraPanel: View {
             HomeTileToggleRow(title: CameraLookRules.mirrorTitle, isOn: $mirrorSelfView,
                               help: CameraLookRules.mirrorHelp)
         }
-        .frame(width: 330)
+    }
+
+    /// Only the camera list scrolls, and only past four rows: every other row of the panel stays in view.
+    @ViewBuilder private func cameraList(switchOn: Bool) -> some View {
+        let list = HomeTileList(rows: rows, selected: isSelected, autofocus: true, pick: pickRow) { row, keyed in
+            HomeTileListRow(
+                symbol: row.symbol, title: row.name,
+                detail: CameraPanelRules.position(of: row.id, switchOn: switchOn, order: settings.cameraUIDs)
+                    .map { "\($0)" },
+                selected: isSelected(row),
+                keyFocused: keyed) { pickRow(rows.firstIndex { $0.id == row.id } ?? 0) }
+        }
+        if rows.count > Self.visibleCameraRows {
+            ScrollView(.vertical) { list }.frame(height: CGFloat(Self.visibleCameraRows) * 36)
+        } else {
+            list
+        }
     }
 
     private func isSelected(_ row: Row) -> Bool {
@@ -134,8 +146,7 @@ struct HomeCameraPanel: View {
         coordinator.cameraDirectorSettings = next
         // Choosing a camera is asking for it: if this meeting has the camera off,
         // that goes back to what everyone sees. The saved default is not touched.
-        let state = coordinator.cameraState
-        if state.noCamera { coordinator.setLiveCameraState(CameraState(noCamera: false, shownOnMyScreen: state.shownOnMyScreen)) }
+        coordinator.turnCameraOnFromHome()
         coordinator.previewCamerasChanged()
     }
 
@@ -146,8 +157,7 @@ struct HomeCameraPanel: View {
         }
         next.enabled = on
         coordinator.cameraDirectorSettings = next
-        let state = coordinator.cameraState
-        if on, state.noCamera { coordinator.setLiveCameraState(CameraState(noCamera: false, shownOnMyScreen: state.shownOnMyScreen)) }
+        if on { coordinator.turnCameraOnFromHome() }
         coordinator.previewCamerasChanged()
     }
 }

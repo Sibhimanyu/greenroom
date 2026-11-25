@@ -58,6 +58,5 @@ struct HomeMorePanel: View {
                                 action: setupGuide)
             }
         }
-        .frame(width: 330)
     }
 }

@@ -209,6 +209,16 @@ enum NotesBarPlacement {
         return MeetingBarPlacement.clamp(f, to: area)
     }
 
+    /// UserDefaults key: the display the bar was last dropped on.
+    static let lastDisplayKey = "sessionNotesBarLastDisplay"
+
+    /// Which display the bar rests on: the one it was last dropped on, when that display is connected,
+    /// else the main display. The spot on that display is then restored from `saved(for:in:)`.
+    static func restingDisplay(lastDropped: String?, connected: [String], main: String?) -> String? {
+        if let lastDropped, connected.contains(lastDropped) { return lastDropped }
+        return main
+    }
+
     static func saved(for display: String, in all: [String: String]) -> CGPoint? {
         guard let text = all[display] else { return nil }
         let parts = text.split(separator: ",").compactMap { Double($0) }

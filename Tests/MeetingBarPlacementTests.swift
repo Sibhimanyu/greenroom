@@ -229,3 +229,17 @@ final class MeetingBarPlacementTests: XCTestCase {
         XCTAssertNil(NotesBarPlacement.saved(for: "A", in: all))
     }
 }
+
+// MARK: - Where the notes bar rests (55f524c follow-up)
+
+final class NotesBarRestingDisplayTests: XCTestCase {
+    // The spot is restored on the display it was saved for when that display is connected.
+    func testTheBarRestsOnTheDisplayItWasLastDroppedOn() {
+        XCTAssertEqual(NotesBarPlacement.restingDisplay(lastDropped: "ROOM", connected: ["MAIN", "ROOM"], main: "MAIN"), "ROOM")
+    }
+
+    func testAnUnplugDisplayFallsBackToMain() {
+        XCTAssertEqual(NotesBarPlacement.restingDisplay(lastDropped: "ROOM", connected: ["MAIN"], main: "MAIN"), "MAIN")
+        XCTAssertEqual(NotesBarPlacement.restingDisplay(lastDropped: nil, connected: ["MAIN", "ROOM"], main: "MAIN"), "MAIN")
+    }
+}

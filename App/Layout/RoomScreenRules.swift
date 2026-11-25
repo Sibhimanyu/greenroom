@@ -16,11 +16,6 @@ enum RoomScreenRules {
     /// room keep their view from Start to Stop, so the layout's hide never reaches the Room screen.
     static func isHidden(layoutHidden: Bool) -> Bool { false }
 
-    /// Other apps' captures (QuickTime, Loom, Zoom's own share, OBS) may see the Room screen like any
-    /// Greenroom window: it keeps the default `sharingType`. Greenroom's own capture still leaves it out
-    /// (`Visibility.roomScreenReason`), so it never films itself.
-    static let sharingForOtherApps = PresenceRecorderRules.Sharing.readOnly
-
     /// The hint under the tile in the Add panel.
     static let hint = "What the meeting sees, for a screen in the room"
     static let title = "Room screen"

@@ -218,7 +218,7 @@ enum RoomScreen {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        // Default sharingType (RoomScreenRules.sharingForOtherApps): other apps' captures may see it.
+        // Default sharingType (it never sets sharingType; Greenroom's own capture leaves it out through `Visibility.roomScreenReason`): other apps' captures may see it.
         // Greenroom's own capture excludes the whole app, so it never films itself.
         let view = RoomScreenView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
         panel.contentView = view

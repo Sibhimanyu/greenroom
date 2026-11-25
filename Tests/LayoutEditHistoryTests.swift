@@ -204,15 +204,16 @@ final class LayoutEditHistoryTests: XCTestCase {
         XCTAssertNil(LayoutEditHistory.describe(from: old, to: moved, pieceName: named)?.coalesceKey)
     }
 
-    // R9.1: choosing None after the edit is kept by the undo.
-    func testUndoingAnEditKeepsNoneChosenSince() {
-        let old = library([chat])
-        var edited = old
-        edited.templates[0].oneDisplay[0].rect.x = 0.5
+    // R9.1, R12.2: an undo can never leave no active layout: if the layout chosen since is gone, Leave my windows alone is.
+    func testUndoNeverLeavesNoActiveLayout() {
+        let lib = LayoutLibrary(templates: LayoutLibrary.starters())
+        var edited = lib
+        edited.templates[0].name = "Renamed"
         var now = edited
-        now.activeID = nil   // None picked after the edit
-        let undone = LayoutEditHistory.restoring(old, undoing: edited, onto: now)
-        XCTAssertEqual(undone.templates, old.templates)
-        XCTAssertNil(undone.activeID)
+        now.activeID = nil
+        let undone = LayoutEditHistory.restoring(lib, undoing: edited, onto: now)
+        XCTAssertEqual(undone.templates, lib.templates)
+        XCTAssertEqual(undone.activeID, lib.leaveAloneID)
+        XCTAssertNotNil(undone.active)
     }
 }

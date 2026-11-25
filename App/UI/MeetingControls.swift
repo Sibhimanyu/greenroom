@@ -193,17 +193,10 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
-    /// The state the camera button brings back: the last one that was not Off (this meeting only).
-    private var lastOnCameraState = CameraState.everyoneAndMe
-
-    /// The camera button's click: Off <-> the last on state. Never touches the saved default.
+    /// The camera button's click: Off <-> the last on state, which lives with the live camera state
+    /// so Home's tile follows the same rule. Never touches the saved default.
     func toggleCameraState() {
-        let current = coordinator.cameraState
-        lastOnCameraState = MeetingBarModel.lastOnState(after: current, previous: lastOnCameraState)
-        let target = MeetingBarModel.cameraClickTarget(
-            current: current, lastOn: lastOnCameraState,
-            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.sharesNothing))
-        coordinator.setLiveCameraState(target)
+        coordinator.toggleLiveCameraState()
         refresh()
     }
 
@@ -214,7 +207,6 @@ final class MeetingControlsModel: ObservableObject {
             noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.sharesNothing)
         ) { [weak self] state in
             guard let self else { return }
-            self.lastOnCameraState = MeetingBarModel.lastOnState(after: self.coordinator.cameraState, previous: self.lastOnCameraState)
             self.coordinator.setLiveCameraState(state)
             self.refresh()
         }

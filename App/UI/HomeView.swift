@@ -327,7 +327,7 @@ struct HomeView: View {
                 primaryHeight: DisplayResolver.mainDisplayScreen()?.frame.height ?? 0)
             second = result.placed.filter { $0.slot == .second }.map { $0.piece.kind.isMeeting }
         }
-        return PreviewSecondDisplayRules.row(pieceCount: template.pieceCount, secondPieceIsMeeting: second)
+        return PreviewSecondDisplayRules.row(for: template, secondPieceIsMeeting: second)
     }
 
     /// Under the picture, never over it: the second-display note, and the
@@ -776,7 +776,8 @@ struct HomeView: View {
     private var lookPicker: some View {
         HomeTilePanel(
             title: "Look", summary: "How you appear over what you share.", value: coordinator.webcamShape.label,
-            moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openCameraSettings() }
+            moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openCameraSettings() },
+            width: nil
         ) {
             HomeTileChoiceRow(
                 choices: WebcamShape.allCases.map {

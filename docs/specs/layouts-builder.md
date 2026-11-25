@@ -96,12 +96,19 @@ different order; this table is the authority.
 | R8 | Direction A canvas | P5 | built |
 | R9 | Mac editor basics | P6 | built (R9.1 to R9.7); review fixes: one undo step per Size drag, camera state and look undoable, the editor follows an undo, VoiceOver follows the camera state and share |
 | R10 | Devices and General tabs | P7 | built |
-| R11 | Camera look in Layouts; Webcam tab gone | P8 | built; the Webcam tab's live picture, S/M/L sizes, corner and Reset are back in the inspector (needs a live check) |
+| R11 | Camera look in Layouts; Webcam tab gone | P8 | built (Mirror is back, R22); the Webcam tab's live picture, S/M/L sizes, corner and Reset are back in the inspector (needs a live check) |
 | R12 | Six built-in layouts, one always active | P9 | built (needs a live check) |
 | R13 | Restore original and Reset all | P9 | built |
-| R14 | Built-ins on existing installs | P9 | built (key `layoutLibrary.builtInsV2Migrated`) |
-| R15 | Room + laptop | P10 | planned |
+| R14 | Built-ins on existing installs | P9 | built (key `layoutLibrary.builtInsV2Migrated`); an unedited Teach is compared on every saved field (R14.2); a former None user's camera and share go to Leave my windows alone (R14.3) |
+| R15 | Room + laptop | P10 | partial: Room + laptop ships (R15.1); "Connect the room display" on Home (R15.2) is missing |
 | R16 | Day one looks the same; downgrade works | P2, P3, P9 | built (migration keys follow a successful save) |
+| R18 | Notes bar: drag, spot per display | none (owner fix) | built, 55f524c; resting display added with the review fixes |
+| R19 | Full-display Meeting is adjustable | P11 | built, 71a76b5 |
+| R20 | Faded pieces on My screen stay editable | P6 | built, 6cb548a |
+| R21 | The camera move note says who the move reaches | P6 | built, 7e94902 |
+| R22 | Mirror my camera: the bubble only | P8 | built, 2834566 |
+| R23 | Home's preview row: second-display note and Show on screen | none (owner fix) | built, 06a7f30; hidden when no windows are tiled (review fixes) |
+| R24 | Room screen is true full screen when the piece fills the display | P10 | built, fb70689 (needs a check on the real big screen) |
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -162,8 +169,11 @@ different order; this table is the authority.
 - R6.6 (2026-11-25) One camera button on the bar and the Meeting window toolbar (the second, bubble cell is
   gone). A click toggles the camera for everyone: any "on" state goes Off, and Off returns as the last "on"
   state (Only everyone comes back as Only everyone); with nothing shared a click does not turn it off. A small
-  arrow opens the four states (the toolbar's also lists the cameras). For the running meeting only, never the
-  saved default. `MeetingBarModel.cameraClickTarget`, `lastOnState`, `MeetingBarLayout.camera`.
+  arrow opens the four states (the toolbar's also lists the cameras); outside a meeting the arrow does nothing.
+  For the running meeting only, never the saved default. The "last on" state lives with the live camera state
+  (`CameraStateSession.lastOn`, `clickTarget`, `turnOnTarget`), so the bar, the toolbar and Home's camera tile
+  follow one rule; Start and Snap Back reset it to the layout default's on-state (R6.3).
+  `MeetingBarModel.cameraClickTarget`, `MeetingBarLayout.camera`.
 - R6.7 (2026-11-25) Whether the owner's camera bubble shows is decided only by `Visibility.cameraOnMyScreen`
   (fed to `PresenceVisibility` as `hiddenByPresenter`), for every share kind (Whole screen, A window,
   Whiteboard, Just my camera). The share kind decides only where it sits: a whiteboard or Just my camera
@@ -241,17 +251,58 @@ different order; this table is the authority.
 **R14. Built-ins on existing installs.** (Q8)
 - R14.1 Raj San Mode is untouched. An edited Teach from a browser is kept as your
   own layout. Meeting and chat becomes yours. Nothing is deleted.
+- R14.2 "Edited" means any saved field differs from the old shipped Teach: its name, a piece's
+  kind, place or eye, its share or its camera. A renamed Teach, or one with its eye or share
+  changed, is kept as "My Teach from a browser", never replaced.
+- R14.3 A library with no active layout (None) gets Leave my windows alone as its active layout,
+  carrying that install's own camera spot, size and shape and its share (`legacyCamera`,
+  `legacyShare`), so day one looks the same (Q7). It runs once, with the key set after a
+  successful save.
 
 **R15. Room + laptop.** (Q9, Q10)
 - R15.1 Main is shared and the Room screen is on Second.
 - R15.2 With no second display, the one-display version runs and Home says
-  "Connect the room display". Start is never blocked.
+  "Connect the room display". Start is never blocked. **Missing:** the one-display
+  version runs and Start is not blocked, but Home has no such line yet.
 
 **R16. Day one looks the same; downgrade works.** (Q7)
 - R16.1 Each migration runs once, writes its key only after it succeeds, and a
   re-run changes nothing.
 - R16.2 Old keys are kept in step for one release, so a downgrade still works.
 - R16.3 Older settings files decode with today's values.
+
+**R18. Notes bar: drag, spot per display.** (owner, 55f524c)
+- R18.1 The notes bar is dragged by its background; on release it is kept fully on the display it
+  was dropped on and the spot is saved for that display (`NotesBarPlacement`).
+- R18.2 At the next show it rests on the display it was last dropped on when that display is
+  connected, else on the main display (`NotesBarPlacement.restingDisplay`).
+
+**R19. Full-display Meeting is adjustable.** (owner, 71a76b5)
+- R19.1 A Meeting window that fills its display shows its handles. Moving or resizing it turns
+  fill off, in one undo step; the "Fill this display" toggle says what changes.
+
+**R20. Faded pieces stay editable.** (owner, 6cb548a)
+- R20.1 On My screen every piece can be selected, dragged, resized and moved by key, faded or not,
+  on a display that is not connected too. Only Preview: Everyone is read-only
+  (`LayoutEditorRules.piecesAreInteractive(previewEveryone:)`).
+
+**R21. The camera move note.** (owner, 7e94902)
+- R21.1 Dragging the camera says who the move reaches, from the camera state, never a fixed
+  "moves for everyone" (`LayoutEditorRules.cameraMoveNote`).
+
+**R22. Mirror my camera: bubble only.** (owner, 2834566)
+- R22.1 See R11.4: the toggle is back, in the Camera look and Home's Camera panel; it flips only
+  the owner's bubble. R11.1 lists it in the Camera look group.
+
+**R23. Home's preview row.** (owner, 06a7f30)
+- R23.1 Under the live preview: the second-display note on the left, Show on screen on the right.
+- R23.2 The whole row is hidden, with its height kept, when the active layout tiles no windows:
+  no pieces, or Leave my windows alone (it moves none, even with pieces in it). The camera is
+  not a piece (`PreviewSecondDisplayRules.row(for:)`).
+
+**R24. Room screen true full screen.** (owner, fb70689)
+- R24.1 A Room screen piece set to fill the display covers the display's whole frame, above the
+  menu bar and Dock, picture aspect fit on black. A smaller piece stays a normal window at its rect.
 
 **R17. One icon language.** (Q28 to Q33)
 - R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)
@@ -269,6 +320,9 @@ different order; this table is the authority.
 - R17.5 One icon per action: Share `rectangle.on.rectangle` (stop: `.slash`), Show on screen `rectangle.dashed`,
   screen-recording permission `rectangle.dashed.badge.record`, Blur `aqi.medium`, Just my camera `video`,
   hide the meeting window `rectangle.slash`.
+- R17.7 Three more meanings have their own symbol: `nobodyInCamera` (`person.fill.questionmark`, the
+  "Can't see you" chip; never the eye), `twoDisplays` (`display.2`, a layout with a second display;
+  never Share's glyph) and `noPieces` (`rectangle.dashed`, an empty layout or canvas, "Nothing moves").
 - R17.6 Tooltips and VoiceOver say "Everyone sees this" / "Only you" and "Starts hidden on your screen". Never "class".
 
 ## Guarantees
@@ -297,12 +351,12 @@ different order; this table is the authority.
 | P3 Per-layout camera piece and what's shared | R4, R5, R16 | built | 2f1961a (camera follows shared display: c80debb) |
 | P4 Other apps' 📡 and 👁 | R7 | built | f50a6cd |
 | P5 Direction A canvas | R3, R8 | built | 3f6a68c |
-| P6 Basics | R9 | built | 6f13f42 (review fixes: p68-review-fixes) |
+| P6 Basics | R9 | built | 6f13f42 (review fixes: 7e94902) |
 | P7 Settings reshuffle | R10 | built | f5d4b97 |
-| P8 Camera look into Layouts | R11 | built | 19cf8e0 (review fixes: p68-review-fixes) |
-| P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | p9-builtins |
-| P10 Room + laptop | R15 | planned | |
-| P11 One icon language | R17 | built | |
+| P8 Camera look into Layouts | R11 | built | 19cf8e0 (review fixes: 7e94902) |
+| P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | f4222d7 |
+| P10 Room + laptop | R15 | partial (Room + laptop ships; Home's "Connect the room display" is missing) | |
+| P11 One icon language | R17 | built | 71a76b5 |
 
 ## Known gaps
 

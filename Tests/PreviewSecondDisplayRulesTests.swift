@@ -31,3 +31,28 @@ final class PreviewSecondDisplayRulesTests: XCTestCase {
         XCTAssertNil(R.row(pieceCount: nil, secondPieceIsMeeting: []))
     }
 }
+
+// Owner bug 2026-11-25: Show on screen under Home's preview must not show when the active layout tiles no
+// windows (Leave my windows alone), even if pieces were left in it: it moves no window, so there is nothing to outline.
+final class PreviewRowNoTilingTests: XCTestCase {
+    private typealias R = PreviewSecondDisplayRules
+
+    func testLeaveMyWindowsAloneHasNoRow() {
+        let leave = LayoutLibrary.shipped(LayoutLibrary.leaveAlone)
+        XCTAssertNil(R.row(for: leave, secondPieceIsMeeting: []))
+    }
+
+    func testLeaveMyWindowsAloneWithStrayPiecesStillHasNoRow() {
+        var leave = LayoutLibrary.shipped(LayoutLibrary.leaveAlone)!
+        leave.oneDisplay = [LayoutPiece(kind: .chat, rect: UnitRect(x: 0, y: 0, w: 0.3, h: 1))]
+        XCTAssertGreaterThan(leave.pieceCount, 0)
+        XCTAssertNil(R.row(for: leave, secondPieceIsMeeting: []), "it moves no window")
+    }
+
+    func testATilingLayoutKeepsItsRow() {
+        let teach = LayoutLibrary.shipped(LayoutLibrary.teachFromBrowser)
+        XCTAssertEqual(R.row(for: teach, secondPieceIsMeeting: []), R.Row(note: nil))
+    }
+
+    func testNoLayoutHasNoRow() { XCTAssertNil(R.row(for: nil, secondPieceIsMeeting: [])) }
+}

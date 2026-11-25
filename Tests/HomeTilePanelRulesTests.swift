@@ -215,3 +215,19 @@ final class ScreenLayoutPanelRulesTests: XCTestCase {
         XCTAssertEqual(CameraTileRules.offRowTitle(cameraIsOff: true), "Camera off")
     }
 }
+
+// Owner UI bug 2026-11-25: the Camera pop-out's four 76pt tiles ran past the panel's inner width, so its
+// content sat about 8pt from the glass edge. A row of choice tiles must fit inside the shared padding.
+final class HomeTileMetricsTests: XCTestCase {
+    func testAFourTileRowFitsInsideThePanelPadding() {
+        XCTAssertFalse(HomeTileMetrics.rowFits(tileWidth: 76, count: 4), "the old Camera row was too wide")
+        let fitted = HomeTileMetrics.tileWidth(count: 4)
+        XCTAssertGreaterThanOrEqual(fitted, 70)
+        XCTAssertTrue(HomeTileMetrics.rowFits(tileWidth: fitted, count: 4))
+    }
+
+    func testTwoTilesFillTheRecordRow() {
+        XCTAssertTrue(HomeTileMetrics.rowFits(tileWidth: HomeTileMetrics.tileWidth(count: 2), count: 2))
+        XCTAssertTrue(HomeTileMetrics.rowFits(tileWidth: 147, count: 2))
+    }
+}

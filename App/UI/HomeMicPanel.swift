@@ -75,7 +75,6 @@ struct HomeMicPanel: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
-        .frame(width: 330)
     }
 
     private func pickRow(_ index: Int) {

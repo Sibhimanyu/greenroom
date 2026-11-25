@@ -160,7 +160,7 @@ private struct CameraLivePicture: View {
             }
             if compact {
                 if hasFrame, !seesYou {
-                    Image(systemName: VisibilitySymbol.everyoneSees(false).name)
+                    Image(systemName: VisibilitySymbol.nobodyInCamera.name)
                         .font(.caption2)
                         .foregroundStyle(.white)
                         .padding(4)
@@ -170,7 +170,7 @@ private struct CameraLivePicture: View {
                 HStack(spacing: 6) {
                     PictureChip(text: hasFrame ? "LIVE" : "PREVIEW", dot: hasFrame ? Brand.green : Color.white.opacity(0.6))
                     if hasFrame, !seesYou {
-                        PictureChip(text: "Can\u{2019}t see you", symbol: VisibilitySymbol.everyoneSees(false).name)
+                        PictureChip(text: "Can\u{2019}t see you", symbol: VisibilitySymbol.nobodyInCamera.name)
                             .help("Nobody is in view of the camera, so everything was removed. Check the camera is pointing at you.")
                     }
                 }

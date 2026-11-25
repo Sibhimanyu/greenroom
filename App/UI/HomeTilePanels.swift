@@ -29,10 +29,13 @@ struct HomeTilePanel<Content: View>: View {
     /// Footer link ("More look settings…"); nil hides the footer.
     var moreTitle: String?
     var onMore: (() -> Void)?
+    /// The panel's outer width: one for every Home pop-out. nil lets the content decide (Look's five
+    /// shape tiles are wider than the others).
+    var width: CGFloat? = HomeTileMetrics.width
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: HomeTileMetrics.sectionSpacing) {
             header
             content()
             if let moreTitle, let onMore {
@@ -42,7 +45,8 @@ struct HomeTilePanel<Content: View>: View {
                     .foregroundStyle(Brand.text)
             }
         }
-        .padding(14)
+        .padding(HomeTileMetrics.padding)
+        .frame(width: width)
     }
 
     @ViewBuilder private var header: some View {
@@ -126,7 +130,9 @@ struct HomeTileChoice: Identifiable {
 /// A row of choice tiles: arrows move, Return picks, Esc closes the popover.
 struct HomeTileChoiceRow: View {
     let choices: [HomeTileChoice]
-    var tileWidth: CGFloat = 70
+    var tileWidth: CGFloat = HomeTileMetrics.tileWidth(count: 4)
+    /// Lines a label may take. One keeps every tile the same height; a row of long names asks for two.
+    var labelLines = 1
     var autofocus = false
     let pick: (Int) -> Void
 
@@ -134,7 +140,7 @@ struct HomeTileChoiceRow: View {
     @State private var keyed = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: HomeTileMetrics.tileGap) {
             ForEach(Array(choices.enumerated()), id: \.element.id) { offset, choice in
                 Button { pick(offset) } label: {
                     VStack(spacing: 6) {
@@ -148,8 +154,9 @@ struct HomeTileChoiceRow: View {
                             // One line, always: the selected label's bolder
                             // weight wrapped "Whole screen" to two lines and
                             // made that tile taller than the rest (owner, 2026-11-24).
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
+                            .lineLimit(labelLines, reservesSpace: true)
+                            .multilineTextAlignment(.center)
+                            .minimumScaleFactor(labelLines == 1 ? 0.75 : 1)
                             // A width to scale into, or the label never shrinks.
                             .frame(maxWidth: tileWidth - 8)
                     }
@@ -266,11 +273,18 @@ struct HomeTileToggleRow: View {
     var help: String?
 
     var body: some View {
-        Toggle(isOn: $isOn.animatedCollapse()) {
+        // The label on the left and the switch at the trailing edge, like the rest of the app.
+        HStack(spacing: 8) {
             Text(title).font(.system(size: 12))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Toggle(title, isOn: $isOn.animatedCollapse())
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
         }
-        .toggleStyle(.switch)
-        .controlSize(.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
         .help(help ?? title)
     }
 }

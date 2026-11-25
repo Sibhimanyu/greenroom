@@ -35,6 +35,13 @@ enum PreviewSecondDisplayRules {
     /// not part of Home's action).
     struct Row: Equatable { var note: String? }
 
+    /// The row for the active layout: none when it tiles no windows, that is no pieces, or a layout
+    /// (Leave my windows alone) that moves none. The camera is not a piece and never counts.
+    static func row(for template: LayoutTemplate?, secondPieceIsMeeting: [Bool]) -> Row? {
+        guard let template, template.movesWindows else { return nil }
+        return row(pieceCount: template.pieceCount, secondPieceIsMeeting: secondPieceIsMeeting)
+    }
+
     static func row(pieceCount: Int?, secondPieceIsMeeting: [Bool]) -> Row? {
         guard (pieceCount ?? 0) > 0 else { return nil }
         return Row(note: note(secondPieceIsMeeting: secondPieceIsMeeting))

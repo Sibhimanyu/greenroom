@@ -129,15 +129,23 @@ extension LayoutLibrary {
     static let builtInsV2MigratedKey = "layoutLibrary.builtInsV2Migrated"
 
     /// Teach from a browser as the last release shipped it, to tell an edited copy from an untouched one.
-    private static func isOldTeachFromABrowser(_ t: LayoutTemplate) -> Bool {
+    /// Every saved field counts (R14.1): the name, the pieces' kinds, rects and eyes, the share and the
+    /// camera. A camera or share the owner never set is nil or the default. `eyesAreFinal` is false
+    /// while the one-time "show to everyone" flip has not run: a hidden eye then is just the old default.
+    private static func isOldTeachFromABrowser(_ t: LayoutTemplate, eyesAreFinal: Bool) -> Bool {
         let third = 1.0 / 12
         let old: [(LayoutPiece.Kind, UnitRect)] = [
             (.app(AppPiece(bundleID: builtInBrowserBundleID)), UnitRect(x: 0, y: 0, w: 8 * third, h: 1)),
             (.view(.activeSpeaker, startsHidden: false), UnitRect(x: 8 * third, y: 0, w: 4 * third, h: 5 * third)),
             (.chat, UnitRect(x: 8 * third, y: 5 * third, w: 4 * third, h: 7 * third)),
         ]
-        return t.twoDisplays == nil && t.oneDisplay.count == old.count
-            && zip(t.oneDisplay, old).allSatisfy { $0.kind == $1.0 && $0.rect == $1.1 }
+        return t.name == "Teach from a browser"
+            && (t.share == nil || t.share == ShareTarget())
+            && (t.camera == nil || t.camera == LayoutCamera())
+            && t.twoDisplays == nil && t.oneDisplay.count == old.count
+            && zip(t.oneDisplay, old).allSatisfy {
+                $0.kind == $1.0 && $0.rect == $1.1 && (!eyesAreFinal || $0.showsToEveryone)
+            }
     }
 
     /// One time, with its own key, set only after `save` worked (R16.1):
@@ -146,9 +154,13 @@ extension LayoutLibrary {
     /// - Meeting and chat stays, as the owner's own (starter tag cleared); Talk to the meeting is its new version;
     /// - the built-ins this library lacks are added; nothing is deleted;
     /// - no active layout (None) becomes Leave my windows alone.
+    /// - a former None user's own camera and share go to Leave my windows alone, the layout that replaces
+    ///   None, so day one looks the same (Q7, R16): `legacyCamera` and `legacyShare` are today's globals,
+    ///   read before the camera and share migration copies them into the other layouts.
     /// Returns whether it ran and saved.
     @discardableResult
-    mutating func migrateBuiltInsV2(defaults: UserDefaults, save: (LayoutLibrary) -> Bool) -> Bool {
+    mutating func migrateBuiltInsV2(defaults: UserDefaults, legacyCamera: LayoutCamera? = nil, legacyShare: ShareTarget? = nil,
+                                    save: (LayoutLibrary) -> Bool) -> Bool {
         guard !defaults.bool(forKey: Self.builtInsV2MigratedKey) else { return false }
         // Meeting and chat is the owner's now.
         for i in templates.indices where templates[i].starter == Self.meetingAndChat { templates[i].starter = nil }
@@ -156,7 +168,8 @@ extension LayoutLibrary {
         if let i = templates.firstIndex(where: { $0.starter == Self.teachFromBrowser }),
            var fresh = Self.shipped(Self.teachFromBrowser) {
             let old = templates[i]
-            if !Self.isOldTeachFromABrowser(old) {
+            let eyesFinal = defaults.bool(forKey: Self.shownToEveryoneMigratedKey) && defaults.bool(forKey: Self.appsShownMigratedKey)
+            if !Self.isOldTeachFromABrowser(old, eyesAreFinal: eyesFinal) {
                 var kept = old
                 kept.id = UUID()
                 kept.starter = nil
@@ -173,7 +186,15 @@ extension LayoutLibrary {
             guard let key = fresh.starter, added.contains(key), !templates.contains(where: { $0.starter == key }) else { continue }
             templates.append(fresh)
         }
-        if active == nil { activeID = nil; ensureActive() }
+        if active == nil {
+            activeID = nil
+            ensureActive()
+            // None becomes Leave my windows alone, with the camera and share None had.
+            if let i = templates.firstIndex(where: { $0.starter == Self.leaveAlone }) {
+                if let legacyCamera { templates[i].camera = legacyCamera }
+                if let legacyShare { templates[i].share = legacyShare }
+            }
+        }
         guard save(self) else { return false }
         defaults.set(true, forKey: Self.builtInsV2MigratedKey)
         return true

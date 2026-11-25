@@ -29,6 +29,12 @@ enum VisibilitySymbol: Equatable {
     case shareNothing
     case hideMeetingWindow
     case screenRecordingPermission
+    /// The camera picture has nobody in it ("Can't see you"). Never the eye: the eye is who sees the piece.
+    case nobodyInCamera
+    /// A layout with a second display.
+    case twoDisplays
+    /// A layout (or canvas) with no pieces: "Nothing moves".
+    case noPieces
 
     enum Tint: Equatable {
         /// Amber: `MeetingTheme.netNS` in the meeting, `Brand.netText` in the app (DESIGN.md).
@@ -57,6 +63,12 @@ enum VisibilitySymbol: Equatable {
         // SF Symbols (macOS 12+): a rectangle struck through, "this window out of the way".
         case .hideMeetingWindow: return "rectangle.slash"
         case .screenRecordingPermission: return "rectangle.dashed.badge.record"
+        // "The camera finds nobody": a person with a question mark (SF Symbols 2, macOS 11).
+        case .nobodyInCamera: return "person.fill.questionmark"
+        // Two monitors (SF Symbols 2). Not Share's glyph: a layout that spans two displays shares nothing extra.
+        case .twoDisplays: return "display.2"
+        // An empty layout: the same dashed rectangle as Show on screen, a placeholder rather than an action.
+        case .noPieces: return "rectangle.dashed"
         }
     }
 
@@ -84,7 +96,7 @@ enum VisibilitySymbol: Equatable {
     var tint: Tint {
         switch self {
         case .everyoneSees(true): return .net
-        case .everyoneSees(false), .cameraOff, .noCameraDevice, .startsHidden: return .neutral
+        case .everyoneSees(false), .cameraOff, .noCameraDevice, .startsHidden, .nobodyInCamera: return .neutral
         case let .camera(state): return state == .off ? .neutral : .primary
         default: return .primary
         }
@@ -106,6 +118,9 @@ enum VisibilitySymbol: Equatable {
         case .shareNothing: return "Just my camera"
         case .hideMeetingWindow: return "Hide the meeting window"
         case .screenRecordingPermission: return "Screen recording"
+        case .nobodyInCamera: return "Can\u{2019}t see you"
+        case .twoDisplays: return "Two displays"
+        case .noPieces: return "Nothing moves"
         }
     }
 }

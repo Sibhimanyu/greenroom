@@ -89,3 +89,52 @@ final class CameraStateTests: XCTestCase {
         }
     }
 }
+
+// MARK: - The camera button's memory lives with the live state (R6.6, R6.3)
+
+extension CameraStateTests {
+    // R6.6: a click turns the camera off for everyone; the next brings back the last "on" state.
+    func testTheClickBringsBackOnlyEveryoneAfterOff() {
+        var s = CameraStateSession(saved: .everyoneAndMe)
+        s.setLive(.onlyEveryone)
+        s.setLive(s.clickTarget(noCameraAllowed: true))
+        XCTAssertEqual(s.current, .off)
+        s.setLive(s.clickTarget(noCameraAllowed: true))
+        XCTAssertEqual(s.current, .onlyEveryone)
+    }
+
+    // R6.6: Home's camera tile changes the same live state, so the bar still brings it back.
+    func testAChangeFromHomeIsRememberedByTheBarsToggle() {
+        var s = CameraStateSession(saved: .everyoneAndMe)
+        s.setLive(.onlyEveryone)   // Home's four-way row
+        s.setLive(.off)            // Home's off row
+        XCTAssertEqual(s.clickTarget(noCameraAllowed: true), .onlyEveryone)
+    }
+
+    // R6.6: Home's tile turning the camera on from Off follows the same rule as the bar.
+    func testHomesTurnOnFromOffBringsBackTheLastOnState() {
+        var s = CameraStateSession(saved: .everyoneAndMe)
+        s.setLive(.onlyEveryone)
+        s.setLive(.off)
+        XCTAssertEqual(s.turnOnTarget, .onlyEveryone)
+        var me = CameraStateSession(saved: .onlyMe)
+        XCTAssertEqual(me.turnOnTarget, .everyoneAndMe, "Only me keeps its eye and turns the camera on")
+        me.setLive(.everyoneAndMe)
+        XCTAssertNil(me.turnOnTarget, "already on")
+    }
+
+    // R6.3, R6.6: Start drops the live change and the memory with it.
+    func testStartForgetsTheLastOnState() {
+        var s = CameraStateSession(saved: .off)
+        s.setLive(.onlyMe)
+        s.setLive(.onlyEveryone)
+        s.setLive(.off)
+        s.resetToDefault()
+        XCTAssertEqual(s.current, .off)
+        XCTAssertEqual(s.clickTarget(noCameraAllowed: true), .everyoneAndMe, "not the old meeting's Only everyone")
+        var t = CameraStateSession(saved: .onlyEveryone)
+        t.setLive(.off)
+        t.resetToDefault()
+        XCTAssertEqual(t.lastOn, .onlyEveryone, "the layout default's on-state")
+    }
+}

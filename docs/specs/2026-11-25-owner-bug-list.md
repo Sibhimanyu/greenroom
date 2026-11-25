@@ -9,7 +9,7 @@ Some of these were later reshaped by the Layouts builder
 ([layouts-builder.md](layouts-builder.md)). Where that happened, the item
 says so; the later spec wins.
 
-**Summary:** 13 requirements. All 13 are built. None is verified live: no
+**Summary:** 14 requirements (R1 to R14). All 14 are built. None is verified live: no
 commit on this branch records a check in a real meeting.
 
 | R | Item | Commit | Status |
@@ -27,6 +27,7 @@ commit on this branch records a check in a real meeting.
 | R11 | Zoom Marketplace guides in Settings | a7e3082 | built |
 | R12 | Smaller recordings, same crash safety | 494a79b | built |
 | R13 | Screenroom's WAV stays WAV | 494a79b | built |
+| R14 | Only the Only-me camera bubble is hidden from other apps' captures | 0e2cf5f, 2834566 | built |
 
 ## R1. Raj San Mode is editable
 
@@ -87,11 +88,11 @@ Greenroom windows left out. It must be quick, not laggy.
 - R4.3 Private Greenroom windows are left out of it.
 - R4.4 It ignores the layout's hide for itself (it is never hidden from its own
   display).
-- R4.6 A piece set to fill the display is true full screen: the window covers the display's whole frame, above the menu bar and Dock, and the picture is aspect fit on black (no cropping). A smaller piece stays a normal window at its rect. (`isFullDisplay`, `windowFrame`; needs a check on the real big screen.)
 - R4.5 It is low latency. (No number was set; this needs a live check.)
+- R4.6 A piece set to fill the display is true full screen: the window covers the display's whole frame, above the menu bar and Dock, and the picture is aspect fit on black (no cropping). A smaller piece stays a normal window at its rect. (`isFullDisplay`, `windowFrame`; needs a check on the real big screen.)
 
 Commits 02169d9 (`RoomScreenWindow`, `RoomScreenRules`), a7e3082 (ignores the
-layout hide). Tests: `RoomScreenTests`. Status: built. Not checked on a real
+layout hide), fb70689 (R4.6 true full screen). Tests: `RoomScreenTests`. Status: built. Not checked on a real
 extended display.
 
 ## R5. "Show my camera" is about my screen only
@@ -165,7 +166,7 @@ nothing the meeting sees changes. Share > Whiteboard is how to present it.
   is open; each new opening starts visible again. Opening it still never changes
   what is shared. The rule lives in `ShareableWindow.startsShown`.
 
-Commits 02169d9, a7e3082 (R8.3 to R8.5). Tests: `WhiteboardOpenRulesTests` (R8.6 included).
+Commits 02169d9, a7e3082 (R8.3 to R8.5), 331c464 (R8.6). Tests: `WhiteboardOpenRulesTests` (R8.6 included).
 Status: built (R8.6 added 2026-11-25).
 
 ## R9. One home for "What everyone sees" in the menus
@@ -260,14 +261,14 @@ Greenroom window except the camera bubble while the camera state is Only me.
 - R14.3 The setup guide is visible to other apps' captures; it is not a `WindowKind`.
 - R14.4 Every secret (Zoom SDK and Server-to-Server Client Secret, YouTube Client Secret) is a
   `SecureField`, dotted while typed and displayed; pasting works. Client IDs and Account IDs stay readable.
+- R14.5 No secret is logged. If a reveal control is ever added: a text "Show" / "Hide" button (never
+  the eye), re-masking after about 10 s and when the window loses focus.
 - R14.6 The "Show Greenroom on screen in other apps' recordings" switch is removed (decided 2026-11-25).
   Every Greenroom window is always `.readOnly`; only the camera bubble in Only me is `.none`. The bubble
   feeds at its real pixel size (max 1920, no cheap cap) and keeps the 0.5 s chrome fade.
-  The old recordings-switch key is ignored. Mirror is kept (owner, 2026-11-25): "Mirror my camera" is back in
-  the Camera look and Home, flips only the bubble on the owner's screen, never the Stage, recordings or Room
-  screen (layouts-builder R11.4).
-- R14.5 No secret is logged. If a reveal control is ever added: a text "Show" / "Hide" button (never
-  the eye), re-masking after about 10 s and when the window loses focus.
+  The old recordings-switch key is ignored. Mirror was removed with the switch in 0e2cf5f and came back in
+  2834566 (owner, 2026-11-25): "Mirror my camera" is in the Camera look (layouts-builder R11.1) and Home, flips
+  only the bubble on the owner's screen, never the Stage, recordings or Room screen (layouts-builder R11.4, R22).
 
 Tests: PresenceRecorderRulesTests, RoomScreenTests, ShareVisibilityRulesTests.
 

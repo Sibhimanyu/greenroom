@@ -68,7 +68,6 @@ struct HomeRecordPanel: View {
                 }
             }
         }
-        .frame(width: 330)
     }
 
     private func showFolder() {

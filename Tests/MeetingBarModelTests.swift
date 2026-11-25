@@ -144,8 +144,6 @@ final class MeetingBarModelTests: XCTestCase {
         XCTAssertEqual(M.cameraClickTarget(current: .onlyMe, lastOn: .onlyMe, noCameraAllowed: true), .off)
         // Nothing shared: Off would leave an empty picture, so a click does not turn it off.
         XCTAssertEqual(M.cameraClickTarget(current: .everyoneAndMe, lastOn: .everyoneAndMe, noCameraAllowed: false), .everyoneAndMe)
-        XCTAssertEqual(M.lastOnState(after: .onlyEveryone, previous: .everyoneAndMe), .onlyEveryone)
-        XCTAssertEqual(M.lastOnState(after: .off, previous: .onlyEveryone), .onlyEveryone, "Off never overwrites it")
     }
 
     func testTheCameraButtonShowsTheStateWithItsNameInTheTooltipAndSpokenLabel() {

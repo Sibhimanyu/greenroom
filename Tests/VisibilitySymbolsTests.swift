@@ -59,6 +59,17 @@ final class VisibilitySymbolsTests: XCTestCase {
         XCTAssertTrue(all.allSatisfy { !$0.words.localizedCaseInsensitiveContains("class") })
     }
 
+    // R17.5: the camera that sees nobody, two displays and an empty layout each have one icon.
+    func testNobodyInCameraTwoDisplaysAndEmptyLayoutHaveTheirOwnIcons() {
+        XCTAssertEqual(VisibilitySymbol.nobodyInCamera.symbol, "person.fill.questionmark")
+        XCTAssertEqual(VisibilitySymbol.nobodyInCamera.tint, .neutral)
+        XCTAssertEqual(VisibilitySymbol.nobodyInCamera.words, "Can\u{2019}t see you")
+        XCTAssertEqual(VisibilitySymbol.twoDisplays.symbol, "display.2")
+        XCTAssertEqual(VisibilitySymbol.noPieces.symbol, "rectangle.dashed")
+        XCTAssertNotEqual(VisibilitySymbol.nobodyInCamera.symbol, VisibilitySymbol.everyoneSees(false).symbol, "the eye means only you")
+        XCTAssertNotEqual(VisibilitySymbol.twoDisplays.symbol, VisibilitySymbol.share.symbol, "Share is not two displays")
+    }
+
     // R17.4 (Q31): nobody outside VisibilitySymbols.swift spells these symbol names.
     // Allowed: the editor's own drawing tools (App/Editor is checked only for the eye family, which
     // it no longer uses; its "rectangle.dashed" marquee hint is a generic shape and not guarded),
@@ -69,7 +80,7 @@ final class VisibilitySymbolsTests: XCTestCase {
             .appendingPathComponent("App")
         let always = try NSRegularExpression(pattern: #""(eye(\.[a-z.]+)?|dot\.radiowaves[a-z.]*)""#)
         let ambiguous = try NSRegularExpression(
-            pattern: #"(systemName|systemSymbolName|symbol|Symbol|icon|orb|guideRow|image)[^\n]*"(video(\.fill|\.slash|\.slash\.fill)?|camera(\.fill)?|rectangle\.on\.rectangle(\.slash)?|rectangle\.dashed\.badge\.record)""#)
+            pattern: #"(systemName|systemSymbolName|symbol|Symbol|icon|orb|guideRow|image)[^\n]*"(video(\.fill|\.slash|\.slash\.fill)?|camera(\.fill)?|rectangle\.on\.rectangle(\.slash)?|rectangle\.dashed(\.badge\.record)?|aqi\.medium|rectangle\.slash|person\.fill\.questionmark|display\.2)""#)
         let notSymbols = ["/Cues/", "/Zoom/", "/Debug/"]
         let allowedLines: [(file: String, contains: String)] = [
             ("Screenroom/ScreenroomSettingsTab.swift", #"node("video.fill", "Recording""#),

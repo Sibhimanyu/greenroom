@@ -106,15 +106,14 @@ enum LayoutEditHistory {
     /// `from` the one being left, `current` what is there now.
     static func restoring(_ target: LayoutLibrary, undoing from: LayoutLibrary, onto current: LayoutLibrary) -> LayoutLibrary {
         var result = target
-        // A step that did not choose a layout leaves the choice alone: the one made since
-        // (None included), if it still exists.
-        if target.activeID == from.activeID {
-            if let keep = current.activeID {
-                if target.template(id: keep) != nil { result.activeID = keep }
-            } else {
-                result.activeID = nil
-            }
+        // A step that did not choose a layout leaves the choice alone: the one made since,
+        // if it still exists.
+        if target.activeID == from.activeID,
+           let keep = current.activeID, target.template(id: keep) != nil {
+            result.activeID = keep
         }
+        // There is no None (Q3, R12.2): an undo never leaves no active layout.
+        result.ensureActive()
         return result
     }
 

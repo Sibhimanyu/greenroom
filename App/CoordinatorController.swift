@@ -1625,9 +1625,16 @@ final class CoordinatorController: ObservableObject {
     /// Home's camera and Just me controls: camera on again (not "No camera"), then re-preview.
     /// Same write as Settings > Webcam's camera cards.
     /// This meeting only: the saved default (Settings -> Layouts) is not written (R6.2).
+    /// From Off it brings back the last "on" state, like the bar's camera button (R6.6).
     func turnCameraOnFromHome() {
-        guard cameraState.noCamera else { return }
-        setLiveCameraState(CameraState(noCamera: false, shownOnMyScreen: cameraState.shownOnMyScreen))
+        guard let target = cameraSession.turnOnTarget else { return }
+        setLiveCameraState(target)
+    }
+
+    /// The bar's and the Meeting toolbar's camera button: Off <-> the last on state, this meeting only.
+    func toggleLiveCameraState() {
+        setLiveCameraState(cameraSession.clickTarget(
+            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: shareTarget.sharesNothing)))
     }
     var presenceTimer: Timer?
     /// A refresh is queued (bursts of changes make one); the timer's tick count; whether the stage has the self-view handler.

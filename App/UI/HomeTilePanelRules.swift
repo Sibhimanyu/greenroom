@@ -352,3 +352,24 @@ enum LayoutPanelRules {
 
     static let lockedNote = "A meeting runs the layout it started with. Pick the next one after it ends."
 }
+
+/// The one container every Home pop-out (Screen, Camera, Mic, Record, Layout, Look, More) is built in:
+/// width, inner padding and the gap between sections. A panel never pads or sizes itself.
+enum HomeTileMetrics {
+    static let width: CGFloat = 330
+    static let padding: CGFloat = 14
+    static let sectionSpacing: CGFloat = 10
+    static let tileGap: CGFloat = 6
+    /// What is left for content.
+    static var contentWidth: CGFloat { width - 2 * padding }
+
+    /// Whether `count` tiles of `tileWidth` and their gaps fit in the content width.
+    static func rowFits(tileWidth: CGFloat, count: Int) -> Bool {
+        tileWidth * CGFloat(count) + tileGap * CGFloat(max(0, count - 1)) <= contentWidth
+    }
+
+    /// The widest whole-point tile that lets `count` of them fill the row.
+    static func tileWidth(count: Int) -> CGFloat {
+        ((contentWidth - tileGap * CGFloat(max(0, count - 1))) / CGFloat(max(1, count))).rounded(.down)
+    }
+}

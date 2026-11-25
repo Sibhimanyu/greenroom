@@ -278,3 +278,58 @@ final class BuiltInLayoutsTests: XCTestCase {
         XCTAssertTrue(starter(LayoutLibrary.present).canAdd(.view(.people, startsHidden: false), to: .one))
     }
 }
+
+// MARK: - Review fixes
+
+extension BuiltInLayoutsTests {
+    // R16, Q7: a former None user's own camera and share go to Leave my windows alone, which replaces None.
+    func testNoneUsersKeepTheirCameraAndShareOnLeaveMyWindowsAlone() throws {
+        let (d, _) = savedOldInstall()
+        d.set("square", forKey: "webcamShape")
+        d.set(0.31, forKey: "bubbleWidthFraction")
+        d.set(0.07, forKey: "bubbleRightInset")
+        d.set(0.55, forKey: "bubbleBottomInset")
+        var share = ShareTarget()
+        share.kind = .window
+        share.appBundleID = "com.apple.Keynote"
+        d.set(try JSONEncoder().encode(share), forKey: LayoutCamera.shareDefaultsKey)
+        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        let leave = try XCTUnwrap(lib.active)
+        XCTAssertEqual(leave.starter, LayoutLibrary.leaveAlone)
+        XCTAssertEqual(leave.camera, LayoutCamera.global(from: d))
+        XCTAssertEqual(leave.camera?.shape, .square)
+        XCTAssertEqual(leave.share, share)
+    }
+
+    private func oldTeachLibrary(_ edit: (inout LayoutTemplate) -> Void) -> (UserDefaults, LayoutLibrary) {
+        let (d, old) = savedOldInstall()
+        var lib = old
+        edit(&lib.templates[1])
+        lib.save(to: d)
+        return (d, lib)
+    }
+
+    private func keptAsYours(_ d: UserDefaults, _ edited: LayoutLibrary) -> Bool {
+        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        return lib.templates.contains { $0.starter == nil && $0.name == "My " + edited.templates[1].name }
+    }
+
+    // R14.1: a renamed Teach from a browser is the owner's, not unedited.
+    func testARenamedTeachIsKept() {
+        let (d, lib) = oldTeachLibrary { $0.name = "Teach from a browser" + " (mine)" }
+        let kept = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        XCTAssertTrue(kept.templates.contains { $0.starter == nil && $0.name.contains("(mine)") }, "\(lib.templates[1].name)")
+    }
+
+    // R14.1: a Teach with a changed share is the owner's.
+    func testATeachWithAChangedShareIsKept() {
+        let (d, lib) = oldTeachLibrary { $0.share?.kind = .whiteboard }
+        XCTAssertTrue(keptAsYours(d, lib))
+    }
+
+    // R14.1: a Teach with a piece's eye turned off (hidden from everyone) is the owner's.
+    func testATeachWithAnEyeTurnedOffIsKept() {
+        let (d, lib) = oldTeachLibrary { $0.oneDisplay[2].showsToEveryone = false }
+        XCTAssertTrue(keptAsYours(d, lib))
+    }
+}

@@ -34,7 +34,10 @@ struct PresenceGeometry: Equatable {
     /// Where that display is drawn on the canvas, top-left origin, canvas
     /// pixels. Nil: it fills the canvas.
     var content: CGRect?
-    var canvas = CGSize(width: 1920, height: 1080)
+    /// The compositor's output size (StageCompositor and StageFrames default to it): the one canvas the
+    /// presence bubble is placed on.
+    static let defaultCanvas = CGSize(width: 1920, height: 1080)
+    var canvas = PresenceGeometry.defaultCanvas
 
     /// The ranges the coordinator clamps to (CoordinatorController.bubble*).
     static let widthFractions: ClosedRange<Double> = 0.08...0.6

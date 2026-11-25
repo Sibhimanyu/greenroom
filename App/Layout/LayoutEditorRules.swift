@@ -158,9 +158,7 @@ enum LayoutEditorRules {
     /// by key. On My screen always: the fade on a piece the meeting does not see is only a look,
     /// and a display that is not connected yet is still set up by hand. Preview: Everyone is the
     /// read-only picture of what the meeting sees, so nothing in it is edited there.
-    static func piecesAreInteractive(previewEveryone: Bool, everyoneSees: Bool, displayConnected: Bool) -> Bool {
-        !previewEveryone
-    }
+    static func piecesAreInteractive(previewEveryone: Bool) -> Bool { !previewEveryone }
 
     // MARK: The live camera picture
 

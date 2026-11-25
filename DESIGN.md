@@ -424,6 +424,7 @@ Never spell these SF Symbol names elsewhere.
 - Starts hidden on my screen: a dashed outline (same dashes as the camera's Only everyone), never an icon.
 - Camera: `video.fill` on, `video.slash` off, Only me wears an `eye.slash` badge, no device is `video` with a `?` badge.
 - Share `rectangle.on.rectangle`, Show on screen `rectangle.dashed`, Blur `aqi.medium`, hide meeting window `rectangle.slash`.
+- Can't see you (the camera finds nobody) `person.fill.questionmark`, two displays `display.2`, an empty layout `rectangle.dashed` (same dashed rectangle as Show on screen: a placeholder, "Nothing moves").
 - Words: "Everyone sees this", "Only you", "Starts hidden on your screen". Never "class".
 
 ## Open drift to fix

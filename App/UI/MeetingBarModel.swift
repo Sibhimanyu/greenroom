@@ -216,13 +216,7 @@ enum MeetingBarModel {
     /// "on" state (Only everyone returns as Only everyone). With nothing shared Off would leave an
     /// empty picture, so a click then leaves the state alone.
     static func cameraClickTarget(current: CameraState, lastOn: CameraState, noCameraAllowed: Bool) -> CameraState {
-        if current == .off { return lastOn == .off ? .everyoneAndMe : lastOn }
-        return noCameraAllowed ? .off : current
-    }
-
-    /// The "on" state to bring back after a click: any state but Off replaces it.
-    static func lastOnState(after state: CameraState, previous: CameraState) -> CameraState {
-        state == .off ? previous : state
+        CameraStateSession.clickTarget(current: current, lastOn: lastOn, noCameraAllowed: noCameraAllowed)
     }
 
     /// The four states as a menu. The two that hide you from the meeting are off while

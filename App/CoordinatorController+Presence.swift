@@ -102,7 +102,7 @@ extension CoordinatorController {
         let noScreenShare = kind == .whiteboard || kind == .nothing
         let shared = stage != nil
             ? (noScreenShare ? presenceFallbackFrame(for: kind) : capturedFrameInCocoa(wholeDisplay: !windowShare)) : nil
-        let content = noScreenShare ? CGRect(x: 0, y: 0, width: 1920, height: 1080) : stage?.lastContentRect
+        let content = noScreenShare ? CGRect(origin: .zero, size: PresenceGeometry.defaultCanvas) : stage?.lastContentRect
         let inputs = PresenceVisibility.Inputs(
             live: stage != nil && phase.isCameraBusy,
             layoutPlaceable: layout.isPresencePlaceable,

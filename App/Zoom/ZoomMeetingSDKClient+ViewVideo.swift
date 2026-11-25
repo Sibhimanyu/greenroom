@@ -153,6 +153,12 @@ extension ZoomMeetingSDKClient {
             Self.viewLog("switched user \(old) -> \(userID) on same element key=\(key.text) \(Self.tag(entry.element))")
             return entry.element.getVideoView()
         }
+        if entry.watch.freshPending {
+            // VideoArrival: video came to an element subscribed while it drew an avatar.
+            retireViewElement(entry, why: "video arrived after an avatar subscribe; fresh element while it flows")
+            viewVideo.retiredAt[key] = now
+            return makeViewElement(key, userID: entry.userID, frame: frame, tier: tier)
+        }
         noteRender(entry.element, watch: &entry.watch, label: "View window: \(key.text) user=\(entry.userID)")
         let rebuilds = viewVideo.rebuilds[key] ?? 0
         switch recoveryAction(entry.element, watch: entry.watch, now: now, rebuilds: rebuilds) {
@@ -288,6 +294,9 @@ extension ZoomMeetingSDKClient {
         let word = type == VideoRenderDataType_Video ? "video" : type == VideoRenderDataType_Avatar ? "avatar" : "none"
         Self.viewLog("render data type key=\(entry.key.text) user=\(entry.userID) \(Self.tag(element)) type=\(word)"
             + " sublayers=\(element.getVideoView().layer?.sublayers?.count ?? -1)")
+        if entry.watch.noteDataType(Self.renderedKind(type)) == .freshElement {
+            Self.viewLog("subscribed while it drew an avatar: a fresh element on the next pass key=\(entry.key.text)")
+        }
         if type == VideoRenderDataType_Video {
             if entry.warnedNoVideo, let at = entry.subscribedAt {
                 Self.viewLog("video arrived after \(Int(Date().timeIntervalSince(at)))s key=\(entry.key.text)")

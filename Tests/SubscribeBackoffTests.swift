@@ -119,4 +119,63 @@ final class SubscribeBackoffTests: XCTestCase {
         XCTAssertTrue(w.isRepeatRefusal(at: now.addingTimeInterval(0.2)))
         XCTAssertFalse(w.isRepeatRefusal(at: now.addingTimeInterval(3)))
     }
+
+    // MARK: VideoArrival: an element subscribed while it showed an avatar
+
+    /// 2026-11-25 20:18:00Z: the stage was made for "Sibhi -8A" 3 s after the
+    /// admit, subscribed by userid while the SDK still drew an avatar
+    /// (dataType 2), then turned to video (dataType 1) a second later and
+    /// stayed a blank tile for minutes. A fresh element made while the video
+    /// was flowing (20:21:12Z) drew at once.
+    func testVideoArrivingOnAnElementSubscribedAtAvatarGetsAFreshElement() {
+        var w = ElementWatch()
+        w.noteSubscribedByUserID(showing: .avatar)
+        XCTAssertEqual(w.noteDataType(.video), .freshElement)
+        XCTAssertTrue(w.freshPending)
+    }
+
+    func testElementSubscribedWhileVideoFlowsIsKept() {
+        var w = ElementWatch()
+        w.noteSubscribedByUserID(showing: .video)
+        XCTAssertEqual(w.noteDataType(.video), .keep)
+        XCTAssertFalse(w.freshPending)
+    }
+
+    /// A camera turned off and on again on an element that has drawn video
+    /// keeps the element: it drew before, it draws again.
+    func testCameraToggleAfterVideoKeepsTheElement() {
+        var w = ElementWatch()
+        w.noteSubscribedByUserID(showing: .video)
+        XCTAssertEqual(w.noteDataType(.avatar), .keep)
+        XCTAssertEqual(w.noteDataType(.video), .keep)
+        XCTAssertFalse(w.freshPending)
+    }
+
+    /// Only the first video on an avatar-subscribed element asks for a fresh
+    /// one; a second report on the same element changes nothing.
+    func testOnlyOneFreshElementPerArrival() {
+        var w = ElementWatch()
+        w.noteSubscribedByUserID(showing: .avatar)
+        XCTAssertEqual(w.noteDataType(.video), .freshElement)
+        XCTAssertEqual(w.noteDataType(.avatar), .keep)
+        XCTAssertEqual(w.noteDataType(.video), .keep)
+    }
+
+    /// Before its subscribe the element is not judged: the subscribe on
+    /// screen records what it shows then.
+    func testDataTypeBeforeTheSubscribeIsNotJudged() {
+        var w = ElementWatch()
+        XCTAssertEqual(w.noteDataType(.avatar), .keep)
+        XCTAssertEqual(w.noteDataType(.video), .keep)
+        w.noteSubscribedByUserID(showing: .video)
+        XCTAssertEqual(w.noteDataType(.video), .keep)
+    }
+
+    /// An explicit subscribe (data type None when asked) is the path that
+    /// carries its resolution in; it is not refreshed.
+    func testExplicitSubscribeIsNotRefreshed() {
+        var w = ElementWatch()
+        w.subscribed = true
+        XCTAssertEqual(w.noteDataType(.video), .keep)
+    }
 }

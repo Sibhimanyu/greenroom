@@ -179,6 +179,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return "el=" + String(bits & 0xFFFFFF, radix: 16)
     }
 
+    /// The SDK's data type as the plain value the pure rules take.
+    static func renderedKind(_ type: VideoRenderDataType) -> RenderedKind {
+        type == VideoRenderDataType_Video ? .video : type == VideoRenderDataType_Avatar ? .avatar : .none
+    }
+
     private static func sublayers(_ element: ZoomSDKVideoElement) -> Int {
         element.getVideoView().layer?.sublayers?.count ?? -1
     }
@@ -242,6 +247,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 watch.resolutionCode = Int(set.rawValue)
                 watch.resolutionSet = true
             }
+            watch.noteSubscribedByUserID(showing: Self.renderedKind(element.getDataType()))
             Self.videoLog("\(label) \(Self.tag(element)) already subscribed by userid"
                 + " (dataType=\(element.getDataType().rawValue)); not asking again")
             return (watch.resolutionCode, ZoomSDKError_Success, true)
@@ -281,6 +287,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = existing.resize(frame)
         }
         let now = Date()
+        if tileWatch[userID]?.freshPending == true {
+            // VideoArrival: video came to an element subscribed while it drew an avatar.
+            retireTile(userID, why: "video arrived after an avatar subscribe; fresh element while it flows")
+            return makeTile(userID: userID, frame: frame, hero: hero,
+                            notBefore: now.addingTimeInterval(ElementRecovery.freshDelay))
+        }
         var watch = tileWatch[userID] ?? ElementWatch()
         noteRender(existing, watch: &watch, label: "tile user=\(userID)")
         let rebuilds = tileRebuilds[userID] ?? 0
@@ -456,6 +468,13 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             nextStageSwitchAt = now.addingTimeInterval(2)
             Self.videoLog("stage \(Self.tag(element)) switched user \(old) -> \(userID) on same element")
             return element.getVideoView()
+        }
+        if stageWatch.freshPending {
+            // VideoArrival: video came to an element subscribed while it drew an
+            // avatar, and such an element stays blank (2026-11-25 20:18Z).
+            let person = stageUserID ?? userID
+            retireStage(why: "video arrived after an avatar subscribe; fresh element while it flows")
+            return makeStageElement(userID: person, frame: frame)
         }
         let label = "stage user=\(stageUserID ?? 0)"
         noteRender(element, watch: &stageWatch, label: label)
@@ -1533,14 +1552,19 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     ///
     /// The camera coming on is NOT a reason to subscribe again: a second
     /// subscribe on an element that holds one is refused (code 7) every time.
+    /// Video arriving on an element subscribed while it drew an avatar is a
+    /// reason for ONE fresh element (VideoArrival, SubscribeBackoff.swift).
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
         if let element, noteViewVideoDataType(element, type: type) { return }
         let tag = element.map(Self.tag) ?? "el=nil"
         let isVideo = type == VideoRenderDataType_Video
         let probe = element.map { " sublayers=\(Self.sublayers($0))" } ?? ""
+        let kind = Self.renderedKind(type)
         if let element, let stage = stageElement, element === stage {
+            let fresh = stageWatch.noteDataType(kind) == .freshElement
             Self.videoLog("dataTypeChanged owner=stage user=\(element.userid) \(tag) type=\(type.rawValue)\(probe)"
-                + (isVideo && stageWatch.subscribed ? " - not asking again" : ""))
+                + (fresh ? " - subscribed while it drew an avatar: a fresh element on the next pass"
+                         : isVideo && stageWatch.subscribed ? " - not asking again" : ""))
             if isVideo {
                 if stageGaveUp {
                     Self.videoLog("stage user=\(element.userid) camera came on after giving up - trying again")
@@ -1552,8 +1576,10 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         if let element, let tile = participantElements[element.userid], tile === element {
             let userID = element.userid
             let subscribed = tileWatch[userID]?.subscribed ?? false
+            let fresh = tileWatch[userID]?.noteDataType(kind) == .freshElement
             Self.videoLog("dataTypeChanged owner=tile user=\(userID) \(tag) type=\(type.rawValue)\(probe)"
-                + (isVideo && subscribed ? " - not asking again" : ""))
+                + (fresh ? " - subscribed while it drew an avatar: a fresh element on the next pass"
+                         : isVideo && subscribed ? " - not asking again" : ""))
             if isVideo {
                 if tileGaveUp.remove(userID) != nil {
                     Self.videoLog("tile user=\(userID) camera came on after giving up - trying again")

@@ -28,7 +28,7 @@ Note: `startAsHost(... enableMedia: true)` is the real meeting client (camera an
 | `.../NewMeetingRequest.swift` | "New scheduled meeting" choices -> Zoom create-meeting JSON (and back) | `NewMeetingRequest`, `body(now:calendar:)`, `parse`, `nextStart` |
 | `.../ZoomMeetingLinkParser.swift` | Pull meeting number + passcode from pasted link/invite text | `ZoomMeetingLinkParser.parse`, `digits` |
 | `.../VideoBudget.swift` | Pure arithmetic of Zoom's concurrent-stream budget | `VideoTier`, `VideoUsage`, `VideoRequest`, `VideoBudget.allocate`, `galleryPageSize`, `galleryTier`, `ViewSlot` |
-| `.../SubscribeBackoff.swift` | Pure timing for subscribe refusals and per-element recovery | `SubscribeBackoff`, `SubscribeThrottle`, `ElementWatch`, `ElementRecovery.decide/mayAsk` |
+| `.../SubscribeBackoff.swift` | Pure timing for subscribe refusals and per-element recovery | `SubscribeBackoff`, `SubscribeThrottle`, `ElementWatch`, `ElementRecovery.decide/mayAsk`, `VideoArrival.decide` (`RenderedKind`) |
 | `.../RecentSpeakers.swift` | Stable "last N speakers" for Multi-speaker | `RecentSpeakers` (1.5 s join, 8 s min stay, 1 change / 2 s) |
 | `.../HandsUpOrdering.swift` | Raised hands in order, waiting room in front | `HandRow`, `HandStamps.ordered` |
 | `.../MeetingRoomLedgers.swift` | Memories the SDK lacks: waiting-room arrival order, live reactions | `WaitingRoomLedger`, `WaitingPerson`, `WaitingRoomWords`, `ReactionLedger`, `ReactionWords` |
@@ -84,6 +84,7 @@ Callbacks to the UI are plain closures: `onVideoSubscribeFailure`, `onParticipan
 - Change who is featured as speaker -> `speakerToShow()`, `noteActiveAudio`, `noteActiveSpeaker` in `ZoomMeetingSDKClient.swift`; Multi-speaker stability constants in `RecentSpeakers.swift`.
 - Change video resolutions or concurrency priority -> `VideoBudget.allocate` / `VideoTier.quota` (pure; tests pin it); Meeting-window tile resolution -> `ZoomMeetingSDKClient.resolution(for:openStreams:hero:)`.
 - Change subscribe retry timing -> `SubscribeBackoff.failed`, `ElementRecovery.maxRebuilds/freshDelay/decide`.
+- Video arriving on an element subscribed by `userid` while it drew an avatar (someone just admitted, camera stream not started) stays blank (2026-11-25 20:18Z). `ElementWatch.noteDataType` -> `VideoArrival.decide` sets `freshPending`; the owner's next pass (`stageView`, `participantView`, `viewVideoView`) retires it and makes ONE fresh element while the video flows. Never a second subscribe on the same element (code 7). Log: "subscribed while it drew an avatar: a fresh element on the next pass".
 - Fix a black tile -> read `Greenroom-video.log`, then `onSubscribeUserFail`, `makeTile`, `makeStageElement`, `makeViewElement` (ViewVideo), `noteRender`.
 - Change what a View window subscribes -> `ZoomMeetingSDKClient+ViewVideo.swift` (`viewVideoView`, `releaseViewVideo(of:keeping:)`); the callers are in `App/UI/MeetingVideo/MeetingViewWindow.swift`.
 - Change the shared-screen stage -> `ShareViewer` (`pick`, `stageView`, `renderIfReady`); the rule model -> `MeetingShareRules.swift` (`ShareStageSelection`, `ShareRule`).

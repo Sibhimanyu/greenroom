@@ -54,6 +54,13 @@ struct ElementWatch {
     var resolutionCode = 0
     /// The one retry of the subscribe on the SAME element has been used.
     var retried = false
+    /// Subscribed by setting `userid` (no explicit ask), and what the element
+    /// showed at that moment. See VideoArrival.
+    var subscribedByUserID = false
+    var sawVideo = false
+    /// VideoArrival asked for this element to be replaced; the owner's next
+    /// pass retires it and makes a fresh one.
+    var freshPending = false
 
     /// Video is showing: whatever refused it, it got there. Not a fault.
     mutating func recoveredByVideo() {
@@ -67,6 +74,22 @@ struct ElementWatch {
         retried = true
         subscribed = false
         refusedUntil = nil
+    }
+
+    /// The subscribe on screen found the element already subscribed by
+    /// `userid`, showing `kind`.
+    mutating func noteSubscribedByUserID(showing kind: RenderedKind) {
+        subscribedByUserID = true
+        if kind == .video { sawVideo = true }
+    }
+
+    /// The SDK reported a new data type for this element. Returns what the
+    /// owner should do; `.freshElement` also sets `freshPending`.
+    mutating func noteDataType(_ kind: RenderedKind) -> VideoArrival.Action {
+        let action = VideoArrival.decide(kind, watch: self)
+        if kind == .video { sawVideo = true }
+        if action == .freshElement { freshPending = true }
+        return action
     }
 
     /// One subscribe produces two or three refusals at the same instant
@@ -133,5 +156,36 @@ enum ElementRecovery {
     /// Whether the element may make its one subscribe now.
     static func mayAsk(watch: ElementWatch, gaveUp: Bool, now: Date) -> Bool {
         !watch.subscribed && watch.refusedUntil == nil && !gaveUp && now >= watch.notBefore
+    }
+}
+
+/// What an element draws, as a plain value (the SDK's VideoRenderDataType).
+enum RenderedKind: Equatable {
+    case none, video, avatar
+}
+
+/// The rule from 2026-11-25 20:18Z. A remote person admitted from the waiting
+/// room was put on the stage 3 s later, before their camera's stream had
+/// started: setting `userid` subscribed the element while the SDK drew an
+/// avatar (dataType 2, and setResolution refused, code 1). A second later the
+/// data type turned to video (1) with four sublayers, and the tile stayed a
+/// blank dark grey for minutes. Elements made while the video was already
+/// flowing (20:20:39 in a view window, 20:21:12 on the stage) drew at once.
+/// So the first video on an element that was subscribed by userid while it
+/// showed no video gets ONE fresh element, made while the video flows. Not a
+/// second subscribe on the same element: that is refused with code 7.
+/// An element that has drawn video before (a camera turned off and on) is
+/// kept, and an explicit subscribe (asked at None, resolution first) is
+/// never judged here.
+enum VideoArrival {
+    enum Action: Equatable {
+        case keep
+        /// Retire this element and make a fresh one for the same person.
+        case freshElement
+    }
+
+    static func decide(_ kind: RenderedKind, watch: ElementWatch) -> Action {
+        guard kind == .video, watch.subscribedByUserID, !watch.sawVideo, !watch.freshPending else { return .keep }
+        return .freshElement
     }
 }

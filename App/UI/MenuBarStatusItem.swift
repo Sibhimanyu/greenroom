@@ -143,7 +143,7 @@ final class MenuBarStatusItem: NSObject {
 
     private func state() -> MenuBarState {
         var s = MenuBarState()
-        s.isStarting = coordinator.isRunning && !coordinator.stageLive
+        s.isStarting = coordinator.phase.isStarting
         s.isLive = coordinator.sceneInUse
         s.isStopping = coordinator.isStopping
         s.className = coordinator.className

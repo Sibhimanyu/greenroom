@@ -264,4 +264,12 @@ final class SessionPhaseTests: XCTestCase {
             XCTAssertEqual(p.isRecordMode, p.recordOnlyActive || p.startingRecordOnly, "\(p.session)")
         }
     }
+
+    func testFullyLiveAndStartingMatchOldExpressions() {
+        for p in reachableStates() {
+            XCTAssertEqual(p.isMeetingFullyLive, p.stageLive && !p.isRunning, "\(p.session)")
+            XCTAssertEqual(p.isSceneFullyLive, (p.stageLive || p.recordOnlyActive) && !p.isRunning, "\(p.session)")
+            XCTAssertEqual(p.isStarting, p.isRunning && !p.stageLive, "\(p.session)")
+        }
+    }
 }

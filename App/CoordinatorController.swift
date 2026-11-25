@@ -1429,7 +1429,7 @@ final class CoordinatorController: ObservableObject {
     private var mainWindowLiveSignal: Bool? {
         if isStopping { return nil }
         if recordOnlyActive { return isRecording }
-        return stageLive && !isRunning && startReadiness.failure == nil && startReadiness.steps.isEmpty
+        return phase.isMeetingFullyLive && startReadiness.failure == nil && startReadiness.steps.isEmpty
     }
 
     /// Applies the state machine to the current session state. True when it
@@ -1623,14 +1623,14 @@ final class CoordinatorController: ObservableObject {
         guard message != lastReportedStageError else { return }
         lastReportedStageError = message
         log(message)
-        if stageLive, !isRunning {
+        if phase.isMeetingFullyLive {
             Notifier.post(title: "Greenroom picture problem", body: message)
         }
     }
 
     private var lastCameraLive: Bool?
     private func camerasLiveChanged(_ live: [Bool]) {
-        guard stageLive || recordOnlyActive, !isRunning, let first = live.first else { return }
+        guard phase.isSceneFullyLive, let first = live.first else { return }
         defer { lastCameraLive = first }
         guard lastCameraLive != first else { return }
         log(first ? "The camera is sending a picture again."

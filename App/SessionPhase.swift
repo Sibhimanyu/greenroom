@@ -261,4 +261,14 @@ struct SessionPhase: Equatable {
     /// `recordOnlyActive || startingRecordOnly` (equal in every state, because a
     /// Record start task is a running start task).
     var isRecordMode: Bool { recordOnlyActive || startingRecordOnly }
+
+    /// A meeting's picture is up and its start task has finished.
+    var isMeetingFullyLive: Bool { stageLive && !isRunning }
+
+    /// A picture (meeting or Record) is up and the start task has finished.
+    var isSceneFullyLive: Bool { sceneInUse && !isRunning }
+
+    /// A start task is running and the meeting picture is not up yet. Also true
+    /// while a Record session starts (its start task is `isRunning` too).
+    var isStarting: Bool { isRunning && !stageLive }
 }

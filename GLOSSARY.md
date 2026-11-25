@@ -44,3 +44,8 @@ every change to a question is a change to a flag, and the coordinator is its
 - `isRecordMode`: `recordOnlyActive || startingRecordOnly` (the old
   `recordOnlyActive || (isRunning && startingRecordOnly)` is the same value).
   Picks the Record stop over the meeting stop, and the Record exit prompt.
+- `isMeetingFullyLive`: `stageLive && !isRunning`, a meeting's picture is up and
+  its start task is done. `isSceneFullyLive` is the same for either kind
+  (`sceneInUse && !isRunning`).
+- `isStarting`: `isRunning && !stageLive`. True during a Record session's start
+  too; the menu bar shows "Starting" for both.

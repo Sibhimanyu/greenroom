@@ -19,6 +19,33 @@ enum ShareVisibleWindows {
     private(set) static var windowNumbers: Set<Int> = []
     private(set) static var kind: ShowOnShare.ShareKind = .other
 
+    /// Other apps kept out of everyone's picture (their 📡 is off), set from the
+    /// layout by `LayoutShareChoice`; `Visibility.hiddenAppIDs` is the only rule.
+    private(set) static var hiddenAppIDs: Set<String> = []
+
+    static func setHiddenApps(_ ids: Set<String>) {
+        guard ids != hiddenAppIDs else { return }
+        hiddenAppIDs = ids
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// Everything the display filter depends on. The capture compares it once a
+    /// second, so a switch flipped mid-meeting, a window that came or went, and an
+    /// excluded app that launched or quit all rebuild the filter.
+    struct FilterState: Equatable {
+        var windowNumbers: Set<Int> = []
+        var hiddenAppIDs: Set<String> = []
+        /// The running processes of those apps: a relaunch is a new process.
+        var hiddenPIDs: Set<pid_t> = []
+    }
+
+    static var filterState: FilterState {
+        // Only a whole-display share has an app exclusion (Visibility.hiddenAppIDs says so too).
+        let hidden = kind == .display ? hiddenAppIDs : []
+        let pids = hidden.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).map(\.processIdentifier) }
+        return FilterState(windowNumbers: effectiveNumbers, hiddenAppIDs: hidden, hiddenPIDs: Set(pids))
+    }
+
     static func contains(_ number: Int) -> Bool { windowNumbers.contains(number) }
 
     static func add(_ number: Int) {

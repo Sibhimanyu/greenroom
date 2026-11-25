@@ -56,22 +56,29 @@ struct AppPiece: Codable, Equatable, Hashable {
     var url: String
     var opensAtStart: Bool
     var closesOnStop: Bool
+    /// The eye badge, off: at Start the app opens (or is placed) minimised, so it is
+    /// not on the owner's screen. Another app only; Greenroom's own windows use
+    /// "Starts hidden". Saved as `minimised`; old files read as false.
+    var opensMinimised: Bool
 
-    init(bundleID: String, url: String = "", opensAtStart: Bool = true, closesOnStop: Bool = false) {
+    init(bundleID: String, url: String = "", opensAtStart: Bool = true, closesOnStop: Bool = false,
+         opensMinimised: Bool = false) {
         self.bundleID = bundleID
         self.url = url
         self.opensAtStart = opensAtStart
         self.closesOnStop = closesOnStop
+        self.opensMinimised = opensMinimised
     }
 
-    private enum CodingKeys: String, CodingKey { case bundleID, url, opensAtStart, closesOnStop }
+    private enum CodingKeys: String, CodingKey { case bundleID, url, opensAtStart, closesOnStop, opensMinimised = "minimised" }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(bundleID: (try? c.decodeIfPresent(String.self, forKey: .bundleID)) ?? "",
                   url: (try? c.decodeIfPresent(String.self, forKey: .url)) ?? "",
                   opensAtStart: (try? c.decodeIfPresent(Bool.self, forKey: .opensAtStart)) ?? true,
-                  closesOnStop: (try? c.decodeIfPresent(Bool.self, forKey: .closesOnStop)) ?? false)
+                  closesOnStop: (try? c.decodeIfPresent(Bool.self, forKey: .closesOnStop)) ?? false,
+                  opensMinimised: (try? c.decodeIfPresent(Bool.self, forKey: .opensMinimised)) ?? false)
     }
 }
 
@@ -214,7 +221,8 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     /// "Show to everyone": Greenroom's own window for this piece (Meeting window,
     /// Chat, a meeting view) is let into the picture the meeting sees. On by
     /// default (owner, 2026-11-25: everything a layout places is visible);
-    /// ignored for other apps' windows.
+    /// for another app it is its 📡 badge (kept out of everyone's picture on a
+    /// whole-display share when off); fixed on for the Greenroom Browser.
     var showsToEveryone = LayoutPiece.defaultShowsToEveryone
 
     /// The default for a piece nobody has chosen for: a layout shows what it places.
@@ -229,9 +237,10 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
 
     /// Whether this piece is one of Greenroom's own windows that can carry the
     /// switch (ShareableWindow.offersSwitch): the Meeting window, Chat, a view.
-    /// Other apps' windows and the Greenroom Browser never do.
+    /// Other apps' windows have a badge switch of their own (`Visibility.hiddenAppIDs`),
+    /// not a window switch; the Greenroom Browser has neither.
     var offersShareSwitch: Bool {
-        !Visibility.everyoneSees(piece: self, target: .wholeScreen).isFixed
+        kind.app == nil && !Visibility.everyoneSees(piece: self, target: .wholeScreen).isFixed
     }
 
     private enum CodingKeys: String, CodingKey { case id, kind, rect, showsToEveryone }

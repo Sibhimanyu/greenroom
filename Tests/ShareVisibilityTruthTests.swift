@@ -15,7 +15,7 @@ final class ShareVisibilityTruthTests: XCTestCase {
         case .chat: kind = .chat
         case .view: kind = .view(.gallery, startsHidden: startsHidden)
         case .browser: kind = .app(AppPiece(bundleID: "com.sibhimanyu.greenroom.browser"))
-        case .otherApp: kind = .app(AppPiece(bundleID: app ?? chosenApp))
+        case .otherApp: kind = .app(AppPiece(bundleID: app ?? chosenApp, opensMinimised: startsHidden))
         case .roomScreen: kind = .roomScreen
         }
         // Compile-time guard: every real kind is named here.
@@ -28,8 +28,10 @@ final class ShareVisibilityTruthTests: XCTestCase {
     }
 
     /// A pure model of the capture: our own windows are dropped unless excepted
-    /// (the real `ShowOnShare.exceptionIDs`), other apps stay on a display share,
-    /// only the chosen window is in a window share, nothing app-like otherwise.
+    /// (the real `ShowOnShare.exceptionIDs`), other apps stay on a display share
+    /// unless the filter excludes them (`Visibility.hiddenAppIDs`, what the capture
+    /// passes to ScreenCaptureKit), only the chosen window is in a window share,
+    /// nothing app-like otherwise.
     private func captured(_ p: LayoutPiece, number: Int, target: Visibility.Target) -> Bool {
         let isBrowser: Bool
         let ownWindow: Bool
@@ -44,7 +46,10 @@ final class ShareVisibilityTruthTests: XCTestCase {
             if case let .app(a) = p.kind { return a.bundleID == id }
             return false
         case .wholeScreen:
-            guard ownWindow else { return true }
+            guard ownWindow else {
+                guard case let .app(a) = p.kind else { return true }
+                return !Visibility.hiddenAppIDs(pieces: [p], target: target).contains(a.bundleID)
+            }
             let registry: Set<Int> = (p.offersShareSwitch && p.showsToEveryone) ? [number] : []
             let always: Set<Int> = isBrowser ? [number] : []
             return ShowOnShare.exceptionIDs(kind: target.shareKind, registry: registry, alwaysShared: always)?.contains(number) ?? false
@@ -97,7 +102,53 @@ final class ShareVisibilityTruthTests: XCTestCase {
             guard case .fixedOn = Visibility.everyoneSees(piece: piece(.browser, shown: shown), target: .wholeScreen)
             else { return XCTFail("browser must be fixed on") }
         }
-        XCTAssertTrue(Visibility.everyoneSees(piece: piece(.otherApp, shown: false), target: .wholeScreen).isOn)
+        // Another app is not fixed: its own switch decides.
+        XCTAssertTrue(Visibility.everyoneSees(piece: piece(.otherApp, shown: true), target: .wholeScreen).isOn)
+        XCTAssertFalse(Visibility.everyoneSees(piece: piece(.otherApp, shown: false), target: .wholeScreen).isOn)
+    }
+
+    func testTheFilterExcludesExactlyTheAppsWhoseBadgeIsOffOnAWholeScreen() {
+        let off = piece(.otherApp, shown: false, app: "com.example.off")
+        let on = piece(.otherApp, shown: true, app: "com.example.on")
+        let browser = piece(.browser, shown: false)
+        let chat = piece(.chat, shown: false)
+        XCTAssertEqual(Visibility.hiddenAppIDs(pieces: [off, on, browser, chat], target: .wholeScreen), ["com.example.off"])
+        // Other targets have no display filter to put an app in.
+        for t in targets where t != .wholeScreen {
+            XCTAssertTrue(Visibility.hiddenAppIDs(pieces: [off], target: t).isEmpty, "\(t)")
+        }
+        // Two pieces of one app: it leaves only when every one of them is off.
+        let twin = piece(.otherApp, shown: true, app: "com.example.off")
+        XCTAssertTrue(Visibility.hiddenAppIDs(pieces: [off, twin], target: .wholeScreen).isEmpty)
+    }
+
+    func testTheBrowserCannotBeTakenOutOfThePictureEvenIfSavedOff() {
+        XCTAssertTrue(Visibility.hiddenAppIDs(pieces: [piece(.browser, shown: false)], target: .wholeScreen).isEmpty)
+    }
+
+    func testOtherAppsOpenMinimisedWhenTheirEyeIsOffAndOnlyThen() {
+        XCTAssertEqual(Visibility.onMyScreen(piece: piece(.otherApp, shown: true, startsHidden: true)), .off)
+        XCTAssertTrue(Visibility.opensMinimised(piece: piece(.otherApp, shown: true, startsHidden: true)))
+        XCTAssertFalse(Visibility.opensMinimised(piece: piece(.otherApp, shown: true, startsHidden: false)))
+        // The Greenroom Browser, the chat and views keep their own meaning.
+        let browser = LayoutPiece(kind: .app(AppPiece(bundleID: Visibility.builtInBrowserID, opensMinimised: true)), rect: .full)
+        XCTAssertTrue(Visibility.onMyScreen(piece: browser).isFixed)
+        XCTAssertFalse(Visibility.opensMinimised(piece: browser))
+        XCTAssertFalse(Visibility.opensMinimised(piece: piece(.meeting, shown: true, startsHidden: true)))
+    }
+
+    func testTheAppBadgeAndMinimisedStateSurviveSavingAndOldFilesDefault() throws {
+        let old = #"{"bundleID":"com.example.keynote"}"#.data(using: .utf8)!
+        XCTAssertFalse(try JSONDecoder().decode(AppPiece.self, from: old).opensMinimised)
+        let oldPiece = try JSONEncoder().encode(LayoutPiece(kind: .app(AppPiece(bundleID: "x")), rect: .full))
+        var json = try JSONSerialization.jsonObject(with: oldPiece) as! [String: Any]
+        json.removeValue(forKey: "showsToEveryone")
+        let decoded = try JSONDecoder().decode(LayoutPiece.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertTrue(decoded.showsToEveryone, "an old file's app is in everyone's picture")
+        let p = LayoutPiece(kind: .app(AppPiece(bundleID: "x", opensMinimised: true)), rect: .full, showsToEveryone: false)
+        let back = try JSONDecoder().decode(LayoutPiece.self, from: JSONEncoder().encode(p))
+        XCTAssertEqual(back.kind.app?.opensMinimised, true)
+        XCTAssertFalse(back.showsToEveryone)
     }
 
     func testOnlyOwnWindowsOnAWholeScreenCanBeFlipped() {
@@ -105,7 +156,7 @@ final class ShareVisibilityTruthTests: XCTestCase {
             for target in targets {
                 let flippable = !Visibility.everyoneSees(piece: piece(s, shown: true), target: target).isFixed
                 let expected: Bool
-                if case .wholeScreen = target { expected = [.meeting, .chat, .view].contains(s) } else { expected = false }
+                if case .wholeScreen = target { expected = [.meeting, .chat, .view, .otherApp].contains(s) } else { expected = false }
                 XCTAssertEqual(flippable, expected, "\(s) on \(target)")
             }
         }
@@ -116,6 +167,7 @@ final class ShareVisibilityTruthTests: XCTestCase {
         XCTAssertEqual(Visibility.onMyScreen(piece: piece(.view, shown: true, startsHidden: false)), .on)
         XCTAssertTrue(Visibility.onMyScreen(piece: piece(.chat, shown: true)).isFixed)
         XCTAssertTrue(Visibility.onMyScreen(piece: piece(.otherApp, shown: true)).isOn)
+        XCTAssertFalse(Visibility.onMyScreen(piece: piece(.otherApp, shown: true)).isFixed)
         XCTAssertTrue(Visibility.onMyScreen(piece: piece(.roomScreen, shown: true)).isOn)
     }
 

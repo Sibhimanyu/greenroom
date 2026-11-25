@@ -207,6 +207,7 @@ enum LayoutShareChoice {
         meeting = false
         chat = false
         views = [:]
+        ShareVisibleWindows.setHiddenApps([])
     }
 
     static func record(_ r: LayoutResolver.Result) {
@@ -217,5 +218,7 @@ enum LayoutShareChoice {
         WindowShareController.existing(for: ChatWindowController.currentWindow)?.set(chat)
         WindowShareController.existing(for: ParticipantGridWindowController.meetingWindow)?.set(meeting)
         MeetingViewWindows.applyLayoutShare()
+        // Other apps whose 📡 is off leave the display capture; every layout pass re-says it.
+        ShareVisibleWindows.setHiddenApps(Visibility.hiddenAppIDs(pieces: r.apps.map(\.piece), target: .wholeScreen))
     }
 }

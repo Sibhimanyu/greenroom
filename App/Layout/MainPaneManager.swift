@@ -129,6 +129,22 @@ enum MainPaneManager {
         return refusedSizeLine(name: name, asked: frame.ax, actual: actual)
     }
 
+    /// "Opens minimised" (the eye badge off): after the app is open and placed, its
+    /// front window goes to the Dock. Another app only. Needs Accessibility, as
+    /// placing does; without it the window simply stays up (placing already said so).
+    static func minimiseFrontWindow(bundleID: String) async {
+        guard !AppCatalog.isBuiltInBrowser(bundleID), AppWindowManager.hasAccessibilityPermission else { return }
+        // A cold-launched app may not have a window yet; give it the same wait placing had.
+        let deadline = Date().addingTimeInterval(windowTimeout)
+        while Date() < deadline {
+            if let window = AppWindowManager.frontWindow(ofAppWithBundleID: bundleID) {
+                AppWindowManager.minimize(window)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+    }
+
     /// An app that clamps a size keeps what it returns; nothing else moves to
     /// make room. Said once, so a layout that does not quite fit is explained.
     private static func refusedSizeLine(name: String, asked: CGRect, actual: CGRect) -> String? {

@@ -148,11 +148,14 @@ final class LayoutEngine {
             guard let app = placed.piece.kind.app, all || app.opensAtStart,
                   let frame = frames[placed.piece.id] else { continue }
             let name = AppCatalog.displayName(forBundleID: app.bundleID) ?? app.bundleID
+            let minimised = Visibility.opensMinimised(piece: placed.piece)
             log("Opening \(name)\u{2026}")
             Task {
                 if let line = await MainPaneManager.openWindow(bundleID: app.bundleID, url: app.url, frame: frame) {
                     log(line)
                 }
+                // The eye badge off: placed, then out of the way.
+                if minimised { await MainPaneManager.minimiseFrontWindow(bundleID: app.bundleID) }
             }
         }
     }
@@ -209,7 +212,8 @@ final class LayoutEngine {
     /// teacher works in, so it takes focus.
     func activateLargestApp(_ template: LayoutTemplate) {
         guard let largest = LayoutResolver.largestAppOnMain(resolve(template)),
-              let bundleID = largest.piece.kind.app?.bundleID else { return }
+              let bundleID = largest.piece.kind.app?.bundleID,
+              !Visibility.opensMinimised(piece: largest.piece) else { return }
         if AppCatalog.isBuiltInBrowser(bundleID) {
             BrowserWindowController.activate()
         } else {

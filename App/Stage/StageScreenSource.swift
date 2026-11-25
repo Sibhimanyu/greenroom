@@ -69,7 +69,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     private var followTask: Task<Void, Never>?   // under stateLock
     /// "Show on my share": watches the windows let into a display share.
     private var exceptionTask: Task<Void, Never>?   // under stateLock
-    private var exceptionsApplied: Set<Int> = []    // under stateLock (written once in start)
+    private var exceptionsApplied = ShareVisibleWindows.FilterState()    // under stateLock (written once in start)
     private let queue = DispatchQueue(label: "greenroom.stage.screen", qos: .userInteractive)
     private let maxSize: CGSize
     let captureAudio: Bool
@@ -257,17 +257,14 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         let filter: SCContentFilter
         switch target {
         case .display:
-            // Greenroom's own windows stay out of the class picture, the rail and notes bar are on this screen.
-            let own = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
+            let wanted = await MainActor.run { ShareVisibleWindows.filterState }
+            let (built, own) = Self.displayFilter(display: display, content: content, state: wanted)
             // Overlay panels made later (control bar, border, countdown) are
             // Greenroom's windows too, and are kept out only because the whole
             // app is excluded. If macOS does not list the app, say so.
             if own.isEmpty { Self.log("Greenroom is not in ScreenCaptureKit's application list, so its own windows are not excluded from this capture.") }
-            // "Show on my share" windows are let back in: excepted from that exclusion.
-            let wanted = await MainActor.run { ShareVisibleWindows.effectiveNumbers }
-            let excepted = content.windows.filter { wanted.contains(Int($0.windowID)) }
             stateLock.lock(); exceptionsApplied = wanted; stateLock.unlock()
-            filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: excepted)
+            filter = built
         case .app(let bundleID):
             filter = try appFilter(bundleID: bundleID, content: content, display: display,
                                    info: displayInfo, all: displays)
@@ -479,7 +476,7 @@ extension StageScreenSource {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled, let self else { return }
-                let wanted = await MainActor.run { ShareVisibleWindows.effectiveNumbers }
+                let wanted = await MainActor.run { ShareVisibleWindows.filterState }
                 guard wanted != applied else { continue }
                 if await self.updateExceptions(wanted, displayID: displayID) { applied = wanted }
             }
@@ -487,22 +484,34 @@ extension StageScreenSource {
         stateLock.lock(); exceptionTask = task; stateLock.unlock()
     }
 
-    private func updateExceptions(_ wanted: Set<Int>, displayID: CGDirectDisplayID) async -> Bool {
+    /// The display filter: Greenroom's own windows stay out of the picture (the rail
+    /// and notes bar are on this screen) except the "Show on my share" ones, and so
+    /// does every other app whose 📡 is off (`state.hiddenAppIDs`, by bundle id, so a
+    /// window it opens later is out too). Returns the own-app list for the log.
+    fileprivate static func displayFilter(display: SCDisplay, content: SCShareableContent,
+                                          state: ShareVisibleWindows.FilterState) -> (SCContentFilter, own: [SCRunningApplication]) {
+        let own = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
+        let hidden = content.applications.filter { state.hiddenAppIDs.contains($0.bundleIdentifier) }
+        let excepted = content.windows.filter { state.windowNumbers.contains(Int($0.windowID)) }
+        return (SCContentFilter(display: display, excludingApplications: own + hidden, exceptingWindows: excepted), own)
+    }
+
+    private func updateExceptions(_ wanted: ShareVisibleWindows.FilterState, displayID: CGDirectDisplayID) async -> Bool {
         stateLock.lock(); let running = stream; stateLock.unlock()
         guard let running,
               let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
               let display = content.displays.first(where: { $0.displayID == displayID }) else { return false }
-        let own = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
-        let excepted = content.windows.filter { wanted.contains(Int($0.windowID)) }
-        let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: excepted)
+        let filter = Self.displayFilter(display: display, content: content, state: wanted).0
         do {
             try await running.updateContentFilter(filter)
         } catch {
             Self.log("Updating which Greenroom windows show on the share failed: \(Self.describe(error)).")
             return false
         }
-        Self.log(wanted.isEmpty ? "No Greenroom window is shown on the share."
-                                : "\(wanted.count) Greenroom window\(wanted.count == 1 ? "" : "s") shown on the share.")
+        let n = wanted.windowNumbers.count
+        Self.log((n == 0 ? "No Greenroom window is shown on the share." : "\(n) Greenroom window\(n == 1 ? "" : "s") shown on the share.")
+                 + (wanted.hiddenAppIDs.isEmpty ? "" : " Kept out of everyone\u{2019}s picture: \(wanted.hiddenAppIDs.sorted().joined(separator: ", ")).")
+                 )
         return true
     }
 }

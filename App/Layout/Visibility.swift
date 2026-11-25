@@ -8,8 +8,10 @@
 //  window kinds have no `default`, so a new kind does not compile until it has an
 //  answer. Foundation only, so the test target compiles this file as it is.
 //
-//  Other apps are always in a whole-display share for now (their own switch is a
-//  later phase); the Greenroom Browser always is (ShareVisibilityRules.alwaysShared).
+//  Another app's broadcast badge is a real switch (on by default): off keeps that
+//  app out of everyone's picture on a whole-display share (`hiddenAppIDs`, what the
+//  capture excludes), and its eye off means it opens minimised (`opensMinimised`).
+//  The Greenroom Browser always is in (ShareVisibilityRules.alwaysShared).
 //
 import Foundation
 
@@ -62,7 +64,6 @@ enum Visibility {
     }
 
     static let browserReason = "The Greenroom Browser is always in the picture"
-    static let otherAppReason = "Other apps are always in the picture for now"
     static let roomScreenReason = "The Room screen shows the picture; it is never in it"
     static let whiteboardReason = "The whiteboard is the whole picture"
     static let justMeReason = "Only your camera is shared"
@@ -87,7 +88,7 @@ enum Visibility {
                 return nothingElse(target)
             case .wholeScreen:
                 if app.bundleID == builtInBrowserID { return windowBadge(.browser, marked: true, target: target) }
-                return .fixedOn(otherAppReason)
+                return piece.showsToEveryone ? .on : .off
             }
         }
     }
@@ -124,9 +125,35 @@ enum Visibility {
     static func onMyScreen(piece: LayoutPiece) -> Badge {
         switch piece.kind {
         case let .meeting(_, hidden), let .view(_, hidden): return hidden ? .off : .on
-        case .chat, .app: return .fixedOn(onYourScreenReason)
+        case let .app(app):
+            if app.bundleID == builtInBrowserID { return .fixedOn(onYourScreenReason) }
+            return app.opensMinimised ? .off : .on
+        case .chat: return .fixedOn(onYourScreenReason)
         case .roomScreen: return .fixedOn("It sits on the room display")
         }
+    }
+
+    /// Another app whose eye is off opens (or is placed) minimised at Start.
+    static func opensMinimised(piece: LayoutPiece) -> Bool {
+        guard case let .app(app) = piece.kind, app.bundleID != builtInBrowserID else { return false }
+        return app.opensMinimised
+    }
+
+    // MARK: The capture's app exclusion
+
+    /// The bundle ids the capture leaves out of a whole-display share (and so out of
+    /// recordings and the Room screen): other apps whose badge answer is off. An app
+    /// with several pieces leaves only when every one of them says off. Derived from
+    /// `everyoneSees` alone; other targets have no display filter, so nothing.
+    static func hiddenAppIDs(pieces: [LayoutPiece], target: Target) -> Set<String> {
+        guard case .wholeScreen = target else { return [] }
+        var off: [String: Bool] = [:]
+        for p in pieces {
+            guard case let .app(app) = p.kind, !app.bundleID.isEmpty else { continue }
+            let isOff = !everyoneSees(piece: p, target: target).isOn
+            off[app.bundleID] = (off[app.bundleID] ?? true) && isOff
+        }
+        return Set(off.filter(\.value).keys)
     }
 
     // MARK: Camera

@@ -544,7 +544,9 @@ struct LayoutCanvas: View {
         let on = state.isOn
         let symbol = which == .me ? (on ? "eye" : "eye.slash")
                                   : (on ? "dot.radiowaves.left.and.right" : "dot.radiowaves.left.and.right.slash")
-        let words = which == .me ? "On your screen" : "Everyone sees"
+        let isApp = piece.kind.app != nil
+        let words = which == .me ? (isApp ? "Opens on your screen" : "On your screen")
+                                 : (isApp ? "Everyone sees this app" : "Everyone sees")
         let tint: Color = on ? (which == .everyone ? Brand.netText : Color.primary.opacity(0.7)) : Color.secondary.opacity(0.6)
         let glyph = Image(systemName: symbol)
             .font(.system(size: 11))
@@ -559,9 +561,20 @@ struct LayoutCanvas: View {
         } else {
             Button { flip(which, piece) } label: { glyph.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
-                .help(on ? "\(words): on. Click to turn off" : "\(words): off. Click to turn on")
+                .help(appHelp(which, on: on, isApp: isApp) ?? (on ? "\(words): on. Click to turn off" : "\(words): off. Click to turn on"))
                 .accessibilityLabel(words)
                 .accessibilityValue(on ? "On" : "Off")
+        }
+    }
+
+    /// Help for another app's two badges (nil for everything else).
+    private func appHelp(_ which: BadgeKind, on: Bool, isApp: Bool) -> String? {
+        guard isApp else { return nil }
+        switch (which, on) {
+        case (.me, true): return "Opens on your screen. Click to open it minimised."
+        case (.me, false): return "Opens minimised. Click to open it on your screen."
+        case (.everyone, true): return "Everyone sees this app when you share your whole screen. Click to keep it out of everyone\u{2019}s picture and recordings."
+        case (.everyone, false): return "Kept out of everyone\u{2019}s picture and recordings. Click to let everyone see it."
         }
     }
 
@@ -578,7 +591,13 @@ struct LayoutCanvas: View {
                 pieces[i].kind = .meeting(fillsDisplay: fills, startsHidden: !hidden)
             case let .view(view, hidden):
                 pieces[i].kind = .view(view, startsHidden: !hidden)
-            case .chat, .app, .roomScreen:
+            case var .app(app):
+                // Another app's eye: opens minimised. Not coupled to the broadcast badge.
+                guard app.bundleID != Visibility.builtInBrowserID else { return }
+                app.opensMinimised.toggle()
+                pieces[i].kind = .app(app)
+                return
+            case .chat, .roomScreen:
                 return
             }
             if Visibility.onMyScreen(piece: pieces[i]) == .off { pieces[i].showsToEveryone = false }

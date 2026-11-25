@@ -317,6 +317,8 @@ targets:
       - path: App/Layout/LayoutEditorRules.swift
       - path: App/Layout/LayoutEditHistory.swift
       - path: App/Layout/LayoutPlacementRules.swift
+      - path: App/Layout/StrandedWindowRule.swift
+      - path: App/UI/WindowStackRules.swift
       - path: App/UI/LayoutEditRecorder.swift
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift

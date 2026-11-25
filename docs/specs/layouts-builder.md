@@ -152,6 +152,15 @@ different order; this table is the authority.
   app on the main display). Only a pass the owner asked for orders placed windows front.
 - R45.5 A display plugged in or pulled out keeps today's behaviour: everything is placed again and ordered front
   (no app is activated).
+- R45.6 Coming back to a desktop keeps Greenroom's windows stacked exactly as the owner left them: a view window
+  put over the Greenroom Browser stays over it. Greenroom orders nothing front on a desktop switch; the order it
+  remembered is put back without activating or taking key, unless the owner clicked or typed first. A window we
+  hid that must come back (the meeting window's safety check) goes back above the window that was under it, not
+  to the front (`WindowStackRules`, `WindowStackKeeper`; owner, 2026-11-26: Self view went behind the browser).
+- R45.7 The stranded-window rescue moves only a window whose frame touches no listed screen, checked once the
+  displays have been quiet for 1.5 s (a newer change restarts the wait); a window on a screen still listed never
+  moves. Each rescue logs the window, its frame and every listed screen (`StrandedWindowRule`; owner's log,
+  2026-11-26: AirPlay renegotiating moved windows between two listed screens).
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place

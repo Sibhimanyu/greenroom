@@ -4366,6 +4366,8 @@ final class CoordinatorController: ObservableObject {
         ParticipantGridWindowController.readinessDismiss = { [weak self] in self?.dismissStartFailure() }
         ParticipantGridWindowController.readinessTryAgain = { [weak self] in self?.retryAfterFailure() }
         DisplayMonitor.shared.onChange { [weak self] change in self?.displaysChanged(change) }
+        // R45.6: a desktop switch keeps Greenroom's windows stacked as they were.
+        WindowStackKeeper.shared.start { [weak self] line in self?.log(line) }
     }
 
     /// The failure card\u{2019}s Close: clears the card and what drew it.

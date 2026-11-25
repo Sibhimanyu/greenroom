@@ -527,6 +527,15 @@ enum ParticipantGridWindowController {
         panel.orderFrontRegardless()
     }
 
+    /// The safety check's correction: a window that should be up but was ordered
+    /// out comes back to its old place in the stack, not the front (R45.6).
+    static func showInPlace() {
+        guard let panel, MeetingSurfaceOwner.layoutMayRaiseWindow else { return }
+        userHidden = false
+        if panel.isMiniaturized { panel.deminiaturize(nil) }
+        WindowStackKeeper.shared.showInPlace(panel)
+    }
+
     /// The meeting window is up on a desktop other than the one in view.
     static var meetingWindowIsElsewhere: Bool { isElsewhere }
 

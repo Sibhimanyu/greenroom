@@ -104,6 +104,12 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/ParticipantAvatar.swift | `ParticipantAvatar` |
 | UI/ClosureButton.swift | NSButton with closure, answers first click |
 
+### Window stacking across desktops (R45.6)
+| path | owns | key types |
+|---|---|---|
+| `App/UI/WindowStackRules.swift` | Pure: the fewest moves that put Greenroom's windows back in a remembered front-to-back order; where a window we hid goes back (above the one that was under it); one order per desktop | `WindowStackRules` (`restoreMoves`, `shouldRestore`, `slot`, `restoreDelays` 0.25/0.8 s, `freezeSeconds` 1 s), `WindowStackMemory`; tests: `WindowStackRulesTests` |
+| `App/UI/WindowStackKeeper.swift` | AppKit half, started from `CoordinatorController.observeDisplays`: reads CGWindowList (our process, ordinary level) after a mouse-up, a key change, resigning active and once a second; on `activeSpaceDidChange` freezes for 1 s and restores with `order(.above, relativeTo:)` (no activation, no key) unless the owner clicked or typed; logs what it put back. `showInPlace` is the meeting window safety check's re-show | `WindowStackKeeper.shared` (`start(log:)`, `showInPlace`) |
+
 ## How it fits
 - Scenes (GreenroomApp.swift): main `Window("Greenroom", id:"main")` hosts `ContentView` with `.tint(Brand.green)`, `LaunchSplashCover`, `FrostedWindow`; `Settings { SettingsView }`; the menu bar icon is an AppKit `NSStatusItem` (`MenuBarStatusItem`), not a scene, because `MenuBarExtra` stopped opening after Space switches. Everything else is an AppKit controller (below). Sessions/report/editor are NOT scenes: they are pages (`CoordinatorController.MainPage`: home, sessions, detail(id), report(id), editor(id)) rendered by `ContentView.pageLayers` (`HomeView` and `RecordingsView` overlaid, crossfaded by `changePage`).
 - Main toolbar (ContentView `.toolbar`): on Home: `modeSwitcherItem` (principal `GreenroomSegmented` bound to `coordinator.meetingMode`), Sessions icon, fixed `ToolbarSpacer`, Setup guide + Settings group. On pages: `.pageToolbar` Back + subtitle.
@@ -112,6 +118,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Pages meant to render off-screen take plain values/bindings (`LayoutPageContent`, `CuesSetupContent`, `MeetingBarContent`, toolbar) and have thin coordinator-fed wrappers (`LayoutSettingsTab`, ...).
 
 ## To change X, go to Y
+- Change what happens to window stacking on a desktop switch -> `WindowStackRules` / `WindowStackKeeper` (R45.6); the meeting window's safety-check re-show is `ParticipantGridWindowController.showInPlace`.
 - Add a Settings tab -> `MorePanelRules.common` (the one list; `SettingsTabs.order` and `SettingsTabs.order` derive from it), `TabView` item + `.tag`, `height(for:)`; update Cmd-N hint (count) and `.showSettingsTab` users.
 - Add a Settings row -> the tab's `*PageContent` (e.g. `LayoutPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
 - Change Home toolbar items -> `ContentView.body` `.toolbar { }`; then update `HomeToolbarRules` (SidebarRules.swift) widths.

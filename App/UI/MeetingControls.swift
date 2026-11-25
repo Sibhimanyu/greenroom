@@ -1235,7 +1235,7 @@ enum MeetingControlBarController {
             ParticipantGridWindowController.hide()
         } else if now.surface == .window, !ParticipantGridWindowController.windowIsOnScreen,
                   ParticipantGridWindowController.windowFacts == (exists: true, minimised: false, elsewhere: false, covered: false) {
-            ParticipantGridWindowController.show(takingYouThere: false)
+            ParticipantGridWindowController.showInPlace()
         }
     }
 

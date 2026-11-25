@@ -79,21 +79,21 @@ extension CoordinatorController {
         UserDefaults.standard.set(data, forKey: key)
     }
 
-    /// A template with its saved second display cleared when that display is not
-    /// connected to this Mac: an exported UUID from another Mac matches nothing
-    /// here, and "automatic" finds the right one.
-    private static func withLocalDisplays(_ template: LayoutTemplate) -> LayoutTemplate {
-        guard var two = template.twoDisplays, !two.secondUUID.isEmpty else { return template }
-        let connected = Set(DisplayResolver.connectedDisplays().map(\.id))
-        guard !connected.contains(two.secondUUID) else { return template }
-        var copy = template
-        two.secondUUID = ""
-        copy.twoDisplays = two
-        return copy
+    /// What this Mac looks like, for `SettingsImportRules`.
+    private static func importEnvironment() -> SettingsImportEnvironment {
+        var environment = SettingsImportEnvironment()
+        environment.cuesReleased = CuesAvailability.isReleased
+        if #available(macOS 26.0, *) { environment.whisperAvailable = CuesWhisperTranscriber.isAvailable }
+        environment.connectedDisplayUUIDs = Set(DisplayResolver.connectedDisplays().map(\.id))
+        return environment
     }
 
     func importSettings(from data: Data) throws {
-        let transfer = try JSONDecoder().decode(SettingsTransfer.self, from: data)
+        let decoded = try JSONDecoder().decode(SettingsTransfer.self, from: data)
+        let environment = Self.importEnvironment()
+        // What import refuses is decided in SettingsImportRules; what is left
+        // is assigned below, through the published properties.
+        let transfer = SettingsImportRules.sanitized(decoded, in: environment).transfer
         // One import assigns every field; that is not twenty deliberate changes.
         Analytics.suppressSettingEvents = true
         defer { Analytics.suppressSettingEvents = false }
@@ -108,9 +108,7 @@ extension CoordinatorController {
         if let value = transfer.backgroundRemoval, let mode = BackgroundRemoval(rawValue: value) { backgroundRemoval = mode }
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
-        // A colleague's export can carry prompterEnabled=true. It must not
-        // switch on a feature this build is holding back.
-        if let value = transfer.prompterEnabled, CuesAvailability.isReleased { cuesEnabled = value }
+        if let value = transfer.prompterEnabled { cuesEnabled = value }
         if let value = transfer.prompterVideoSearch { cuesVideoSearch = value }
         if let value = transfer.prompterUseModel { cuesUseModel = value }
         if let value = transfer.prompterSaveTranscript { cuesSaveTranscript = value }
@@ -126,7 +124,7 @@ extension CoordinatorController {
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
-        if let value = transfer.recordingCountdownSeconds, [0, 3, 5, 10].contains(value) { recordingCountdownSeconds = value }
+        if let value = transfer.recordingCountdownSeconds { recordingCountdownSeconds = value }
         if let value = transfer.recordSystemAudio { recordSystemAudio = value }
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.customUIMode { customUIMode = value }
@@ -137,19 +135,7 @@ extension CoordinatorController {
         if let value = transfer.bubbleBottomInset { bubbleBottomInset = value }
         if let value = transfer.cutoutHeightFraction { cutoutHeightFraction = value }
         if let value = transfer.cutoutRightInset { cutoutRightInset = value }
-        // Same rule as prompterEnabled: a colleague's file must not switch on
-        // a transcriber this Mac cannot run.
-        if let value = transfer.cuesUseWhisper {
-            // Whisper is checked only where the check exists. On macOS 14/15
-            // Cues cannot run at all, so the value is carried and left for
-            // the OS that can use it rather than being forced to false and
-            // lost on the next export.
-            if #available(macOS 26.0, *) {
-                cuesUseWhisper = value && CuesWhisperTranscriber.isAvailable
-            } else {
-                cuesUseWhisper = value
-            }
-        }
+        if let value = transfer.cuesUseWhisper { cuesUseWhisper = value }
         if let value = transfer.screenroomAgent {
             Self.setJSONString(value, forKey: ScreenroomAgentSettings.key)
         }
@@ -163,9 +149,8 @@ extension CoordinatorController {
         }
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
-        if var library = transfer.layoutLibrary {
-            // A second display saved on another Mac means nothing here: automatic.
-            library.templates = library.templates.map(Self.withLocalDisplays)
+        if let library = transfer.layoutLibrary {
+            // Already cleaned of second displays that are not connected here.
             layoutLibrary = library
         } else if transfer.workspaceLayout != nil || transfer.chromeLayout != nil {
             // An older file: the old keys it carries (import-only now) laid over
@@ -188,7 +173,7 @@ extension CoordinatorController {
             if let value = transfer.browserClosesOnStop { legacy.browserClosesOnStop = value }
             if let value = transfer.peopleViewOnStart { legacy.peopleViewOnStart = value }
             if let value = transfer.peopleViewDisplayUUID { legacy.peopleViewDisplayUUID = value }
-            if var imported = legacy.asTemplate().map(Self.withLocalDisplays) {
+            if var imported = legacy.asTemplate().map({ SettingsImportRules.withLocalDisplays($0, connected: environment.connectedDisplayUUIDs) }) {
                 var library = layoutLibrary
                 if library.templates.contains(where: { $0.name == imported.name }) { imported.name = "Imported layout" }
                 library.templates.append(imported)

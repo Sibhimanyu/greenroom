@@ -168,3 +168,13 @@ final class PreviewHeldAspectTests: XCTestCase {
         XCTAssertEqual(PreviewFrameRules.returnWidth(remembered: nil, current: 800, floor: 744), 800)
     }
 }
+
+final class PreviewRateTests: XCTestCase {
+    func testHomeOutsideAMeetingRunsAtTheCompositorRate() {
+        XCTAssertEqual(PreviewRate.framesPerSecond(meetingLive: false), 30)
+    }
+
+    func testLiveMeetingHalvesIt() {
+        XCTAssertEqual(PreviewRate.framesPerSecond(meetingLive: true), 15)
+    }
+}

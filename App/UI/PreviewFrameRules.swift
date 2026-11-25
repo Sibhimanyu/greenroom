@@ -205,3 +205,11 @@ struct LayoutCameraSpace: Equatable {
         return CGPoint(x: -usable.minX * s, y: -usable.minY * s)
     }
 }
+
+/// How often the picture for Home and Settings is taken from the compositor
+/// (which ticks at 30). Outside a live meeting nothing else is competing, so
+/// the preview follows the drag at the full rate; while one is live the
+/// meeting, the recorder and the preview share the machine, so it halves.
+enum PreviewRate {
+    static func framesPerSecond(meetingLive: Bool) -> Double { meetingLive ? 15 : 30 }
+}

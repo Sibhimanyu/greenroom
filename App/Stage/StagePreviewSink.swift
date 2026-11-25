@@ -5,7 +5,7 @@
 //  Two small sinks for the class picture (see StageFrames.swift).
 //
 //  `StagePreviewSink` keeps the newest frame as a small picture for SwiftUI,
-//  a few times a second, so Settings can show what the class gets without the
+//  at `PreviewRate` (30 a second on Home), so Settings can show what the class gets without the
 //  compositor doing anything extra: it takes the buffer, drops it unless a
 //  picture is due, and does the downscale on its own queue.
 //
@@ -26,7 +26,14 @@ final class StagePreviewSink: StageFrameSink {
     /// queue inside `stageDidRender`, so it matches that frame.
     var coverage: (() -> CIImage?)?
 
-    private let framesPerSecond: Double
+    /// Set by whoever knows the session; picks the rate (`PreviewRate`).
+    /// Read on the render queue, so it is under the lock.
+    var meetingLive: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return live }
+        set { lock.lock(); live = newValue; lock.unlock() }
+    }
+    private var live = false
+    private let fixedRate: Double?
     private let width: CGFloat
     private let queue = DispatchQueue(label: "greenroom.stage.preview", qos: .utility)
     private let context = CIContext(options: [.cacheIntermediates: false])
@@ -34,15 +41,17 @@ final class StagePreviewSink: StageFrameSink {
     private var lastTaken: UInt64 = 0
     private var busy = false
 
-    init(framesPerSecond: Double = 8, width: CGFloat = 960) {
-        self.framesPerSecond = framesPerSecond
+    /// `framesPerSecond` nil: the rate follows `meetingLive`.
+    init(framesPerSecond: Double? = nil, width: CGFloat = 960) {
+        self.fixedRate = framesPerSecond
         self.width = width
     }
 
     func stageDidRender(_ frame: CVPixelBuffer, at time: CMTime) {
         let now = DispatchTime.now().uptimeNanoseconds
         lock.lock()
-        let due = !busy && Double(now &- lastTaken) / 1e9 >= 1 / framesPerSecond
+        let rate = fixedRate ?? PreviewRate.framesPerSecond(meetingLive: live)
+        let due = !busy && Double(now &- lastTaken) / 1e9 >= 1 / rate
         if due { busy = true; lastTaken = now }
         lock.unlock()
         guard due else { return }

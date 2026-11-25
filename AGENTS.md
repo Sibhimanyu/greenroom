@@ -61,6 +61,7 @@ Read `DESIGN.md` before any visual change.
 - `GLOSSARY.md` holds the agreed words for layouts and visibility; use them in code and UI text.
 - `docs/adr/` records decisions that are hard to reverse; read it before reopening one.
 - `scripts/check.sh`: generate, Debug build and the full tests in one command; `scripts/run-debug.sh`: quit all Greenroom and open this worktree's Debug build.
+- Building alongside another agent: use `scripts/check.sh` (its own derived-data path under `.build/`), never the shared default DerivedData.
 - `Greenroom.xcodeproj` is generated: edit `project.yml` and run `xcodegen generate`.
   `Vendor/ZoomSDK` is gitignored; worktrees need it symlinked in.
 - Zoom types stay inside `App/Zoom`. Outside callers get plain values.

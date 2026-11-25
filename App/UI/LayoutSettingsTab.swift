@@ -68,7 +68,11 @@ struct LayoutSettingsTab: View {
             liveLayoutID: coordinator.liveSessionLayoutID,
             applyNow: { coordinator.applyLayoutNow($0) },
             camera: cameraModel,
-            share: Visibility.Target(coordinator.shareTarget))
+            // Running: the live target decides what the capture shows. Not running: the layout's own.
+            share: Visibility.Target(coordinator.layoutChoiceLocked
+                                     ? coordinator.shareTarget
+                                     : (coordinator.layoutLibrary.active?.share ?? coordinator.shareTarget)),
+            fallbackShare: coordinator.shareTarget)
         .onAppear {
             apps = AppCatalog.installedAndRunning()
             displays = DisplayResolver.connectedDisplays()
@@ -148,6 +152,8 @@ struct LayoutPageContent: View {
     var camera: LayoutCameraModel?
     /// What is shared right now: the badges and Preview: Everyone read it.
     var share: Visibility.Target = .wholeScreen
+    /// The global share target, shown for a layout that has saved none.
+    var fallbackShare = ShareTarget()
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
     /// Draws the Add panel in place under the row, for the off-screen render.
@@ -418,6 +424,7 @@ struct LayoutPageContent: View {
             titleRow(template)
             previewPicker
             canvases(template)
+            whatsSharedRow(template)
             paletteRow(template)
             inspector(template)
         }
@@ -646,6 +653,49 @@ struct LayoutPageContent: View {
                 withAnimation(anim) { refusal = nil }
             }
             return false
+        }
+    }
+
+    /// What this layout shares at Start. A live change in Home or the bar changes only the
+    /// running meeting; this is the saved one.
+    private func whatsSharedRow(_ template: LayoutTemplate) -> some View {
+        let current = template.share ?? fallbackShare
+        let set: (ShareTarget) -> Void = { new in
+            if let i = activeIndex { library.templates[i].share = new }
+        }
+        return HStack(spacing: 10) {
+            GreenroomSegmented("What\u{2019}s shared", selection: Binding(
+                get: { current.kind == .app ? .display : current.kind },
+                set: { kind in var t = current; t.kind = kind; set(t) }),
+                options: ShareTarget.Kind.pickable) { kind in
+                Text(kind.label)
+            }
+            .help("What everyone sees when you start this layout. Changing it in Home or on the bar during a meeting does not change what is saved here.")
+            Text("is shared when you start")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if current.kind == .window {
+                Picker("Window of", selection: Binding(
+                    get: { current.appBundleID },
+                    set: { id in
+                        var t = current
+                        t.appBundleID = id
+                        t.appName = apps.first { $0.bundleID == id }?.name ?? ""
+                        t.windowTitle = ""
+                        set(t)
+                    })) {
+                    Text("Choose an app").tag("")
+                    ForEach(apps) { Text($0.name).tag($0.bundleID) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Toggle("Follow the slide show", isOn: Binding(
+                    get: { current.followsSlideShow },
+                    set: { on in var t = current; t.followsSlideShow = on; set(t) }))
+                    .font(.callout)
+                    .help("When the app opens a full-screen slide show, everyone sees it, and the window again when it ends.")
+            }
+            Spacer()
         }
     }
 
@@ -971,7 +1021,27 @@ struct LayoutPageContent: View {
                 .help("Whether your camera shows on your screen. The meeting still sees you.")
             Spacer()
         }
-        Text("This only changes your screen. The meeting still sees you. This is your camera setting for every layout, not just this one. Drag it on the canvas to move it, drag a corner to resize it.")
+        if let i = activeIndex {
+            let piece = Binding<LayoutCamera>(
+                get: { library.templates[i].camera ?? LayoutCamera(shape: camera.shape, box: camera.box) },
+                set: { library.templates[i].camera = $0 })
+            HStack(spacing: 12) {
+                Picker("Shape", selection: piece.shape) {
+                    ForEach(WebcamShape.allCases) { Text($0.label).tag($0) }
+                }
+                .fixedSize()
+                .help("The shape of your camera in this layout. The look (background, removal, mirror) is shared by every layout.")
+                if piece.wrappedValue.shape == .cutout {
+                    Slider(value: piece.cutoutHeightFraction, in: PresenceGeometry.cutoutHeights) { Text("Size") }
+                        .frame(maxWidth: 200)
+                } else {
+                    Slider(value: piece.widthFraction, in: PresenceGeometry.widthFractions) { Text("Size") }
+                        .frame(maxWidth: 200)
+                }
+                Spacer()
+            }
+        }
+        Text("The spot, size and shape are saved with this layout. The look (background, removal, mirror) is the same for every layout. Drag the camera on the canvas to move it, drag a corner to resize it.")
             .font(.callout)
             .foregroundStyle(.secondary)
     }

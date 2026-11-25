@@ -361,17 +361,25 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     var starter: String?
     var oneDisplay: [LayoutPiece]
     var twoDisplays: TwoDisplay?
+    /// The camera's spot, size and shape for this layout. nil: the global settings stand
+    /// (old files, and layouts made since the migration).
+    var camera: LayoutCamera?
+    /// What this layout shares at Start. nil: the global share target stands.
+    var share: ShareTarget?
 
     init(id: UUID = UUID(), name: String, starter: String? = nil,
-         oneDisplay: [LayoutPiece] = [], twoDisplays: TwoDisplay? = nil) {
+         oneDisplay: [LayoutPiece] = [], twoDisplays: TwoDisplay? = nil,
+         camera: LayoutCamera? = nil, share: ShareTarget? = nil) {
         self.id = id
         self.name = name
         self.starter = starter
         self.oneDisplay = oneDisplay
         self.twoDisplays = twoDisplays
+        self.camera = camera
+        self.share = share
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, starter, oneDisplay, twoDisplays }
+    private enum CodingKeys: String, CodingKey { case id, name, starter, oneDisplay, twoDisplays, camera, share }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -380,7 +388,9 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
                   starter: try? c.decodeIfPresent(String.self, forKey: .starter),
                   oneDisplay: ((try? c.decodeIfPresent([Lossy<LayoutPiece>].self, forKey: .oneDisplay)) ?? [])
                     .compactMap(\.value),
-                  twoDisplays: try? c.decodeIfPresent(TwoDisplay.self, forKey: .twoDisplays))
+                  twoDisplays: try? c.decodeIfPresent(TwoDisplay.self, forKey: .twoDisplays),
+                  camera: try? c.decodeIfPresent(LayoutCamera.self, forKey: .camera),
+                  share: try? c.decodeIfPresent(ShareTarget.self, forKey: .share))
     }
 
     // MARK: Pieces by slot

@@ -175,5 +175,10 @@ extension CoordinatorController {
         var layout = stageLayout
         layout.apply(box)
         applyPresencePlacement(layout)
+        // Dragged in Settings or Home's preview, with no meeting running: the layout keeps it.
+        if !layoutChoiceLocked, var template = layoutLibrary.active {
+            template.camera = currentLayoutCamera
+            layoutLibrary.update(template)
+        }
     }
 }

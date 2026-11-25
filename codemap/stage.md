@@ -20,6 +20,7 @@ The in-process "class picture" pipeline (it replaced OBS in 1.3.0). `StageCompos
 | `App/Stage/CameraDirector.swift` | Multi-camera auto-switching by face angle, with dwell and transition | `CameraDirector` (@MainActor ObservableObject), `CameraDirectorSettings.availableOnly()` (extension; the struct, `CameraTransition` live in `CameraDirectorSettings.swift`, Foundation-only), `CameraSight`, `Chooser`, `look(at:)`, `offAxis`, `score(yaw:pitch:)` |
 | `App/Stage/CameraProbe.swift` | Aim: measure one camera's angle, end by itself (steady angle, 5 s, or no picture after 3 s), release the camera, keep the answer (`phase` idle/measuring/finished). Opens its own session (`start`) or, when the idle preview's director already holds the camera, only meters the director's readings (`startExternal` + `feed`) | `CameraProbe` (@MainActor), `start(uid:)`, `startExternal(uid:)`, `feed(_:)`, `stop()`, `Phase` |
 | `App/Stage/CameraAimRules.swift` | Pure: when Aim is done (`AimMeter`), and which look at a turned picture is upright (`FaceUpright`; `CameraDirector.look(at:)` retries the picture turned each way when the face is rolled past 35 degrees or missing) | `AimMeter`, `FaceUpright` (tests: `CameraAimRulesTests`) |
+| `App/Stage/ShareTargetModel.swift` | The saved data of a share target (kind, app, window title, follow the slide show) and its decoding; split out so a layout can save one and tests compile it | `ShareTarget` stored fields, `Kind` |
 | `App/Stage/ShareTarget.swift` | What is shared: display, app (legacy), window, whiteboard, nothing; persisted by app+title, never window ID | `ShareTarget` (Codable; `Kind`, `resolve(displayUUID:)`, `windows()`, `bestWindow`, `windowKey`, `runningApps`, `followsSlideShow`) |
 | `App/Stage/ScreenAppMatch.swift` | Which SCK windows belong to a picked app (bundle id, pids, ".helper" ids) | `ScreenAppMatch.match`, `ScreenWindowInfo`, `ScreenDisplayInfo` |
 | `App/Stage/ScreenWindowRules.swift` | Which windows are shareable and where they are | `ScreenWindowRules.isCandidate/placement/isCapturable` |
@@ -35,6 +36,8 @@ The in-process "class picture" pipeline (it replaced OBS in 1.3.0). `StageCompos
 | `App/Stage/Backgrounds/` | Bundled preset photos (`bg-1-studio` ... `bg-5-slate`.jpg) | resource only |
 
 ## How it fits
+
+**Camera and share source (P3).** `stageLayout` and `shareTarget` are the live working copy; at Start the active layout's `camera` and `share` (App/Layout/LayoutCamera.swift) are put into them (`adoptLayoutPieces`); with no layout the old global defaults stand. See layout.md.
 
 **Owner.** `CoordinatorController` holds `var stage: StageCompositor?` (made by `ensureStage()`), plus `let cameraDirector = CameraDirector()`, `let cameraProbe = CameraProbe()`, `previewSink = StagePreviewSink()`. Its `runPipeline()` -> `buildScene()` builds a `StageConfiguration` from user settings (shape, `ShareTarget`, the capture display = `effectiveCaptureDisplayUUID`: `screenCaptureDisplayUUID`, overridden for a Whole screen share by the layout's "Everyone sees" display while its two-display version runs (see layout.md), cameras in cut order, background, system-audio flag), calls `stage.start`, then `zoomChatClient.useStageVideo(stage)`; later changes call `stage.update(config)`. Start waits on a `StageFrameProbe` sink (CoordinatorController ~5172) so the meeting never starts on no picture.
 

@@ -329,6 +329,9 @@ targets:
       - path: App/ShareVisibilityRules.swift
       - path: App/Layout/Visibility.swift
       - path: App/Stage/CameraState.swift
+      - path: App/Layout/LayoutCamera.swift
+      - path: App/Stage/ShareTargetModel.swift
+      - path: App/Stage/WebcamShape.swift
       - path: App/LiveExitRules.swift
       - path: App/MainWindowVisibility.swift
       - path: App/StartChoreography.swift

@@ -950,6 +950,33 @@ final class CoordinatorController: ObservableObject {
         bubbleBottomInset = shipped.bottomInset
     }
 
+    /// The camera piece as it is now (the working copy: live changes included).
+    var currentLayoutCamera: LayoutCamera { LayoutCamera(shape: webcamShape, box: stageLayout.presenceBox) }
+
+    /// Puts a layout's camera piece and share target into the live settings. The global
+    /// defaults keep their own values (they are the fallback with no layout); the live
+    /// values are only the working copy.
+    func adoptLayoutPieces(_ plan: LayoutPieceAdoption.Plan?) {
+        guard let plan else { return }
+        let keys = ["webcamShape", "bubbleWidthFraction", "bubbleRightInset", "bubbleBottomInset",
+                    "cutoutHeightFraction", "cutoutRightInset", "shareTarget"]
+        let saved = keys.map { ($0, defaults.object(forKey: $0)) }
+        if let c = plan.camera {
+            webcamShape = c.shape
+            bubbleWidthFraction = c.widthFraction
+            bubbleRightInset = c.rightInset
+            bubbleBottomInset = c.bottomInset
+            cutoutHeightFraction = c.cutoutHeightFraction
+            cutoutRightInset = c.cutoutRightInset
+        }
+        if var s = plan.share {
+            if s.kind == .app { s.kind = .display }
+            if shareTarget != s { shareTarget = s }
+        }
+        for (key, value) in saved { defaults.set(value, forKey: key) }
+        refreshCaptureDisplay()
+    }
+
     @Published var webcamShape: WebcamShape {
         didSet {
             defaults.set(webcamShape.rawValue, forKey: "webcamShape")
@@ -973,6 +1000,15 @@ final class CoordinatorController: ObservableObject {
             // another card does not rearrange a class in progress (Settings offers
             // "Apply now" for that), and editing a layout the class is not using
             // touches nothing.
+            // The camera and share the layout saves come into the live settings only when
+            // the layout itself changes them (a pick, an edit), never from a live change.
+            if layoutChoiceLocked {
+                if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id) {
+                    adoptLayoutPieces(LayoutPieceAdoption.plan(old: running, new: edited).map { LayoutPieceAdoption.Plan(camera: $0.camera, share: nil) })
+                }
+            } else {
+                adoptLayoutPieces(LayoutPieceAdoption.plan(old: oldValue.active, new: layoutLibrary.active))
+            }
             if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id), edited != running {
                 sessionTemplate = edited
                 scheduleLiveLayoutApply()
@@ -1246,6 +1282,7 @@ final class CoordinatorController: ObservableObject {
             Self.shared = self
             observeDisplays()
             startPresenceBubble()
+            adoptLayoutPieces(LayoutPieceAdoption.atStart(layoutLibrary.active))
         }
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
@@ -1254,7 +1291,12 @@ final class CoordinatorController: ObservableObject {
         micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
         // First launch with this key migrates today's settings into "Your previous
         // layout" (see LayoutLibrary.loadOrMigrate); the old keys stay as they were.
-        layoutLibrary = LayoutLibrary.loadOrMigrate(from: defaults, defaultSiteURL: AppLinks.site)
+        var library = LayoutLibrary.loadOrMigrate(from: defaults, defaultSiteURL: AppLinks.site)
+        // P3, once each: today's global camera and share go into every layout.
+        if library.migrateCameraAndShare(camera: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults), defaults: defaults) {
+            library.save(to: defaults)
+        }
+        layoutLibrary = library
         let bubbleDefaults = StageLayout()
         bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
         bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
@@ -1707,6 +1749,8 @@ final class CoordinatorController: ObservableObject {
         // The layout this class runs: the card chosen in Settings right now, held for
         // the whole class. None (nil) arranges nothing.
         sessionTemplate = layoutLibrary.active
+        // At Start the layout's camera and What's shared apply; no layout keeps the globals.
+        adoptLayoutPieces(LayoutPieceAdoption.atStart(sessionTemplate))
         sessionArranges = sessionTemplate != nil
         if !sessionArranges { LayoutShareChoice.reset() }
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
@@ -2037,6 +2081,8 @@ final class CoordinatorController: ObservableObject {
             apply(.meetingTornDown)
             warmUpForStart()
             sessionTemplate = nil
+            // A live change in the meeting does not outlast it: Home shows the layout's own again.
+            adoptLayoutPieces(LayoutPieceAdoption.atStart(layoutLibrary.active))
             LayoutShareChoice.reset()
             speakerTileQuickHidden = false
             resumePreviewIfWanted()

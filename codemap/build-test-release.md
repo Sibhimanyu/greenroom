@@ -24,6 +24,7 @@ website (GitHub Pages) and the home of plan/design `.md` files.
 | `scripts/dmg-background.py` | Renders `Branding/dmg-background.tiff` (620x400, 1x+2x) | `python3 scripts/dmg-background.py Branding/dmg-background.tiff` |
 | `scripts/site-download-link.sh` | Repoints every Download button in `docs/*.html` at a release artifact | `site-download-link.sh <ver> <dmg|zip>` |
 | `scripts/cues-bench.sh` | Generates project, builds `CuesBench`, runs it on `Bench/fixtures/detector.json` | `--verbose` lists misses/false alarms |
+| `scripts/render/` | Off-screen PNG renders for UI review, no app launch, no focus: `layouts.sh` (Settings -> Layouts states + Preview: Everyone), `home-panels.sh` (Home's Camera/Screen pop-outs, who-sees icons), `appearance.sh` (light/dark: Home dock, pop-outs, Layouts, meeting bar). Each compiles the real `App/` views with a `swift/*-main.swift` and stand-ins from `lib.sh` | `scripts/render/<name>.sh [outdir]`, default `$TMPDIR/greenroom-render/<name>`; `RENDER_REF=HEAD` renders the committed sources |
 | `scripts/measure-quit.sh` | Measures quit latency end to end (finds DerivedData Debug/Release app) | per-phase log `~/Library/Logs/Greenroom-quit.log` |
 | `.github/workflows/static.yml` | GitHub Pages deploy of the repo on push to `main` | |
 | `docs/*.html` | Public site: `index.html` (home/download), `how-it-works.html`, `guide.html`, `brand.html`, `timeline.html`, `1.0.html` (the 1.0 launch page, historical) | shared `download-link.js` (finds newest DMG at view time), `sitemap.xml`, `robots.txt` |
@@ -39,7 +40,7 @@ website (GitHub Pages) and the home of plan/design `.md` files.
 | `CLAUDE.md` / `AGENTS.md` | Agent rules: gstack skill routing, DESIGN.md rule, Heresay flow | |
 | `dist/` | Release outputs (gitignored): `Greenroom-<ver>.zip`, `.dmg` | wiped by each `release.sh` run |
 | `.sparkle-tools/` | Sparkle CLI tools (`generate_appcast`, `generate_keys`), fetched on first release, gitignored | |
-| `.context/` | Scratch/evidence area (screenshots, off-screen render scripts); not source | |
+| `.context/` | Scratch/evidence area (screenshots, one-off scripts); not source. Render harnesses worth keeping go in `scripts/render/` | |
 
 ## How it fits
 
@@ -112,6 +113,7 @@ Not covered by XCTest: `CoordinatorController`, windows/AppKit controllers, Cues
 - Update the logo -> `Branding/` sources, then `App/Assets.xcassets` (`AppIcon`, `LogoMark`, `MenuBarMark`) and `docs/brand/`.
 - A source scan fails -> fix the line; only a legitimate use joins an allow-list in `Tests/SourceScanTests.swift`, with its reason. Fixing a `knownDrift` entry means deleting it (a stale entry fails).
 - Record a visual decision or drift -> `DESIGN.md` ("Open drift to fix", "Decisions Log").
+- See a UI change without launching the app -> `scripts/render/<layouts|home-panels|appearance>.sh [outdir]`. A render that stops compiling after a view change: add the new source file (or a stand-in) in `scripts/render/lib.sh`, or update the sample call in `scripts/render/swift/`.
 - Measure quit speed -> `scripts/measure-quit.sh [settle-seconds]`.
 - Log a follow-up to verify live -> `TODOS.md`.
 

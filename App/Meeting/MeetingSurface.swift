@@ -104,8 +104,17 @@ struct MeetingSurface: Hashable {
     var isSettling: Bool { settling }
     var closePromptUp: Bool { askingToClose }
 
-    /// What a Dock click or menu choice brings forward: the same answer as `surface`.
-    var reopenTarget: Surface? { surface }
+    /// What a Dock click or menu choice brings forward. The window, unless the
+    /// person chose the Bar (collapse, close then shrink, toggle, the speaker
+    /// tile, or started small while alone): a window that is only covered, on
+    /// another desktop or minimised comes forward. Nil only when not live or starting.
+    var reopenTarget: Surface? {
+        switch phase {
+        case .idle: return nil
+        case .starting: return .bar
+        case .live: return (collapsed || hiddenByTile) ? .bar : .window
+        }
+    }
 
     /// Does the screen agree with the model? Live: something is up and all of it
     /// is allowed. Not live: nothing is up.
@@ -180,7 +189,10 @@ struct MeetingSurface: Hashable {
         case .restored: isMinimised = false; startedSmallByItself = false; kind = .morph
         case .tileHidden: hiddenByTile = true
         case .tileShown: hiddenByTile = false
-        case .reopen: return
+        case .reopen:
+            // Brought forward: whatever only covered it is cleared. A chosen Bar stays.
+            guard phase == .live, reopenTarget == .window else { return }
+            isCovered = false; onOtherDesktop = false; isMinimised = false
         case .morphFinished:
             morphing = false
             if !settling { from = surface }

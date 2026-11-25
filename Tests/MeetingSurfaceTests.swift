@@ -148,14 +148,46 @@ final class MeetingSurfaceTests: XCTestCase {
         m.apply(.expand); XCTAssertEqual(m.surface, .window)
     }
     // R10
-    func testReopenAnswerIsTheSurface() {
+    func testReopenGoesToTheWindowWhenOnlyCoveredOrElsewhere() {
+        for e in [M.Event.covered, .movedToOtherDesktop, .minimised] {
+            var m = liveWindow()
+            m.apply(e); m.apply(.settleElapsed); m.apply(.morphFinished)
+            XCTAssertEqual(m.surface, .bar, "\(e)")
+            XCTAssertEqual(m.reopenTarget, .window, "\(e)")
+        }
+    }
+    func testReopenGoesToTheBarWhenThePersonChoseIt() {
+        let chosen: [[M.Event]] = [[.collapse], [.toggle], [.closeRequested, .closeShrink], [.windowClosedByCode], [.tileHidden]]
+        for events in chosen {
+            var m = liveWindow()
+            for e in events { m.apply(e) }
+            XCTAssertEqual(m.reopenTarget, .bar, "\(events)")
+        }
+        var alone = model(.startBegan, .wentLiveAlone, .morphFinished)
+        XCTAssertEqual(alone.reopenTarget, .bar)
+        alone.apply(.covered)
+        XCTAssertEqual(alone.reopenTarget, .bar)
+    }
+    func testReopenBringsTheWindowForwardAndClearsWhatCoveredIt() {
         var m = liveWindow()
-        XCTAssertEqual(m.reopenTarget, .window)
-        m.apply(.covered)
-        XCTAssertEqual(m.reopenTarget, .bar)
+        m.apply(.covered); m.apply(.movedToOtherDesktop); m.apply(.settleElapsed)
+        XCTAssertEqual(m.surface, .bar)
+        m.apply(.reopen)
+        XCTAssertEqual(m.surface, .window)
+        XCTAssertTrue(m.windowIsUp)
+        XCTAssertTrue(m.visible.contains(.window))
+        var mini = liveWindow()
+        mini.apply(.minimised); mini.apply(.morphFinished); mini.apply(.reopen)
+        XCTAssertEqual(mini.surface, .window)
+    }
+    func testReopenOfTheBarChangesNothing() {
+        var m = liveWindow()
+        m.apply(.collapse); m.apply(.morphFinished)
         let before = m
         m.apply(.reopen)
         XCTAssertEqual(m, before)
+        var idle = M(); idle.apply(.reopen)
+        XCTAssertEqual(idle, M())
     }
     // R12
     func testScreenMatches() {
@@ -183,7 +215,8 @@ final class MeetingSurfaceTests: XCTestCase {
                     XCTAssertFalse(n.visible.isEmpty, "zero after \(e) from \(s)")
                     XCTAssertTrue(n.visible.contains(live), "target not visible after \(e)")
                     if !n.isMorphing && !n.isSettling { XCTAssertEqual(n.visible, [live], "not one after \(e) from \(s)") }
-                    XCTAssertEqual(n.reopenTarget, n.surface)
+                    XCTAssertNotNil(n.reopenTarget)
+                    if n.reopenTarget == .window { XCTAssertTrue(n.visible.contains(.window) || n.surface == .bar) }
                     XCTAssertTrue(n.screenMatches(n.visible))
                 } else {
                     XCTAssertTrue(n.visible.isEmpty); XCTAssertNil(n.reopenTarget); XCTAssertFalse(n.isMorphing)

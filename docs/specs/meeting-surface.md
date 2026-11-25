@@ -75,9 +75,9 @@ Status: built.
 Acceptance: after `closeRequested` the surface is unchanged and `closePromptUp` is true; each answer lands as listed.
 Status: built.
 
-### R10. Reopen has one answer
-`reopenTarget` is the surface that shows (the new one after a pending settle). It is nil only when not live. The `reopen` event changes nothing.
-Acceptance: for every reachable state `reopenTarget == surface`.
+### R10. Reopen brings the window forward unless you chose the Bar
+`reopenTarget` is the Bar when the person chose it (collapse, close then shrink, toggle to the Bar, the speaker-tile hide, a code close, or started small while alone), else the Window: a Bar showing only because the window is covered, on another desktop or minimised still reopens to the Window, as the Dock always did. It is nil only when not live (while starting it is the Bar). The `reopen` event, when the target is the Window, brings it forward: it clears covered, other-desktop and minimised (the surface becomes the Window at once). When the target is the Bar it changes nothing.
+Acceptance: covered, other desktop and minimised each reopen to the Window; each chosen way reopens to the Bar; `reopen` from a covered Bar gives the Window surface; `reopen` of a chosen Bar changes nothing.
 Status: built.
 
 ### R11. Session end

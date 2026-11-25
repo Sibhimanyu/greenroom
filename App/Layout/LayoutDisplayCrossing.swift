@@ -129,6 +129,14 @@ enum LayoutSharedDisplay {
         return template.effectiveSharedSlot == .second ? second.id : main.id
     }
 
+    /// The canvas the camera overlay belongs on: the display everyone sees. A one-display
+    /// layout has the one slot; a shared second that is not connected falls back to main,
+    /// as the capture does (`uuid` is nil then).
+    static func cameraSlot(template: LayoutTemplate, secondConnected: Bool) -> LayoutSlot {
+        guard template.twoDisplays != nil else { return .one }
+        return template.effectiveSharedSlot == .second && secondConnected ? .second : .main
+    }
+
     /// The display the stage captures: the layout's choice for a whole-screen share,
     /// else the Screen choice. A window or app is captured where it is.
     static func resolved(wholeScreen: Bool, layout: String?, chosen: String) -> String {

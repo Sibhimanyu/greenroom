@@ -161,6 +161,20 @@ final class LayoutDisplayCrossingTests: XCTestCase {
         XCTAssertEqual(template(shared: .second).effectiveSharedSlot, .second)
     }
 
+    func testCameraSitsOnTheSharedDisplay() {
+        XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: template(shared: .main), secondConnected: true), .main)
+        XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: template(shared: .second), secondConnected: true), .second)
+    }
+
+    func testCameraFallsBackToMainWhenSharedSecondIsNotConnected() {
+        XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: template(shared: .second), secondConnected: false), .main)
+    }
+
+    func testCameraOnOneDisplayLayoutIsTheOneSlot() {
+        let one = LayoutTemplate(name: "One", oneDisplay: [], twoDisplays: nil)
+        XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: one, secondConnected: true), .one)
+    }
+
     private let main = LayoutScreen(id: "MAIN", name: "Laptop", visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 875), isMain: true)
     private let other = LayoutScreen(id: "OTHER", name: "Projector", visibleFrame: CGRect(x: 1440, y: 0, width: 1920, height: 1080), isMain: false)
     private let third = LayoutScreen(id: "THIRD", name: "Dell", visibleFrame: CGRect(x: 3360, y: 0, width: 1920, height: 1080), isMain: false)

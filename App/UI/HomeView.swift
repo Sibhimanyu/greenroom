@@ -296,7 +296,7 @@ struct HomeView: View {
     /// the layout's places only line up with a picture of the display.
     private var sharedScreen: NSScreen? {
         guard [.display, .app].contains(coordinator.shareTarget.kind)  else { return nil }
-        return DisplayResolver.screen(forUUID: coordinator.screenCaptureDisplayUUID)
+        return DisplayResolver.screen(forUUID: coordinator.effectiveCaptureDisplayUUID)
             ?? DisplayResolver.mainDisplayScreen()
     }
 

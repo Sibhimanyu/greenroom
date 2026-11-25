@@ -42,14 +42,16 @@ enum LayoutScreenPreview {
             }
         }
         guard let main = DisplayResolver.mainDisplayScreen() else { return [] }
-        let cameraItems = cameraItem(camera, on: main).map { [$0] } ?? []
         if let two = template.twoDisplays, let second = secondScreen(uuid: two.secondUUID) {
+            let onSecond = LayoutSharedDisplay.cameraSlot(template: template, secondConnected: true) == .second
+            let cameraItems = cameraItem(camera, on: onSecond ? second : main).map { [$0] } ?? []
             return resolve(two.main, on: main) + resolve(two.second, on: second) + cameraItems
         }
+        let cameraItems = cameraItem(camera, on: main).map { [$0] } ?? []
         return resolve(template.oneDisplay, on: main) + cameraItems
     }
 
-    /// The camera over the shared (main) display, where the floating bubble sits:
+    /// The camera over the shared display, where the floating bubble sits:
     /// the presence geometry on the whole display, as the bubble uses. Not drawn
     /// for the Presenter look, which has no placeable box.
     static func cameraItem(_ camera: LayoutCameraModel?, on screen: NSScreen) -> Item? {

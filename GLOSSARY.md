@@ -115,3 +115,9 @@ While a meeting is live, the controls are in exactly one place. Code:
 **Room screen**: a piece for a second display that people in the room watch. It shows what everyone sees.
 
 **Layouts tab**: the one place to build layouts, camera included. Replaces the separate Webcam and Layout tabs.
+
+**Camera device**: the physical camera (and second camera, auto-switching) the owner uses. Chosen on Home or in the Devices tab, never per layout.
+
+**Devices tab**: the Settings tab for camera devices, the microphone and recording options. It holds nothing about where things go.
+
+**What's shared**: what a layout gives everyone: the screen, an app, a window, the whiteboard, or nothing (just the camera). Saved per layout; changed live from Home during a meeting.

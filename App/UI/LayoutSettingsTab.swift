@@ -146,7 +146,7 @@ struct LayoutPageContent: View {
     /// not, so the editor offers "Apply now" for it.
     var liveLayoutID: UUID?
     var applyNow: (UUID) -> Void = { _ in }
-    /// The camera overlay, drawn on the shared (main) display's canvas. Nil: none.
+    /// The camera overlay, drawn on the shared display's canvas. Nil: none.
     var camera: LayoutCameraModel?
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
@@ -553,7 +553,9 @@ struct LayoutPageContent: View {
 
     private func canvas(_ slot: LayoutSlot, space: LayoutDisplaySpace, template: LayoutTemplate? = nil) -> some View {
         let two = template?.twoDisplays != nil && slot != .one
-        let sharedSlot = template?.effectiveSharedSlot ?? .main
+        let sharedSlot = template.map {
+            LayoutSharedDisplay.cameraSlot(template: $0, secondConnected: secondSize($0.twoDisplays?.secondUUID ?? "") != nil)
+        } ?? .main
         return LayoutCanvas(pieces: binding(for: slot), selection: $selection, display: space,
                      look: look,
                      accepts: { kind in
@@ -564,9 +566,9 @@ struct LayoutPageContent: View {
                      onNotice: { say($0) },
                      // The camera sits on the display everyone sees ("Everyone sees"); it is
                      // not a piece, so it never crosses displays by itself.
-                     camera: slot == (two ? sharedSlot : .main) || slot == .one ? camera : nil,
+                     camera: slot == sharedSlot || slot == .one ? camera : nil,
                      slot: slot,
-                     isShared: two && slot == sharedSlot,
+                     isShared: two && slot == (template?.effectiveSharedSlot ?? .main),
                      crossing: two ? crossing(from: slot) : nil,
                      incoming: incoming?.slot == slot ? incoming?.preview : nil,
                      refusal: refusal?.slot == slot ? refusal?.text : nil,

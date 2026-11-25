@@ -226,7 +226,7 @@ different order; this table is the authority.
   Zoom's own video mute for the owner (`setMyVideo`) is not called anywhere (a source scan fails on it). Home's camera
   chip names the state when the camera is out of the picture ("Only me", not "Off"). The owner's own People row is
   struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps the
-  live camera state (the state is not part of a layout); Start, Snap Back and the end drop it (R6.3).
+  live camera state (the state is not part of a layout; owner confirmed, 2026-11-26, option A); Start, Snap Back and the end drop it (R6.3).
   `Tests/CameraMatrixTests.swift` holds the whole matrix.
 - R6.9 (owner, 2026-11-26, option (a)) The Meeting window's "You" tile shows Zoom's render of the owner's own video,
   which is the Stage: what everyone sees. In Off and Only me the Stage leaves the camera out, so the tile shows the

@@ -251,7 +251,6 @@ final class ScreenAnnotationController {
         canvas.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         // Other apps record the drawings per the switch; our own capture excludes
         // the panel by filter and the compositor draws the strokes itself.
-        RecorderVisibility.track(canvas, as: .annotationCanvas)
         let view = AnnotationCanvasView(model: model)
         view.onDone = { [weak self] in self?.onClose?() }
         view.onWhiteboard = { [weak self] in self?.onWhiteboard?() }
@@ -279,7 +278,6 @@ final class ScreenAnnotationController {
         toolbar.isMovableByWindowBackground = true
         toolbar.hidesOnDeactivate = false
         toolbar.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        RecorderVisibility.track(toolbar, as: .annotationToolbar)
         let hosting = FirstMouseHost(rootView: AnnotationToolbarView(
             model: model,
             onWhiteboard: { [weak self] in self?.onWhiteboard?() },
@@ -298,7 +296,6 @@ final class ScreenAnnotationController {
         chrome.ignoresMouseEvents = true
         chrome.hidesOnDeactivate = false
         chrome.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        RecorderVisibility.track(chrome, as: .annotationChrome)
         let chromeContent = AnnotationChromeView()
         chrome.contentView = chromeContent
         chromeView = chromeContent

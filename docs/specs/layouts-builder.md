@@ -158,7 +158,7 @@ different order; this table is the authority.
 - R6.5 Only me keeps the camera open for the owner's bubble while the Stage leaves it out
   of everyone's picture (`Visibility.cameraMirrorOnly`, `cameraRuns`; `StageLayout.mirrorsCamera`).
   Only Off closes the camera. Needs a live check (item 10 below). Other apps' recorders never
-  record the bubble in Only me, whatever the recordings switch says (`PresenceRecorderRules`).
+  record the bubble in Only me (`PresenceRecorderRules`; the recordings switch no longer exists).
 - R6.6 (2026-11-25) One camera button on the bar and the Meeting window toolbar (the second, bubble cell is
   gone). A click toggles the camera for everyone: any "on" state goes Off, and Off returns as the last "on"
   state (Only everyone comes back as Only everyone); with nothing shared a click does not turn it off. A small

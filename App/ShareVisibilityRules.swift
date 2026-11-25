@@ -42,15 +42,15 @@ enum ShareVisibility: Equatable {
 /// Every kind of window Greenroom opens, and whether it carries the switch.
 /// Windows a layout places (Meeting window, Chat, views) are shown by default;
 /// the rest are hidden, and the switch flips either. (This is Greenroom's OWN capture; what other
-/// apps' recorders see is `sharingType`, decided by PresenceRecorderRules.) Tools and anything private never carry it.
+/// apps' recorders see is `sharingType`: always visible, except the Only-me camera bubble, PresenceRecorderRules.) Tools never carry it.
 enum ShareableWindow: CaseIterable {
     case main, settings, meetingChat, participants, meetingWindow, meetingView
     /// The whiteboard Annotations opens (a plain window for the owner). The one Greenroom
     /// window that starts visible to everyone (`startsShown`); its eye still turns it off.
     case localWhiteboard
     // Never offered:
-    /// Credentials are typed here (always `sharingType = .none` for other apps,
-    /// via RecorderVisibility; our own capture excludes it by filter).
+    /// Setup, not content: no eye. Other apps' captures may see it like any Greenroom window (every
+    /// secret typed here is a SecureField, dotted); our own capture excludes it by filter.
     case setupGuide
     /// Tools for the person running the meeting, not content.
     case controlBar, island, recordingChrome, annotation, drawingToolbar
@@ -75,7 +75,7 @@ enum ShareableWindow: CaseIterable {
     /// Why a window is left out, for the record.
     var exclusionReason: String? {
         switch self {
-        case .setupGuide: return "Credentials are typed there"
+        case .setupGuide: return "Setup, not content"
         case .controlBar, .island, .recordingChrome, .annotation, .drawingToolbar: return "A tool, never content"
         case .whiteboard: return "The whiteboard is its own share"
         case .browser: return "No eye switch (its tab strip fills the title bar); always in a whole-display share via alwaysShared"
@@ -87,7 +87,7 @@ enum ShareableWindow: CaseIterable {
 /// Windows that are in everyone's picture with no switch, whatever a layout placed.
 enum ShareVisibilityRules {
     /// The Greenroom Browser is what the owner teaches from; the meeting must always
-    /// see it. Credentials (setupGuide) and tools stay out.
+    /// see it. The setup guide and tools stay out.
     static func alwaysShared(windowKind: ShareableWindow) -> Bool { windowKind == .browser }
 }
 

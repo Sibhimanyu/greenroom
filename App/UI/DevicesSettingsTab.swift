@@ -31,23 +31,8 @@ struct DevicesSettingsTab: View {
                 Toggle("Record the Mac\u{2019}s sound", isOn: $coordinator.recordSystemAudio)
                     .help("Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Greenroom\u{2019}s own sound is left out, so the meeting is not doubled. Needs something shared under Behind you.")
             }
-            Section("Other apps") { VisibleToRecordersRow() }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-    }
-}
-
-/// "Show Greenroom on screen in other apps' recordings" (PresenceRecorderRules).
-private struct VisibleToRecordersRow: View {
-    @AppStorage(PresenceRecorderRules.key) private var visible = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Toggle(PresenceRecorderRules.settingTitle, isOn: $visible)
-            Text(PresenceRecorderRules.settingNote)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 }

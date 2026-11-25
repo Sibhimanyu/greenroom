@@ -96,7 +96,6 @@ struct CameraLookGroup: View {
                     }
                     .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
                 }
-                MirrorMyCameraRow(mirror: look.mirror)
             }
         }
     }
@@ -216,31 +215,3 @@ private struct BackgroundThumb: View {
 }
 
 
-/// "Mirror my camera": only the presenter's own camera bubble follows it.
-/// The picture in the meeting, the recording and the previews on this page
-/// and on Home (all the composite) are never mirrored. It can be changed only
-/// while nobody can record the bubble (other apps would capture a reversed
-/// picture), so while they can the toggle folds away and a note says why.
-struct MirrorMyCameraRow: View {
-    @Binding var mirror: Bool
-    @AppStorage(PresenceRecorderRules.key) private var visibleToRecorders = true
-
-    var body: some View {
-        let enabled = PresenceRecorderRules.mirrorSettingEnabled(visibleToRecorders: visibleToRecorders)
-        VStack(alignment: .leading, spacing: 2) {
-            Collapsible(hidden: !enabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Mirror my camera", isOn: $mirror)
-                    Text("Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Collapsible(hidden: enabled) {
-                Text(PresenceRecorderRules.mirrorDisabledNote)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}

@@ -10,8 +10,6 @@
 import SwiftUI
 
 struct HomeCameraPanel: View {
-    @AppStorage(PresenceFeed.mirrorKey) private var mirrorSelfView = true
-    @AppStorage(PresenceRecorderRules.key) private var visibleToRecorders = true
     @ObservedObject var coordinator: CoordinatorController
     let cameras: [LocalDeviceResolver.Camera]
     let more: () -> Void
@@ -112,22 +110,6 @@ struct HomeCameraPanel: View {
                                            selected: $0 == settings.transition)
                         },
                         pick: { coordinator.cameraDirectorSettings.transition = CameraTransition.allCases[$0] })
-                }
-            }
-
-            // The same switch as Settings › Webcam, one click from Start.
-            VStack(alignment: .leading, spacing: 2) {
-                HomeTileToggleRow(
-                    title: "Mirror my camera",
-                    isOn: $mirrorSelfView,
-                    help: visibleToRecorders
-                        ? PresenceRecorderRules.mirrorDisabledNote
-                        : "Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
-                .disabled(!PresenceRecorderRules.mirrorSettingEnabled(visibleToRecorders: visibleToRecorders))
-                if visibleToRecorders {
-                    Text(PresenceRecorderRules.mirrorDisabledNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
         }

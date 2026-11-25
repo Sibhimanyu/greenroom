@@ -47,10 +47,8 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         made.titleVisibility = .hidden // the guide's own header carries the name
         made.isReleasedWhenClosed = false
         made.delegate = self
-        // The guide holds credentials as they are typed: never recordable by
-        // other apps, whatever the switch says (always `.none`). Our own capture
-        // excludes it through the app-wide filter.
-        RecorderVisibility.track(made, as: .setupGuide)
+        // Visible to other apps' captures like any Greenroom window (decision 2026-11-25): its
+        // secret fields are SecureFields, dotted. Our own capture excludes it through the app-wide filter.
         let main = MainWindow.current
         let anchor = (!atLaunch && main?.isVisible == true) ? main?.frame : nil
         let screen = (anchor == nil ? NSScreen.main : main?.screen) ?? NSScreen.main

@@ -36,6 +36,34 @@ final class ShareVisibilityRulesTests: XCTestCase {
         XCTAssertFalse(ShareableWindow.controlBar.offersSwitch)
     }
 
+    // Owner bug list R14: the setup guide is visible to other apps' captures; it has no eye only because
+    // it is not content, and its reason no longer says credentials are hidden.
+    func testSetupGuideReasonIsNotAboutHidingCredentials() {
+        let reason = ShareableWindow.setupGuide.exclusionReason ?? ""
+        XCTAssertFalse(reason.lowercased().contains("credential"), reason)
+        XCTAssertFalse(reason.isEmpty)
+    }
+
+    // Owner bug list R14: every secret is dotted. No plain TextField may be titled or bound to a secret.
+    func testNoSecretIsEverInAPlainTextField() throws {
+        let ui = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("App/UI")
+        let files = try FileManager.default.contentsOfDirectory(at: ui, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+        var secretFields = 0
+        for file in files {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for (n, line) in text.components(separatedBy: "\n").enumerated() {
+                if line.contains("TextField(") && !line.contains("SecureField(")
+                    && line.range(of: "secret|token", options: [.regularExpression, .caseInsensitive]) != nil {
+                    XCTFail("\(file.lastPathComponent):\(n + 1) puts a secret in a plain TextField")
+                }
+                if line.contains("SecureField(") { secretFields += 1 }
+            }
+        }
+        XCTAssertGreaterThanOrEqual(secretFields, 4) // Zoom SDK, S2S, YouTube, the guide's own field
+    }
+
     func testSwitchStateHiddenByDefault() {
         let state = ShareSwitchState(on: false, kind: .display)
         XCTAssertEqual(state.visibility, .onlyYou)

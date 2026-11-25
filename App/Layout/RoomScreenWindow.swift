@@ -18,8 +18,8 @@
 //  CVPixelBuffer is wrapped in a CMSampleBuffer (DisplayImmediately) and handed to an
 //  AVSampleBufferDisplayLayer, which the GPU shows straight from the surface.
 //
-//  Out of the share and recordings: the window's sharingType is .none, and the
-//  display capture excludes the whole of Greenroom anyway. No chrome, no glass:
+//  Out of Greenroom's own share and recordings: the display capture excludes the
+//  whole of Greenroom. Other apps' captures may see it (default sharingType). No chrome, no glass:
 //  the picture on black.
 //
 import AppKit
@@ -209,8 +209,8 @@ enum RoomScreen {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        // Never in the share or in other apps' recordings: it would show itself.
-        panel.sharingType = .none
+        // Default sharingType (RoomScreenRules.sharingForOtherApps): other apps' captures may see it.
+        // Greenroom's own capture excludes the whole app, so it never films itself.
         let view = RoomScreenView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
         panel.contentView = view
         feeder = RoomFrameFeeder(layer: view.displayLayer)

@@ -125,4 +125,21 @@ final class RoomScreenTests: XCTestCase {
         XCTAssertFalse(RoomScreenRules.isHidden(layoutHidden: true))
         XCTAssertFalse(RoomScreenRules.isHidden(layoutHidden: false))
     }
+
+    // Owner bug list R14: other apps' captures (QuickTime, Loom, Zoom's share, OBS) may see the Room
+    // screen, so it keeps the default sharingType.
+    func testOtherAppsMaySeeTheRoomScreen() {
+        XCTAssertEqual(RoomScreenRules.sharingForOtherApps, .readOnly)
+    }
+
+    // Owner bug list R14: Greenroom's own capture still never films the Room screen: it is fixed off
+    // in the one rule for every share, and the exception list only holds registered windows.
+    func testRoomScreenIsNeverInGreenroomsOwnCapture() {
+        let piece = LayoutPiece(kind: .roomScreen, rect: .full)
+        for target: Visibility.Target in [.wholeScreen, .whiteboard, .justMe, .window(bundleID: "com.apple.Safari")] {
+            XCTAssertFalse(Visibility.everyoneSees(piece: piece, target: target).isOn, "\(target)")
+        }
+        XCTAssertFalse(ShareableWindow.allCases.map { "\($0)".lowercased() }.contains { $0.contains("room") })
+        XCTAssertEqual(ShowOnShare.exceptionIDs(kind: .display, registry: [3], alwaysShared: [7]), [3, 7])
+    }
 }

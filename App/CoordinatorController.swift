@@ -1706,6 +1706,9 @@ final class CoordinatorController: ObservableObject {
         }
 
         apply(.meetingStartRequested)
+        // This start's number: its task reports back with it, so a late end
+        // of an older, cancelled start cannot clear this one.
+        let startID = phase.startID
         statusLines = []
         // The layout this class runs: the card chosen in Settings right now, held for
         // the whole class. None (nil) arranges nothing.
@@ -1900,7 +1903,7 @@ final class CoordinatorController: ObservableObject {
                     // other error (a cancelled request). Not a failure.
                     log("Start cancelled.")
                     finishStartReadiness()
-                    apply(.meetingStartTaskFinished)
+                    apply(.meetingStartTaskFinished(startID: startID))
                     return
                 }
                 let message = error.localizedDescription
@@ -1921,7 +1924,7 @@ final class CoordinatorController: ObservableObject {
                 mainWindowStartFailed()
                 stop(failure: message)
             }
-            apply(.meetingStartTaskFinished)
+            apply(.meetingStartTaskFinished(startID: startID))
         }
     }
 
@@ -2765,6 +2768,7 @@ final class CoordinatorController: ObservableObject {
     func startRecordingFlow() {
         guard !isRunning, !sceneInUse, !isStopping else { return }
         apply(.recordStartRequested)
+        let startID = phase.startID
         studioPreviewOn = true
         lastStartWasRecordFlow = true
         recordFlowHUD = true
@@ -2832,7 +2836,7 @@ final class CoordinatorController: ObservableObject {
                     mainWindowStartFailed()
                 }
             }
-            apply(.recordStartTaskFinished)
+            apply(.recordStartTaskFinished(startID: startID))
         }
     }
 

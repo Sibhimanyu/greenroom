@@ -31,7 +31,7 @@ final class SessionPhaseTests: XCTestCase {
         XCTAssertEqual(flags(p), Flags(running: true))
         p.apply(.meetingPictureUp)
         XCTAssertEqual(flags(p), Flags(running: true, live: true))
-        p.apply(.meetingStartTaskFinished)
+        p.apply(.meetingStartTaskFinished(startID: 1))
         XCTAssertEqual(flags(p), Flags(live: true))
         p.apply(.stopRequested)
         XCTAssertEqual(flags(p), Flags(live: true, stopping: true))
@@ -49,7 +49,7 @@ final class SessionPhaseTests: XCTestCase {
         // Countdown, then the take: isRunning is still true.
         p.apply(.takeBegan)
         XCTAssertEqual(flags(p), Flags(running: true, recordOnly: true, startingRecord: true, recording: true))
-        p.apply(.recordStartTaskFinished)
+        p.apply(.recordStartTaskFinished(startID: 1))
         XCTAssertEqual(flags(p), Flags(recordOnly: true, recording: true))
         // Stop: the take finishes, the picture goes, the file is still closing.
         p.apply(.stopRequested)
@@ -60,7 +60,7 @@ final class SessionPhaseTests: XCTestCase {
         p.apply(.recordStopFinished)
         XCTAssertEqual(flags(p), Flags())
         // Saving outliving the session.
-        var q = run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished,
+        var q = run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished(startID: 1),
                      .stopRequested, .takeFinishing, .recordPictureDown, .recordStopFinished])
         XCTAssertEqual(flags(q), Flags(saving: true))
         q.apply(.takeSaved)
@@ -71,7 +71,7 @@ final class SessionPhaseTests: XCTestCase {
         var p = run([.recordStartRequested, .recordPictureUp, .stopRequested])
         XCTAssertEqual(flags(p), Flags(running: true, stopping: true, recordOnly: true, startingRecord: true))
         p.apply(.recordPictureDown)
-        p.apply(.recordStartTaskFinished)
+        p.apply(.recordStartTaskFinished(startID: 1))
         XCTAssertEqual(flags(p), Flags(stopping: true))
         p.apply(.recordStopFinished)
         XCTAssertEqual(flags(p), Flags())
@@ -80,30 +80,58 @@ final class SessionPhaseTests: XCTestCase {
     func testFailedMeetingStart() {
         var p = run([.meetingStartRequested, .stopRequested])
         XCTAssertEqual(flags(p), Flags(running: true, stopping: true))
-        p.apply(.meetingStartTaskFinished)
+        p.apply(.meetingStartTaskFinished(startID: 1))
         XCTAssertEqual(flags(p), Flags(stopping: true))
         p.apply(.meetingTornDown)
         XCTAssertEqual(flags(p), Flags())
     }
 
     func testFailedRecordStart() {
-        let p = run([.recordStartRequested, .recordPictureUp, .recordPictureDown, .recordStartTaskFinished])
+        let p = run([.recordStartRequested, .recordPictureUp, .recordPictureDown, .recordStartTaskFinished(startID: 1)])
         XCTAssertEqual(flags(p), Flags())
     }
 
     func testCancelledMeetingStartEitherOrderEndsIdle() {
-        let a = run([.meetingStartRequested, .stopRequested, .meetingStartTaskFinished, .meetingTornDown])
-        let b = run([.meetingStartRequested, .stopRequested, .meetingTornDown, .meetingStartTaskFinished])
+        let a = run([.meetingStartRequested, .stopRequested, .meetingStartTaskFinished(startID: 1), .meetingTornDown])
+        let b = run([.meetingStartRequested, .stopRequested, .meetingTornDown, .meetingStartTaskFinished(startID: 1)])
         XCTAssertEqual(flags(a), Flags())
         XCTAssertEqual(flags(b), Flags())
-        // Today's quirk, reproduced: a late task end clears a newer start.
-        let c = run([.meetingStartRequested, .stopRequested, .meetingTornDown,
-                     .meetingStartRequested, .meetingStartTaskFinished])
-        XCTAssertEqual(flags(c), Flags())
+        // The old race: a late end of the cancelled start used to clear a newer start.
+        // Now it is ignored, and the new start's own end still clears it.
+        var c = run([.meetingStartRequested, .stopRequested, .meetingTornDown, .meetingStartRequested])
+        let older = c.startID - 1
+        c.apply(.meetingStartTaskFinished(startID: older))
+        XCTAssertTrue(c.isRunning)
+        c.apply(.meetingStartTaskFinished(startID: c.startID))
+        XCTAssertFalse(c.isRunning)
+    }
+
+    func testStaleMeetingFinishAfterNewRecordStartIsIgnored() {
+        var p = run([.meetingStartRequested, .stopRequested, .meetingTornDown, .recordStartRequested, .recordPictureUp])
+        let older = p.startID - 1
+        p.apply(.meetingStartTaskFinished(startID: older))
+        XCTAssertTrue(p.isRunning && p.startingRecordOnly)
+    }
+
+    func testStaleRecordFinishAfterNewRecordStartIsIgnored() {
+        var p = run([.recordStartRequested, .recordPictureUp, .stopRequested, .recordPictureDown, .recordStopFinished,
+                     .recordStartRequested])
+        let older = p.startID - 1
+        p.apply(.recordStartTaskFinished(startID: older))
+        XCTAssertTrue(p.isRunning && p.startingRecordOnly)
+        p.apply(.recordStartTaskFinished(startID: p.startID))
+        XCTAssertFalse(p.isRunning)
+    }
+
+    func testNormalFinishStillClears() {
+        var p = run([.meetingStartRequested, .meetingPictureUp])
+        p.apply(.meetingStartTaskFinished(startID: p.startID))
+        XCTAssertFalse(p.isRunning)
+        XCTAssertTrue(p.stageLive)
     }
 
     func testTakeDuringAMeeting() {
-        var p = run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished, .takeBegan])
+        var p = run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished(startID: 1), .takeBegan])
         XCTAssertEqual(flags(p), Flags(live: true, recording: true))
         p.apply(.takeFinishing)
         XCTAssertEqual(flags(p), Flags(live: true, saving: true))
@@ -115,7 +143,7 @@ final class SessionPhaseTests: XCTestCase {
     /// the start task is done. The module must still say a meeting is live
     /// with a take rolling.
     func testLiveMeetingWithRollingTakeAfterStartTaskFinished() {
-        let p = run([.meetingStartRequested, .meetingPictureUp, .takeBegan, .meetingStartTaskFinished])
+        let p = run([.meetingStartRequested, .meetingPictureUp, .takeBegan, .meetingStartTaskFinished(startID: 1)])
         XCTAssertFalse(p.isRunning)
         XCTAssertTrue(p.stageLive)
         XCTAssertTrue(p.isRecording)
@@ -125,7 +153,7 @@ final class SessionPhaseTests: XCTestCase {
 
     func testRecordingCanContinueWhileStopping() {
         // End Session: the take is still rolling when Stop is requested.
-        var p = run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished,
+        var p = run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished(startID: 1),
                      .takeBegan, .stopRequested])
         XCTAssertEqual(flags(p), Flags(live: true, stopping: true, recording: true))
         p.apply(.takeFinishingAtMeetingEnd)
@@ -150,7 +178,7 @@ final class SessionPhaseTests: XCTestCase {
     }
 
     func testRecorderStoppedItself() {
-        var p = run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished])
+        var p = run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished(startID: 1)])
         p.apply(.recorderStoppedItself)
         XCTAssertEqual(flags(p), Flags(recordOnly: true))
         // Not rolling: nothing to do.
@@ -161,14 +189,14 @@ final class SessionPhaseTests: XCTestCase {
     func testSessionOrTakeOnScreenCountsRecordSessionBetweenTakes() {
         XCTAssertFalse(SessionPhase().hasSessionOrTakeOnScreen)
         // Record session up, start task finished, no take rolling: the old check missed this.
-        let between = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished])
+        let between = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished(startID: 1)])
         XCTAssertTrue(between.recordOnlyActive)
         XCTAssertFalse(between.isRunning || between.stageLive || between.isRecording)
         XCTAssertTrue(between.hasSessionOrTakeOnScreen)
         XCTAssertTrue(run([.meetingStartRequested]).hasSessionOrTakeOnScreen)
-        XCTAssertTrue(run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished]).hasSessionOrTakeOnScreen)
-        XCTAssertTrue(run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished]).hasSessionOrTakeOnScreen)
-        let done = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished, .stopRequested, .recordPictureDown, .recordStopFinished])
+        XCTAssertTrue(run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished(startID: 1)]).hasSessionOrTakeOnScreen)
+        XCTAssertTrue(run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished(startID: 1)]).hasSessionOrTakeOnScreen)
+        let done = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished(startID: 1), .stopRequested, .recordPictureDown, .recordStopFinished])
         XCTAssertFalse(done.hasSessionOrTakeOnScreen)
     }
 }

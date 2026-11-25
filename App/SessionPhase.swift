@@ -59,7 +59,9 @@ struct SessionPhase: Equatable {
         /// runPipeline built the picture and it is going to the meeting.
         case meetingPictureUp
         /// The start task ended, whether it finished, failed or was cancelled.
-        case meetingStartTaskFinished
+        /// `startID` is the `startID` read right after the start was requested;
+        /// an end that belongs to an older start is ignored.
+        case meetingStartTaskFinished(startID: Int)
         // Record session
         /// Start Recording accepted: the start task is about to run.
         case recordStartRequested
@@ -68,7 +70,7 @@ struct SessionPhase: Equatable {
         /// The Record picture was put away (abandoned start, or stop).
         case recordPictureDown
         /// The Record start task ended (finished, failed, cancelled).
-        case recordStartTaskFinished
+        case recordStartTaskFinished(startID: Int)
         // Stopping (either kind)
         /// stop() / stopRecordingSession() began.
         case stopRequested
@@ -97,6 +99,10 @@ struct SessionPhase: Equatable {
     /// The old paused flag was only cleared by resume and by a new take, never
     /// when a paused take ended. Kept so the derived value stays identical.
     private var pauseLeftover = false
+    /// Counts start requests. A cancelled start task can end after Stop's
+    /// teardown and after a newer start began; carrying this number back in the
+    /// finish event lets that late end be told apart and ignored.
+    private(set) var startID = 0
 
     init() {}
 
@@ -152,20 +158,22 @@ struct SessionPhase: Equatable {
 
         switch event {
         case .meetingStartRequested:
+            startID += 1
             kind = .meeting; running = true; up = false
         case .meetingPictureUp:
             if kind == nil || kind == .meeting { kind = .meeting; up = true }
-        case .meetingStartTaskFinished:
-            if kind != .record { running = false }
+        case let .meetingStartTaskFinished(id):
+            if id == startID, kind != .record { running = false }
         case .recordStartRequested:
+            startID += 1
             if kind == .meeting { up = false }
             kind = .record; running = true
         case .recordPictureUp:
             if kind == nil || kind == .record { kind = .record; up = true }
         case .recordPictureDown:
             if kind == .record { up = false }
-        case .recordStartTaskFinished:
-            if kind == .record { running = false }
+        case let .recordStartTaskFinished(id):
+            if id == startID, kind == .record { running = false }
         case .stopRequested:
             stopping = true
         case .meetingTornDown:

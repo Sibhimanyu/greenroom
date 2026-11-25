@@ -125,8 +125,11 @@ struct HomeView: View {
     @State private var micOpen = false
     @State private var moreOpen = false
     /// Only ever started while a session is live, when the microphone is
-    /// already in use: see `micMeterLevel`.
-    @StateObject private var meter = MicLevelMonitor()
+    /// already in use: see `micMeter`. Held, not observed: the level changes
+    /// about 47 times a second, and only `LiveMiniMeter` watches it, so Home
+    /// does not redraw (and re-resolve its layout) on every one. Made on first
+    /// use, since it owns an audio engine.
+    @State private var meter: MicLevelMonitor?
 
     // MARK: Derived
 
@@ -174,13 +177,13 @@ struct HomeView: View {
             refreshDevices()
             refreshPermissions()
             refreshShareLists()
-            if coordinator.stageLive { meter.start() }
+            if coordinator.stageLive { startMeter() }
             // The card opens with Home (owner, 2026-11-16), so its picture is live too.
             if previewShown { startLive() }
         }
         .onDisappear {
             stopLive()
-            meter.stop()
+            meter?.stop()
         }
         // The camera runs while the card is open on Home, and stops when it
         // folds (or Home goes away, or a start begins).
@@ -192,7 +195,7 @@ struct HomeView: View {
             if !home { stopLive() } else if previewShown, !coordinator.isRunning { startLive() }
         }
         .onChange(of: coordinator.stageLive) { _, live in
-            if live { meter.start() } else { meter.stop() }
+            if live { startMeter() } else { meter?.stop() }
         }
         .onChange(of: coordinator.shareTarget.kind) { _, _ in refreshShareLists() }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
@@ -695,7 +698,7 @@ struct HomeView: View {
     /// under it. `lit` fills the orb green (a setting that acts on its own);
     /// `warn` adds an amber dot and turns the value amber.
     private func dockLabel(symbol: String, value: String, lit: Bool = false, warn: Bool = false,
-                           meter: Double? = nil) -> some View {
+                           meter: MicLevelMonitor? = nil) -> some View {
         DockFace(symbol: symbol, value: value, lit: lit, warn: warn, meter: meter)
     }
 
@@ -816,7 +819,7 @@ struct HomeView: View {
         let name = LookSummary.microphoneText(uid: coordinator.micDeviceUID, microphones: microphones,
                                               system: AVCaptureDevice.default(for: .audio)?.localizedName)
         return Button { micOpen.toggle() } label: {
-            dockLabel(symbol: "mic", value: micCaption(name), warn: problem("mic"), meter: micMeterLevel)
+            dockLabel(symbol: "mic", value: micCaption(name), warn: problem("mic"), meter: micMeter)
         }
         .buttonStyle(DockButtonStyle())
         .greenroomPopover(isPresented: $micOpen) {
@@ -848,9 +851,13 @@ struct HomeView: View {
 
     /// Only the system's input, which is what the monitor listens to, and only
     /// while a session has the microphone open already.
-    private var micMeterLevel: Double? {
-        guard coordinator.stageLive, coordinator.micDeviceUID.isEmpty, meter.isRunning else { return nil }
-        return meter.level
+    private var micMeter: MicLevelMonitor? {
+        coordinator.stageLive && coordinator.micDeviceUID.isEmpty ? meter : nil
+    }
+
+    private func startMeter() {
+        if meter == nil { meter = MicLevelMonitor() }
+        meter?.start()
     }
 
     /// Layout: tiles with diagrams in a panel (HomeLayoutPanel). The tile
@@ -1403,6 +1410,16 @@ private extension View {
     }
 }
 
+/// Watches the microphone monitor on its own, so a level change redraws these
+/// bars and nothing else. Drawn only once a tap is genuinely running.
+private struct LiveMiniMeter: View {
+    @ObservedObject var monitor: MicLevelMonitor
+
+    var body: some View {
+        if monitor.isRunning { MiniMeter(level: monitor.level) }
+    }
+}
+
 /// The microphone's level as four thin bars, only drawn while there is a level
 /// to read.
 private struct MiniMeter: View {
@@ -1502,7 +1519,7 @@ private struct DockFace: View {
     let value: String
     var lit = false
     var warn = false
-    var meter: Double?
+    var meter: MicLevelMonitor?
     @Environment(\.dockLift) private var lift
 
     var body: some View {
@@ -1531,7 +1548,7 @@ private struct DockFace: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .truncationMode(.middle)
-                if let meter { MiniMeter(level: meter) }
+                if let meter { LiveMiniMeter(monitor: meter) }
             }
             .padding(.horizontal, 3)
         }

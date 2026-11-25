@@ -56,8 +56,8 @@ Status: built.
 
 The `MicLevelMonitor` observation moves into a small child view, as `ShapePreviewFeed` does for the picture. `HomeView` no longer observes the meter.
 
-Acceptance: `HomeView` holds the monitor without `@StateObject` observation; only the mic chip's meter view redraws on a level.
-Status: open.
+Acceptance: `HomeView` holds the monitor without `@StateObject` observation; only the mic chip's meter view redraws on a level. The monitor is made on first use.
+Status: built.
 
 ### R6. DEBUG measurement
 

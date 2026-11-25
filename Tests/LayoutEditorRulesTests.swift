@@ -56,13 +56,6 @@ final class LayoutEditorRulesTests: XCTestCase {
         XCTAssertEqual([LayoutSlot.main, .second].filter { LayoutEditorRules.carriesSharedControls(slot: $0, template: shown) }, [.second])
     }
 
-    func testSharedMenuRowsFoldAway() {
-        XCTAssertEqual(LayoutEditorRules.sharedMenu(hasTwoDisplays: false, kind: .display), [.whatsShared])
-        XCTAssertEqual(LayoutEditorRules.sharedMenu(hasTwoDisplays: true, kind: .nothing), [.sharedDisplay, .whatsShared])
-        XCTAssertEqual(LayoutEditorRules.sharedMenu(hasTwoDisplays: true, kind: .window),
-                       [.sharedDisplay, .whatsShared, .windowApp, .followSlideShow])
-    }
-
     // R9 (editor): the description lives in the empty inspector (the view decides that by selection).
     func testTheCaptionUnderCardsOnlyWithNoLayout() {
         XCTAssertFalse(LayoutEditorRules.captionUnderCards(hasActiveLayout: true))

@@ -334,19 +334,32 @@ struct HomeView: View {
     @ViewBuilder private var previewFooter: some View {
         if let row = previewRow, let template = coordinator.layoutLibrary.active {
             HStack(spacing: 8) {
-                if let room = RoomDisplayNote.note(for: template, connectedDisplays: displays.count,
-                                                   isMirrored: DisplayResolver.hasMirroredDisplay()) {
+                let room = RoomDisplayNote.note(for: template, connectedDisplays: displays.count,
+                                                isMirrored: DisplayResolver.hasMirroredDisplay())
+                // R36.2: one note at a time: the room display, then the share hint, then the second display.
+                switch ShareHintRules.footerNote(
+                    room: room?.text,
+                    hint: ShareHintRules.hint(kind: coordinator.shareTarget.kind, appName: shareAppName),
+                    secondDisplay: row.note) {
+                case .room:
                     // R15.2: calm, amber small text; Start is never blocked.
-                    Label(room.text, systemImage: "display")
-                        .font(.system(size: 11)).foregroundStyle(Brand.netText).lineLimit(1)
-                        .help(RoomDisplayNote.hint)
-                    Button("Open Displays settings") {
-                        if let url = URL(string: RoomDisplayNote.openDisplaysSettingsURL) { NSWorkspace.shared.open(url) }
+                    if let room {
+                        Label(room.text, systemImage: "display")
+                            .font(.system(size: 11)).foregroundStyle(Brand.netText).lineLimit(1)
+                            .help(RoomDisplayNote.hint)
+                        Button("Open Displays settings") {
+                            if let url = URL(string: RoomDisplayNote.openDisplaysSettingsURL) { NSWorkspace.shared.open(url) }
+                        }
+                        .buttonStyle(.link).font(.system(size: 11))
                     }
-                    .buttonStyle(.link).font(.system(size: 11))
-                } else if let note = row.note {
+                case let .hint(text):
+                    Text(text).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        .truncationMode(.tail).help(text)
+                case let .secondDisplay(note):
                     Label(note, systemImage: "display")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                case nil:
+                    EmptyView()
                 }
                 Spacer(minLength: 0)
                 Button {
@@ -697,7 +710,11 @@ struct HomeView: View {
 
     /// Short enough for the dock; the help says what the class would see.
     private var shareValue: String {
-        shareGone ? "Not open" : LookSummary.shareText(coordinator.shareTarget)
+        shareGone ? "Not open" : ShareHintRules.tileLabel(kind: coordinator.shareTarget.kind, appName: shareAppName)
+    }
+
+    private var shareAppName: String {
+        coordinator.shareTarget.appBundleID.isEmpty ? "" : coordinator.shareTarget.displayName
     }
 
     /// The readiness problem that belongs to one dock button, if any.
@@ -788,14 +805,8 @@ struct HomeView: View {
             moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openCameraSettings() },
             width: nil
         ) {
-            HomeTileChoiceRow(
-                choices: WebcamShape.allCases.map {
-                    HomeTileChoice(id: $0.id, title: $0.label, symbol: Self.symbol(for: $0),
-                                   selected: coordinator.webcamShape == $0)
-                },
-                autofocus: true
-            ) { index in
-                coordinator.webcamShape = WebcamShape.allCases[index]
+            CameraShapeTiles(selected: coordinator.webcamShape, autofocus: true) { shape in
+                coordinator.webcamShape = shape
                 coordinator.requestShapeApply()
                 lookOpen = false
             }
@@ -980,14 +991,7 @@ struct HomeView: View {
         .accessibilityLabel("More settings")
     }
 
-    private static func symbol(for shape: WebcamShape) -> String {
-        switch shape {
-        case .square: return "square"
-        case .circle: return "circle"
-        case .roundedRectangle: return "app"
-        case .cutout, .presenterLarge: return "person.crop.rectangle"
-        }
-    }
+    private static func symbol(for shape: WebcamShape) -> String { CameraShapeTiles.symbol(for: shape) }
 
     private static func symbol(for kind: ShareTarget.Kind) -> String {
         switch kind {

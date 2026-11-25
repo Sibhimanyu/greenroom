@@ -178,6 +178,8 @@ struct LayoutPageContent: View {
     /// The camera look group starts open, for the off-screen render.
     var opensLookGroup = false
     @State private var lookOpen = false
+    /// The "Everyone sees this" pop-out is open.
+    @State private var shareOpen = false
 
     @State private var selection: UUID?
     /// The width the canvases may use (R29), read from the page.
@@ -688,61 +690,30 @@ struct LayoutPageContent: View {
                 })
     }
 
-    /// "Everyone sees this": the shared display (two displays) and what is shared, saved with the
-    /// layout. A live change in Home or the bar changes only the running meeting.
+    /// "Everyone sees this": opens the share pop-out Home uses (R32), for what is saved with the layout. A live
+    /// change in Home or the bar changes only the running meeting.
     private func sharedTag(_ template: LayoutTemplate) -> AnyView {
-        let current = template.share ?? fallbackShare
-        let set: (ShareTarget) -> Void = { new in
-            if let i = activeIndex { library.templates[i].share = new }
-        }
-        let rows = LayoutEditorRules.sharedMenu(hasTwoDisplays: template.twoDisplays != nil,
-                                                kind: current.kind == .app ? .display : current.kind)
-        return AnyView(Menu {
-            ForEach(rows, id: \.self) { row in
-                switch row {
-                case .sharedDisplay:
-                    Picker("Shared display", selection: sharedSlotBinding()) {
-                        Text("Main display").tag(LayoutSlot.main)
-                        Text("Second display").tag(LayoutSlot.second)
-                    }
-                    .pickerStyle(.inline)
-                    Divider()
-                case .whatsShared:
-                    Picker("What\u{2019}s shared", selection: Binding(
-                        get: { current.kind == .app ? .display : current.kind },
-                        set: { kind in var t = current; t.kind = kind; set(t) })) {
-                        ForEach(ShareTarget.Kind.pickable) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.inline)
-                case .windowApp:
-                    Divider()
-                    Picker("Window of", selection: Binding(
-                        get: { current.appBundleID },
-                        set: { id in
-                            var t = current
-                            t.appBundleID = id
-                            t.appName = apps.first { $0.bundleID == id }?.name ?? ""
-                            t.windowTitle = ""
-                            set(t)
-                        })) {
-                        Text("Choose an app").tag("")
-                        ForEach(apps) { Text($0.name).tag($0.bundleID) }
-                    }
-                case .followSlideShow:
-                    Toggle("Follow the slide show", isOn: Binding(
-                        get: { current.followsSlideShow },
-                        set: { on in var t = current; t.followsSlideShow = on; set(t) }))
-                }
+        let current = SharePopoutRules.readBack(template.share ?? fallbackShare)
+        let label = ShareHintRules.tileLabel(kind: current.kind, appName: current.appName)
+        return AnyView(Button { shareOpen.toggle() } label: {
+            HStack(spacing: 3) {
+                Text("Everyone sees this").font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }
-        } label: {
-            Text("Everyone sees this")
-                .font(.system(size: 11, weight: .medium))
+            .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("What everyone sees when you start this layout: \(current.kind == .app ? ShareTarget.Kind.display.label : current.kind.label)"
+        .buttonStyle(.plain)
+        .greenroomPopover(isPresented: $shareOpen) {
+            LayoutSharePopout(
+                share: current, apps: apps, camera: camera,
+                set: { new in if let i = activeIndex { library.templates[i].share = new } },
+                sharedDisplay: template.twoDisplays != nil ? sharedSlotBinding() : nil)
+        }
+        .help("What everyone sees when you start this layout: \(label)"
               + (template.twoDisplays != nil ? ", from the display marked here. Recordings film it too." : ".")
-              + " Changing it in Home or on the bar during a meeting does not change what is saved here."))
+              + " Changing it in Home or on the bar during a meeting does not change what is saved here.")
+        .accessibilityLabel("Everyone sees this")
+        .accessibilityValue(label))
     }
 
     /// "Second": the second display's picker and Remove second display.
@@ -1115,19 +1086,14 @@ struct LayoutPageContent: View {
             if selection == LayoutCameraModel.selectionID, let camera {
                 cameraInspector(camera)
             } else if let (slot, piece) = selected(in: template) {
-                inspectorHeader(piece, slot: slot, template: template)
+                pieceHeader(piece, slot: slot, template: template)
                 switch piece.kind {
                 case let .app(app): appControls(piece, app: app, slot: slot, template: template)
                 case let .meeting(fills, hidden): meetingControls(piece, fills: fills, hidden: hidden, slot: slot, template: template)
                 case let .view(_, hidden): viewControls(piece, view: piece.kind.view ?? .gallery, hidden: hidden)
-                case .roomScreen:
-                    Text("What the meeting sees, on the screen in the room. Greenroom\u{2019}s private windows are left out. Set that screen as an extended display, not mirrored.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                case .chat:
-                    Text("The meeting chat window. It opens in this space when the meeting starts.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                case .roomScreen, .chat:
+                    // Nothing at rest (R35.2): the header, and the tooltip says what it is.
+                    EmptyView()
                 }
             } else {
                 // Nothing selected: what this layout does, in a sentence. The key
@@ -1221,41 +1187,68 @@ struct LayoutPageContent: View {
         return "\(name) \u{00B7} \(w)\u{00D7}\(h)"
     }
 
-    private func inspectorHeader(_ piece: LayoutPiece, slot: LayoutSlot, template: LayoutTemplate) -> some View {
+    /// R35: the same header for every kind: icon, name, one quiet readout, and a menu for what is secondary.
+    private func pieceHeader(_ piece: LayoutPiece, slot: LayoutSlot, template: LayoutTemplate) -> some View {
         let l = look(piece)
         let size = space(for: slot, template).size
         let span = LayoutGeometry.cellSpan(of: piece.rect)
         let points = LayoutGeometry.pointSize(of: piece.rect, display: size)
-        return HStack(spacing: 8) {
-            Group {
-                if let icon = l.icon, !l.missing {
-                    Image(nsImage: icon).resizable()
-                } else {
-                    Image(systemName: l.symbol).resizable().scaledToFit().foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 20, height: 20)
-            Text(l.name)
-                .font(.callout.weight(.semibold))
-            Text("columns \(span.cols.lowerBound)\u{2013}\(span.cols.upperBound) \u{00B7} rows \(span.rows.lowerBound)\u{2013}\(span.rows.upperBound) \u{00B7} \(points.w)\u{00D7}\(points.h)")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button(role: .destructive) { remove(piece.id) } label: {
-                Label("Remove", systemImage: "trash")
-            }
-            .controlSize(.small)
-            .help("Takes it out of this layout. \u{232B} does the same.")
+        var tip = PieceInspectorRules.tooltip(for: piece.kind)
+        if case .meeting = piece.kind, !customUIMode {
+            tip = "Zoom\u{2019}s own meeting window is on (experimental), so this is Zoom\u{2019}s window, moved into this space."
         }
+        return PieceInspectorHeader(
+            name: l.name, readout: PieceInspectorRules.readout(points: points),
+            readoutHelp: PieceInspectorRules.readoutHelp(columns: span.cols, rows: span.rows, points: points),
+            tooltip: tip,
+            leading: {
+                Group {
+                    if let icon = l.icon, !l.missing {
+                        Image(nsImage: icon).resizable()
+                    } else {
+                        Image(systemName: l.symbol).resizable().scaledToFit().foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 20, height: 20)
+            },
+            menu: { pieceMenu(piece) })
+    }
+
+    /// The \u{22EF} menu: what is secondary (R35.3). Remove is last.
+    @ViewBuilder
+    private func pieceMenu(_ piece: LayoutPiece) -> some View {
+        let items = PieceInspectorRules.menu(for: piece.kind)
+        ForEach(items, id: \.self) { item in
+            switch item {
+            case .closesOnStop:
+                Toggle(AppCatalog.isBrowser(piece.kind.app?.bundleID ?? "")
+                       ? "Close the window Start opened" : "Close when the meeting ends",
+                       isOn: appFlag(piece, \.closesOnStop))
+            case .opensMinimised:
+                Toggle("Opens minimised", isOn: appFlag(piece, \.opensMinimised))
+            case .reopenLastTabs:
+                Toggle("Reopen last tabs", isOn: $browserRestoresTabs)
+            case .searchSuggestions:
+                Toggle("Search suggestions", isOn: $browserSearchSuggestions)
+            case .remove:
+                if items.count > 1 { Divider() }
+                Button(role: .destructive) { remove(piece.id) } label: { Label("Remove", systemImage: "trash") }
+            }
+        }
+    }
+
+    private func appFlag(_ piece: LayoutPiece, _ key: WritableKeyPath<AppPiece, Bool>) -> Binding<Bool> {
+        Binding(get: { piece.kind.app?[keyPath: key] ?? false },
+                set: { v in update(piece.id) { p in if var a = p.kind.app { a[keyPath: key] = v; p.kind = .app(a) } } })
     }
 
     @ViewBuilder
     private func appControls(_ piece: LayoutPiece, app: AppPiece, slot: LayoutSlot, template: LayoutTemplate) -> some View {
         let isBrowser = AppCatalog.isBrowser(app.bundleID)
-        let isBuiltIn = AppCatalog.isBuiltInBrowser(app.bundleID)
         let installed = LayoutIcons.isInstalled(app.bundleID)
         let name = look(piece).name
         let taken = Set(template.piecesInVersion(of: slot).compactMap { $0.kind.app?.bundleID }).subtracting([app.bundleID])
+        // Row 1: which app, and for a browser its website.
         HStack(alignment: .firstTextBaseline, spacing: 16) {
             Picker("App", selection: Binding(
                 get: { app.bundleID },
@@ -1273,9 +1266,7 @@ struct LayoutPageContent: View {
                 }
             }
             .frame(maxWidth: 280)
-            .help(isBuiltIn
-                  ? "Greenroom\u{2019}s own browser: tabs, find in page, local history, no permissions to grant. Pick Chrome if you need extensions."
-                  : "Which app fills this space")
+            .help(PieceInspectorRules.tooltip(for: piece.kind))
             if isBrowser {
                 // .roundedBorder: the borderless field read as an apparently
                 // dead empty row, with nothing saying "type a URL here".
@@ -1288,13 +1279,17 @@ struct LayoutPageContent: View {
                     .focused($focus, equals: .website)
                     .help("Opens at Start")
             }
+            Spacer(minLength: 0)
         }
+        // Row 2: the one switch that matters. The rest is in the menu.
+        HStack {
+            Toggle("Open at Start", isOn: appFlag(piece, \.opensAtStart))
+            Spacer()
+        }
+        // A notice, only while it is true: not at rest.
         if !installed {
-            HStack {
-                StatusBadge(text: "Not on this Mac", tone: .problem)
-                Text("It is skipped at Start. Pick another app or remove it.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
+            StatusBadge(text: "Not on this Mac", tone: .problem)
+                .help("It is skipped at Start. Pick another app or remove it.")
         } else if !isBrowser, !canMoveApps {
             // Without this, an ungranted app opens at Start and then silently
             // stays wherever it is - say so up front, with a way to fix it.
@@ -1305,37 +1300,11 @@ struct LayoutPageContent: View {
             }
             .help("Apps other than browsers are placed with the Accessibility API. Allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility. Until then \(name) opens but stays wherever it is.")
         }
-        HStack(spacing: 24) {
-            Toggle("Open at Start", isOn: Binding(
-                get: { app.opensAtStart },
-                set: { v in update(piece.id) { p in if var a = p.kind.app { a.opensAtStart = v; p.kind = .app(a) } } }))
-            Toggle("Close when the meeting ends", isOn: Binding(
-                get: { app.closesOnStop },
-                set: { v in update(piece.id) { p in if var a = p.kind.app { a.closesOnStop = v; p.kind = .app(a) } } }))
-                .help(isBrowser ? "Only the window Start opened. Your other windows and tabs stay open." : "Quits only what Start opened.")
-            if !Visibility.onMyScreen(piece: piece).isFixed {
-                // The dashed outline on the canvas (R17.2); the same switch is in the right-click menu.
-                Toggle("Opens minimised", isOn: Binding(
-                    get: { app.opensMinimised },
-                    set: { v in update(piece.id) { p in if var a = p.kind.app { a.opensMinimised = v; p.kind = .app(a) } } }))
-                    .help("Opens minimised, out of your way. \(VisibilitySymbol.startsHidden.words).")
-            }
-            Spacer()
-        }
-        if isBuiltIn {
-            HStack(spacing: 24) {
-                Toggle("Reopen last tabs", isOn: $browserRestoresTabs)
-                    .help("Yesterday\u{2019}s tabs come back beside the website above.")
-                Toggle("Search suggestions", isOn: $browserSearchSuggestions)
-                    .help("Sends what you type to Google for completions. Off: history only, nothing leaves until Return.")
-                Spacer()
-            }
-        }
     }
 
     @ViewBuilder
     private func viewControls(_ piece: LayoutPiece, view: MeetingView, hidden: Bool) -> some View {
-        HStack(spacing: 24) {
+        HStack {
             Toggle(view == .selfView ? "Start with my Self view hidden" : "Starts hidden on my screen", isOn: Binding(
                 get: { hidden },
                 set: { v in update(piece.id) { $0.kind = .view(view, startsHidden: v) } }))
@@ -1357,22 +1326,80 @@ struct LayoutPageContent: View {
     private func meetingControls(_ piece: LayoutPiece, fills: Bool, hidden: Bool, slot: LayoutSlot,
                                  template: LayoutTemplate) -> some View {
         let others = template.pieces(for: slot).filter { $0.id != piece.id }
-        HStack(spacing: 24) {
-            if slot == .second {
-                Toggle("Fill this display", isOn: Binding(
-                    get: { fills },
-                    set: { v in withAnimation(anim) {
-                        update(piece.id) { p in p = LayoutEditorRules.settingFill(p, on: v) }
-                    } }))
-                    .disabled(!others.isEmpty && !fills)
-                    .help(LayoutEditorRules.fillHint(othersOnDisplay: !others.isEmpty))
+        ForEach(PieceInspectorRules.rows(for: piece.kind, slot: slot), id: \.self) { row in
+            HStack {
+                switch row {
+                case .fillDisplay:
+                    Toggle("Fill this display", isOn: Binding(
+                        get: { fills },
+                        set: { v in withAnimation(anim) {
+                            update(piece.id) { p in p = LayoutEditorRules.settingFill(p, on: v) }
+                        } }))
+                        .disabled(!others.isEmpty && !fills)
+                        .help(LayoutEditorRules.fillHint(othersOnDisplay: !others.isEmpty))
+                default:
+                    Toggle("Starts hidden on my screen", isOn: Binding(
+                        get: { hidden },
+                        set: { v in update(piece.id) { $0.kind = .meeting(fillsDisplay: fills, startsHidden: v) } }))
+                        .help("The meeting starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
+                }
+                Spacer()
             }
-            Toggle("Starts hidden on my screen", isOn: Binding(
-                get: { hidden },
-                set: { v in update(piece.id) { $0.kind = .meeting(fillsDisplay: fills, startsHidden: v) } }))
-                .help("The meeting starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
-            Spacer()
         }
+    }
+}
+
+/// The share pop-out for a layout (R32, `.atStart`): the shared SharePopout, writing the layout's saved share.
+/// Plain values and closures, so it renders off screen.
+struct LayoutSharePopout: View {
+    let share: ShareTarget
+    let apps: [AppInfo]
+    var camera: LayoutCameraModel?
+    let set: (ShareTarget) -> Void
+    var sharedDisplay: Binding<LayoutSlot>?
+
+    var body: some View {
+        SharePopout(
+            context: .atStart, share: share,
+            value: ShareHintRules.tileLabel(kind: share.kind, appName: share.appName),
+            art: DockHintVisual.share(share.kind, shape: camera?.shape ?? .circle, cameraOff: camera?.cameraOff ?? false),
+            windows: apps.map { SharePopoutWindow(id: $0.bundleID, bundleID: $0.bundleID, appName: $0.name, title: "") },
+            sharedDisplay: sharedDisplay,
+            pickTile: { tile in if let next = SharePopoutRules.applying(tile, to: share) { set(next) } },
+            pickWindow: { w in set(SharePopoutRules.picking(bundleID: w.bundleID, appName: w.appName, title: "", in: share)) },
+            setFollows: { on in var next = share; next.followsSlideShow = on; set(next) })
+    }
+}
+
+/// The header every piece inspector shares (R35.1): icon, name, one quiet readout, a menu.
+struct PieceInspectorHeader<Leading: View, MenuContent: View>: View {
+    let name: String
+    let readout: String
+    var readoutHelp: String?
+    var tooltip: String?
+    @ViewBuilder let leading: () -> Leading
+    @ViewBuilder let menu: () -> MenuContent
+
+    var body: some View {
+        HStack(spacing: 8) {
+            leading()
+            Text(name)
+                .font(.callout.weight(.semibold))
+            Text(readout)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .help(readoutHelp ?? "")
+            Spacer(minLength: 8)
+            Menu(content: menu) {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("More. \u{232B} removes it.")
+            .accessibilityLabel("More for \(name)")
+        }
+        .help(tooltip ?? "")
     }
 }
 

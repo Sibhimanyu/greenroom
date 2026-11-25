@@ -79,7 +79,16 @@ struct HomeLayoutPanel: View {
                     }
                 }
             }
+            // R36: the layout still arranges your screen; this says what the meeting sees instead.
+            if let hint = ShareHintRules.hint(kind: coordinator.shareTarget.kind, appName: shareAppName) {
+                Text(hint).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    private var shareAppName: String {
+        coordinator.shareTarget.appBundleID.isEmpty ? "" : coordinator.shareTarget.displayName
     }
 
     // MARK: Tiles

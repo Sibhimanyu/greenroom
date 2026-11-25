@@ -81,24 +81,34 @@ struct CameraLookGroup: View {
                                                        removal: look.removal.wrappedValue, mirror: look.mirror.wrappedValue),
                       hint: "The background, removal and mirror are the same in every layout.",
                       isOpen: $isOpen) {
-            VStack(alignment: .leading, spacing: 10) {
-                Collapsible(hidden: !CameraLookRules.showsBackground(shape: shape)) {
-                    CameraBackgroundControl(mode: look.background.animatedCollapse(), image: look.backgroundImage,
-                                            choose: look.chooseImage)
-                }
-                Collapsible(hidden: !CameraLookRules.showsRemoval(shape: shape)) {
-                    GreenroomSegmented("Background", selection: look.removal,
-                                       options: [BackgroundRemoval.automatic, .greenScreen]) { option in
-                        switch option {
-                        case .automatic: Label("Remove automatically", systemImage: "wand.and.stars")
-                        case .greenScreen: Label("Green screen", systemImage: "rectangle.fill")
-                        }
-                    }
-                    .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
-                }
-                Toggle(CameraLookRules.mirrorTitle, isOn: look.mirror)
-                    .help(CameraLookRules.mirrorHelp)
+            CameraLookContent(look: look, shape: shape)
+        }
+    }
+}
+
+/// The look's controls with no fold around them: the camera inspector opens them from its own row (R35.5).
+struct CameraLookContent: View {
+    let look: CameraLookModel
+    let shape: WebcamShape
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Collapsible(hidden: !CameraLookRules.showsBackground(shape: shape)) {
+                CameraBackgroundControl(mode: look.background.animatedCollapse(), image: look.backgroundImage,
+                                        choose: look.chooseImage)
             }
+            Collapsible(hidden: !CameraLookRules.showsRemoval(shape: shape)) {
+                GreenroomSegmented("Background", selection: look.removal,
+                                   options: [BackgroundRemoval.automatic, .greenScreen]) { option in
+                    switch option {
+                    case .automatic: Label("Remove automatically", systemImage: "wand.and.stars")
+                    case .greenScreen: Label("Green screen", systemImage: "rectangle.fill")
+                    }
+                }
+                .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
+            }
+            Toggle(CameraLookRules.mirrorTitle, isOn: look.mirror)
+                .help(CameraLookRules.mirrorHelp)
         }
     }
 }

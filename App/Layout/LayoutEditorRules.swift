@@ -104,21 +104,6 @@ enum LayoutEditorRules {
         slot == (template.twoDisplays != nil ? template.effectiveSharedSlot : .main)
     }
 
-    /// The rows inside "Everyone sees this ▾", in order. The display choice only
-    /// exists with a two-display version; the window picker and the slide-show
-    /// switch only for One window.
-    enum SharedRow: Hashable {
-        case sharedDisplay, whatsShared, windowApp, followSlideShow
-    }
-
-    static func sharedMenu(hasTwoDisplays: Bool, kind: ShareTarget.Kind) -> [SharedRow] {
-        var rows: [SharedRow] = []
-        if hasTwoDisplays { rows.append(.sharedDisplay) }
-        rows.append(.whatsShared)
-        if kind == .window { rows += [.windowApp, .followSlideShow] }
-        return rows
-    }
-
     /// The caption under the cards only while no editor is open (None).
     static func captionUnderCards(hasActiveLayout: Bool) -> Bool { !hasActiveLayout }
 

@@ -340,6 +340,7 @@ struct LayoutCanvas: View {
 
                 if !previewEveryone {
                     ForEach(pieces) { piece in badges(piece, canvas: canvas) }
+                    ForEach(pieces) { piece in shareMark(piece, canvas: canvas) }
                 }
 
                 if let selected = pieces.first(where: { $0.id == selection }), interactive(selected) {
@@ -586,7 +587,34 @@ struct LayoutCanvas: View {
 
     /// A piece the meeting does not see looks faded on My screen. A look only.
     private func hiddenFromEveryone(_ piece: LayoutPiece) -> Bool {
-        !previewEveryone && !Visibility.everyoneSees(piece: piece, target: share).isOn
+        !previewEveryone && CanvasShareRules.fades(piece: piece, target: share)
+    }
+
+    /// R34: with a share that is not the whole screen, the shared window says "Shared" and the others say
+    /// "Not shared" while the pointer is on them. My screen only; the icons are VisibilitySymbol's.
+    @ViewBuilder
+    private func shareMark(_ piece: LayoutPiece, canvas: CGSize) -> some View {
+        let mark = CanvasShareRules.mark(piece: piece, target: share)
+        let box = frame(of: liveRect(piece), canvas: canvas)
+        if let meaning = CanvasShareRules.icon(mark), box.width >= 100, box.height >= 40,
+           mark == .shared || (hoverID == piece.id && drag == nil) {
+            let words = mark == .shared ? CanvasShareRules.sharedWords : CanvasShareRules.notSharedWords
+            HStack(spacing: 4) {
+                Image(systemName: meaning.name).font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(meaning.tint.color)
+                Text(words).font(.system(size: 10, weight: .medium)).foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
+            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.3)))
+            .padding(8)
+            .frame(width: box.width, height: box.height, alignment: .topLeading)
+            .position(x: box.midX, y: box.midY)
+            .allowsHitTesting(false)
+            .zIndex(3)
+            .accessibilityLabel(words)
+            .transition(.opacity)
+        }
     }
 
     private enum BadgeKind { case me, everyone }

@@ -116,6 +116,11 @@ different order; this table is the authority.
 | R29 | Editor: main canvas full width, a dashed strip adds the second, both side by side | P12 | built |
 | R30 | Remove second display (SECOND menu, confirmed, undoable) | P12 | built |
 | R31 | Display crossing, Preview, badges, camera, Home and the Room screen keep working | P12 | built |
+| R32 | One share pop-out for Home (this meeting) and Layouts (at start) | P13 | built; tested as pure rules, rendered off screen |
+| R33 | Camera shape tiles shared by Home's Look and the camera inspector | P13 | built |
+| R34 | Canvas honesty: Shared tag and Not shared hint on My screen | P13 | built |
+| R35 | Every piece inspector: header, at most two rows, no hint paragraphs | P13 | built |
+| R36 | Home says when the share is not the whole screen; the Screen tile uses the pop-out's short names | P13 | built |
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -416,6 +421,69 @@ different order; this table is the authority.
 - R31.4 The Room screen can be added only to the second arrangement; the Add panel says to add a second
   display first when there is none.
 
+**R32. One share pop-out.** (owner, 2026-11-25, `.context/layout-rethink/next-ui-refine.md` item 1)
+- R32.1 Home's Share pop-out is one shared view (`SharePopout`) with a `context`: `.thisMeeting` (Home, live) or
+  `.atStart` (Layouts, saved with the layout). Both are built in `HomeTileMetrics` (width, padding, tile gap).
+- R32.2 The header says which: "Screen · this meeting" or "Screen · at start" (`SharePopoutRules.title`).
+- R32.3 Sections (`SharePopoutRules.sections`): the share tiles always; with a second display and `.atStart`, the
+  Main / Second shared-display choice straight after them; the windows list for One window or while browsing; the
+  slide-show switch for One window. `.atStart` never lists the capture displays or the "isn't open" and
+  permission notes (nothing is live); `.thisMeeting` never lists the shared-display choice.
+- R32.4 Tiles map to a saved share (`SharePopoutRules.applying`): Whole screen, Whiteboard and Just me set the
+  kind and keep the rest; A window sets nothing until a window is picked (nil: the list opens). Picking a window
+  (`picking`) sets kind, app, name and title, and keeps "Follow the slide show". A saved One app reads back as the
+  whole screen (`readBack`).
+- R32.5 At start the window list is the apps (a saved share names an app, not a window): each row is an app with
+  no title, chosen when its bundle id is the saved one (`isChosen`), with no app heading above it.
+- R32.6 In Layouts "Everyone sees this" opens this pop-out as a popover, replacing the text menu
+  (`LayoutEditorRules.sharedMenu` is gone). Home uses it as before.
+- R32.7 Every control in it is one undo step in Layouts (it writes the layout's share and shared display), has a
+  VoiceOver label, and its sections fold with `Collapse` (instant with Reduce Motion).
+
+**R33. Camera shape tiles.**
+- R33.1 Home's Look tiles (Rounded, Circle, Square, Cutout, Presenter) are one shared view (`CameraShapeTiles`),
+  used by Home's Look pop-out and by the camera inspector in place of the Shape picker.
+- R33.2 In the inspector the S / M / L tiles sit beside them, in the same row, only for a shape that can be sized
+  (`CameraPlacementRules.isAdjustable`; Presenter has none).
+- R33.3 Picking a shape is one undo step; the tile's tooltip and VoiceOver label are the shape's name.
+
+**R34. Canvas honesty.** (My screen only; Preview: Everyone is another change)
+- R34.1 With One window shared, the chosen window's piece wears a small "Shared" tag (eye, `VisibilitySymbol.everyoneSees(true)`)
+  and every other piece fades and shows a "Not shared" hint on hover (`CanvasShareRules.mark`).
+- R34.2 With Whiteboard or Just me, every window piece fades and shows "Not shared" on hover; none has a Shared tag.
+- R34.3 With Whole screen, no tag and no hint: the piece's own eye says it (R1, R17).
+- R34.4 The fade is only a look: pieces stay selectable and editable (R20). The fade is the rule's answer
+  (`CanvasShareRules.fades` equals "the meeting does not see it").
+- R34.5 The tag and the hint use `VisibilitySymbol` for their icons and say "Shared" / "Not shared" to VoiceOver.
+
+**R35. Every piece inspector is simple.** (owner, item 3d)
+- R35.1 One structure for every kind (camera, Chat, Meeting window, views, apps, Room screen): a header (icon, name,
+  one quiet readout, a ⋯ menu for secondary actions), then at most two rows at rest
+  (`PieceInspectorRules.maxRowsAtRest`, `rows`). A notice (an app missing, Accessibility not granted) may add a
+  row while it is true; it is not at rest.
+- R35.2 Rows: camera `[whoSees, shapeAndSize]`; Chat and Room screen none; Meeting window `[startsHidden]`, plus
+  `fillDisplay` first on the second display; a view `[startsHidden]`; an app `[app, opensAtStart]`.
+- R35.3 Secondary actions live in the ⋯ menu (`PieceInspectorRules.menu`), ending with Remove (also ⌫): an app's
+  "Close when the meeting ends", "Opens minimised" (not for the Greenroom Browser, whose eye is fixed), and for the
+  Greenroom Browser "Reopen last tabs" and "Search suggestions". The camera's menu keeps the corners and Reset.
+- R35.4 No hint paragraphs: what a paragraph said is a tooltip (`PieceInspectorRules.tooltip`, never empty for a
+  kind that had a paragraph). The header readout is one value (`readout`: the size in points); columns and rows are its tooltip.
+- R35.5 The camera's who-sees choice is a 4-icon segmented control using `VisibilitySymbol.camera(state)`, each with a
+  tooltip (the state's name and detail) and a VoiceOver label (the state's name). The "Camera look" fold opens from the
+  same row as it, as a quiet button, so there are still two rows.
+- R35.6 Every change is one undo step; folds use `Collapse`; DESIGN.md tokens only.
+
+**R36. Home: a quiet hint when the share is not the whole screen.** (owner, 2026-11-25)
+- R36.1 While the live share is Just me, Whiteboard or One window, the Layout tile is unchanged (the layout still
+  arranges the owner's screen). Its pop-out and the live preview footer show one quiet line
+  (`ShareHintRules.hint`): "Arranges your screen. The meeting sees just you." / "...the whiteboard." / "...<app name>."
+  (without a name, "one window"). Whole screen has no hint. Secondary caption text, no new chrome.
+- R36.2 In the preview footer one note shows at a time, in this order: the room-display note, then this hint,
+  then the second-display note (`ShareHintRules.footerNote`).
+- R36.3 The Screen tile's label uses the pop-out's short names (`ShareHintRules.tileLabel`): Whole screen / the
+  window's app name, cut cleanly with an ellipsis at the end (A window when none is chosen) / Whiteboard / Just me.
+  Never "Nothing behind you". The longest label fits one dock tile at the minimum width (`ShareHintRules.maxTileChars`).
+
 ## Guarantees
 
 - **One truth.** The 👁 and 📡 badges, Preview: Everyone and the capture's
@@ -449,6 +517,7 @@ different order; this table is the authority.
 | P10 Room + laptop | R15 | built (Room + laptop; Home's "Connect the room display" note) | |
 | P11 One icon language | R17 | built | 71a76b5 |
 | P12 One arrangement per display (ADR 0002) | R25 to R31 | built | (this commit) |
+| P13 Refined share and inspectors | R32 to R36 | built (rules tested; rendered off screen, not driven live) | (this commit) |
 
 ## Known gaps
 

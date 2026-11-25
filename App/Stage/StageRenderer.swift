@@ -106,18 +106,11 @@ final class StageRenderer {
         // Content: above the backdrop, below every camera.
         if layout.showsContent, let screen {
             let presenter = layout.showsCamera && layout.shape.isPresenterStyle
-            let box: CGRect
-            if presenter {
-                // layoutPresenter :1717
-                let w = canvas.width * 0.78, h = canvas.height * 0.78
-                box = CGRect(x: canvas.width - canvas.width * 0.025 - w,
-                             y: (canvas.height - h) / 2, width: w, height: h)
-            } else {
-                // placeContentFullFrame :1414; a window gets a margin.
-                let m = scene.contentIsWholeDisplay ? 0 : canvas.height * 0.045
-                box = CGRect(x: m, y: m, width: canvas.width - 2 * m, height: canvas.height - 2 * m)
-            }
-            let placed = place(screen, inside: box)
+            let source = normalized(screen).extent
+            let rect = StageFrame.contentRect(shareKind: scene.contentIsWholeDisplay ? .wholeScreen : .window,
+                                              sourceAspect: source.width / max(source.height, 1),
+                                              presenter: presenter, output: canvas) ?? .zero
+            let placed = (image: stretch(screen, to: rect), rect: rect)
             drawnContent = placed.rect
             var contentImage = placed.image
             // Marks drawn on the screen (phase 5): the overlay has the screen's
@@ -204,11 +197,11 @@ final class StageRenderer {
         switch layout.cameraShape {
         case .presenterLarge:
             // layoutPresenter :1748
-            let h = H * 1.12, w = h * aspect
-            return stretch(image, to: CGRect(x: W * 0.24 - w / 2, y: -H * 0.02, width: w, height: h))
+            return stretch(image, to: StageFrame.cameraRect(box: layout.presenceBox, shape: .presenterLarge, aspect: aspect,
+                                                            content: content, output: canvas))
         case .cutout:
             // layoutCutout :1496 (maths shared with the presence bubble).
-            let rect = PresenceGeometry.cameraRect(for: layout.presenceBox, aspect: aspect, canvas: canvas, bounds: content)
+            let rect = StageFrame.cameraRect(box: layout.presenceBox, shape: .cutout, aspect: aspect, content: content, output: canvas)
             return stretch(image, to: rect)
         case .square, .circle, .roundedRectangle:
             let shape = layout.cameraShape
@@ -221,8 +214,8 @@ final class StageRenderer {
                 src = normalized(src)
             }
             // positionBubble :1684 (maths shared with the presence bubble).
-            let rect = PresenceGeometry.cameraRect(for: layout.presenceBox,
-                                                   aspect: src.extent.width / src.extent.height, canvas: canvas, bounds: content)
+            let rect = StageFrame.cameraRect(box: layout.presenceBox, shape: shape,
+                                             aspect: src.extent.width / src.extent.height, content: content, output: canvas)
             let placed = stretch(src, to: rect)
             switch shape {
             case .circle:

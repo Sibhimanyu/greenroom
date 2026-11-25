@@ -300,6 +300,10 @@ targets:
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift
       - path: App/Stage/StageLayout.swift
+      - path: App/Stage/StageFrame.swift
+      - path: App/Stage/StageRenderer.swift
+      - path: App/Stage/AudioOnlyCard.swift
+      - path: App/Layout/EveryonePicture.swift
       - path: App/Stage/PresenceVisibility.swift
       - path: App/Stage/PresenceRecorderRules.swift
       - path: App/Stage/ScreenRecovery.swift

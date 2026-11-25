@@ -289,8 +289,24 @@ struct LayoutCanvas: View {
     /// The display's own shape, in a thin bezel so handles at the edges are not
     /// clipped and the canvas reads as a screen rather than a box.
     private var bezel: some View {
-        surface
-            .aspectRatio(display.aspect, contentMode: .fit)
+        // Preview: Everyone on the shared canvas is the meeting's own 16:9 picture (R37).
+        Group {
+            if previewEveryone && (isShared || crossing == nil) {
+                LayoutEveryonePicture(
+                    picture: EveryonePicture.make(
+                        share: share, pieces: pieces, displaySize: display.size,
+                        camera: camera.map { EveryonePicture.Camera(box: $0.box, shape: $0.shape, everyoneSees: $0.everyoneSees) }),
+                    pieces: pieces, displaySize: display.size, look: look, camera: camera)
+                    #if DEBUG
+                    // The surface's own cross-check (below) is not drawn in this picture.
+                    .onChange(of: previewEveryone) { _, on in
+                        if on { ShareVisibleWindows.crossCheck(pieces: pieces) }
+                    }
+                    #endif
+            } else {
+                surface.aspectRatio(display.aspect, contentMode: .fit)
+            }
+        }
             .padding(Self.bezelInset)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
@@ -1399,7 +1415,7 @@ struct MeetingViewDiagram: Shape {
 /// What the camera looks like on the builder: the shape's own outline filled
 /// with a translucent plate so the tiles under it stay readable, a camera icon
 /// and "Your camera". A Cutout is a person standing on the bottom edge.
-private struct CameraStandIn: View {
+struct CameraStandIn: View {
     let shape: WebcamShape
     /// Which camera state this stands for: its icon is Zoom's, never the eye (R17.3).
     let meaning: VisibilitySymbol

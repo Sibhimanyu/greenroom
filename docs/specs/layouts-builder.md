@@ -121,6 +121,7 @@ different order; this table is the authority.
 | R34 | Canvas honesty: Shared tag and Not shared hint on My screen | P13 | built |
 | R35 | Every piece inspector: header, at most two rows, no hint paragraphs | P13 | built |
 | R36 | Home says when the share is not the whole screen; the Screen tile uses the pop-out's short names | P13 | built |
+| R37 | Preview: Everyone draws the meeting's real picture | P14 | built (needs a live look) |
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -483,6 +484,25 @@ different order; this table is the authority.
 - R36.3 The Screen tile's label uses the pop-out's short names (`ShareHintRules.tileLabel`): Whole screen / the
   window's app name, cut cleanly with an ellipsis at the end (A window when none is chosen) / Whiteboard / Just me.
   Never "Nothing behind you". The longest label fits one dock tile at the minimum width (`ShareHintRules.maxTileChars`).
+**R37. Preview: Everyone draws the meeting's real picture.** One pure function, `StageFrame.contentRect`
+(App/Stage/StageFrame.swift), places the shared content on the 1920x1080 output; `StageRenderer.compose` and the
+Layouts tab's Preview: Everyone both call it, and both place the camera with `PresenceGeometry.cameraRect`
+whose `bounds` is that rect, so the camera never leaves the drawn content.
+- R37.1 Whole screen and Whiteboard: margin 0; the source is aspect-fitted in the whole output. A 1512x884
+  display (aspect 1.71) is drawn 1847.3 x 1080, centred.
+- R37.2 One window or app: a 4.5% margin of the output height on every side, the window alone fitted in what
+  is left. Owner's case: a 1134x884 browser is drawn about 1260.7 x 982.8 at (329.6, 48.6).
+- R37.3 Presenter look (the camera's shape is Presenter, with content): the content is a panel 78% of the
+  output, 2.5% of the width from the right, centred vertically, the source fitted inside it.
+- R37.4 Just me: no content rect (nil); the camera is the picture.
+- R37.5 The camera rect is `PresenceGeometry.cameraRect` with `bounds` the content rect. Owner's case with the
+  default circle: about x 1129 to 1590, y 554 to 1015, inside the browser.
+- R37.6 Preview: Everyone is a 16:9 picture of the output scaled to the canvas width: the #101828 backdrop;
+  Whole screen draws the pieces the meeting sees (R3) at their place in the content rect; One window draws
+  only the chosen window's piece, filling the content rect; Whiteboard draws a white card and no pieces;
+  Just me draws neither; the camera (when everyone sees it) at its rect from R37.5. It is read-only.
+- R37.7 For every share kind the preview's content and camera rects equal the renderer's (a test composes a
+  real frame and compares `lastContentRect` and the camera's coverage with the preview's numbers).
 
 ## Guarantees
 
@@ -518,6 +538,7 @@ different order; this table is the authority.
 | P11 One icon language | R17 | built | 71a76b5 |
 | P12 One arrangement per display (ADR 0002) | R25 to R31 | built | (this commit) |
 | P13 Refined share and inspectors | R32 to R36 | built (rules tested; rendered off screen, not driven live) | (this commit) |
+| P14 Preview: Everyone is the real picture | R37 | built | (this commit) |
 
 ## Known gaps
 

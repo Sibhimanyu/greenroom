@@ -23,3 +23,14 @@ One recording file, made while a session is up. It is **none**, **rolling**,
 **saving** (stopped, the file is still being closed). A take is not part of
 the session's state: a meeting can run with no take, and **saving can outlive
 the session** (End Session stops the tape and closes the file in the background).
+
+## Questions about the phase
+
+Callers ask `coordinator.phase.<question>` (a read-only value on `SessionPhase`)
+instead of combining the eight flags by hand. The flags stay `@Published` for
+`$` sinks and `.onChange(of:)`; a view that reads a question re-renders because
+every change to a question is a change to a flag, and the coordinator is its
+`@EnvironmentObject`. One line per question, in `SessionPhase.swift`:
+
+- `isInMeeting`: `isRunning || stageLive`. True while a Record session is
+  starting too (`isRunning`), false for a Record session between takes.

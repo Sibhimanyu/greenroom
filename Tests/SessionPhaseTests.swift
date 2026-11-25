@@ -199,4 +199,44 @@ final class SessionPhaseTests: XCTestCase {
         let done = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished(startID: 1), .stopRequested, .recordPictureDown, .recordStopFinished])
         XCTAssertFalse(done.hasSessionOrTakeOnScreen)
     }
+
+    // MARK: Named questions against the expressions they replaced
+
+    /// Every state reachable by any sequence of events (a superset of the
+    /// sequences the coordinator produces), found by breadth-first search. The
+    /// finish events are tried with the current start number and a stale one.
+    private func reachableStates() -> [SessionPhase] {
+        func key(_ p: SessionPhase) -> String { "\(p.session)|\(p.take)|\(p.isRecordingPaused)" }
+        var seen: [String: SessionPhase] = [:]
+        var queue = [SessionPhase()]
+        seen[key(queue[0])] = queue[0]
+        while !queue.isEmpty {
+            let p = queue.removeFirst()
+            let events: [SessionPhase.Event] = [
+                .meetingStartRequested, .meetingPictureUp,
+                .meetingStartTaskFinished(startID: p.startID), .meetingStartTaskFinished(startID: p.startID - 1),
+                .recordStartRequested, .recordPictureUp, .recordPictureDown,
+                .recordStartTaskFinished(startID: p.startID), .recordStartTaskFinished(startID: p.startID - 1),
+                .stopRequested, .meetingTornDown, .recordStopFinished,
+                .takeBegan, .takePaused, .takeResumed, .takeFinishing, .takeFinishingAtMeetingEnd,
+                .takeSaved, .recorderStoppedItself, .takeDroppedAtQuit,
+            ]
+            for e in events {
+                var n = p
+                n.apply(e)
+                if seen[key(n)] == nil { seen[key(n)] = n; queue.append(n) }
+            }
+        }
+        return Array(seen.values)
+    }
+
+    func testReachableStatesAreEnumerated() {
+        XCTAssertGreaterThan(reachableStates().count, 30)
+    }
+
+    func testInMeetingMatchesOldExpression() {
+        for p in reachableStates() {
+            XCTAssertEqual(p.isInMeeting, p.isRunning || p.stageLive, "\(p.session) \(p.take)")
+        }
+    }
 }

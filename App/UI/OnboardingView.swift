@@ -217,7 +217,7 @@ struct OnboardingView: View {
                         Button("View results") { showZoomChecks = true }
                     }
                 }
-                Text(coordinator.isRunning || coordinator.stageLive
+                Text(coordinator.phase.isInMeeting
                      ? "End the current session before checking Zoom."
                      : "Checks both Zoom apps, all \(ZoomScopes.countWord) hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -256,7 +256,7 @@ struct OnboardingView: View {
             showZoomChecks = true
             if !isTesting { runConnectionTest() }
         }
-        .disabled(coordinator.isRunning || coordinator.stageLive)
+        .disabled(coordinator.phase.isInMeeting)
     }
 
     private var manualZoomSetup: some View {
@@ -366,7 +366,7 @@ struct OnboardingView: View {
             HStack {
                 if !isTesting {
                     Button("Check again") { runConnectionTest() }
-                        .disabled(coordinator.isRunning || coordinator.stageLive)
+                        .disabled(coordinator.phase.isInMeeting)
                 }
                 Spacer()
                 Button(isTesting ? "Close checks" : "Done") { showZoomChecks = false }
@@ -395,7 +395,7 @@ struct OnboardingView: View {
     }
 
     private func runConnectionTest() {
-        guard !isTesting && !coordinator.isRunning && !coordinator.stageLive else { return }
+        guard !isTesting && !coordinator.phase.isInMeeting else { return }
         coordinator.loadSecretsIfNeeded()
         isTesting = true
         testResults = ZoomCheck.allCases.map { TestResult(check: $0) }

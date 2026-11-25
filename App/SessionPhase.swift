@@ -239,4 +239,9 @@ struct SessionPhase: Equatable {
     /// session (starting, or live between takes), or a take being made. What
     /// keeps an automatic update dialog off a shared screen.
     var hasSessionOrTakeOnScreen: Bool { isRunning || stageLive || recordOnlyActive || isRecording }
+
+    /// A meeting is live or its start task is still running. Note: `isRunning`
+    /// is also true while a Record session is starting, so this is true then too,
+    /// and false for a Record session between takes.
+    var isInMeeting: Bool { isRunning || stageLive }
 }

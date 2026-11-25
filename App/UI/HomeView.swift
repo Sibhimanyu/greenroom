@@ -130,7 +130,7 @@ struct HomeView: View {
     // MARK: Derived
 
     private var startDisabled: Bool { coordinator.startActionDisabled }
-    private var isLive: Bool { coordinator.isRunning || coordinator.stageLive }
+    private var isLive: Bool { coordinator.phase.isInMeeting }
     private var mode: MeetingMode { coordinator.meetingMode }
 
     var body: some View {

@@ -1015,7 +1015,7 @@ final class CoordinatorController: ObservableObject {
 
     /// The Start layout cannot be changed from Home or the menu bar while a class
     /// is live: the class keeps the layout it started with (see sessionTemplate).
-    var layoutChoiceLocked: Bool { isRunning || stageLive }
+    var layoutChoiceLocked: Bool { phase.isInMeeting }
 
     /// The name the layout lines show: the class's own layout while it is live,
     /// otherwise the Start choice. "None" when nothing is arranged.
@@ -1024,7 +1024,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The class is live and arranged, so another layout can be applied now.
-    var liveSessionLayoutID: UUID? { (isRunning || stageLive) ? sessionTemplate?.id : nil }
+    var liveSessionLayoutID: UUID? { phase.isInMeeting ? sessionTemplate?.id : nil }
 
     private lazy var layoutEngine = LayoutEngine(chat: zoomChatBridge, log: { [weak self] in self?.log($0) })
 
@@ -1036,7 +1036,7 @@ final class CoordinatorController: ObservableObject {
     /// (AppleScript/AX calls) at that rate would thrash; 400ms after the last
     /// change, everything re-tiles once. Fires only for the session's own layout.
     private func scheduleLiveLayoutApply() {
-        guard sessionArranges, sessionTemplate != nil, isRunning || stageLive else { return }
+        guard sessionArranges, sessionTemplate != nil, phase.isInMeeting else { return }
         layoutApplyTask?.cancel()
         layoutApplyTask = Task {
             try? await Task.sleep(nanoseconds: 400_000_000)
@@ -1050,7 +1050,7 @@ final class CoordinatorController: ObservableObject {
     /// has no follow loops, pill or Zoom mode set up for one); the apps the new
     /// layout opens at start are opened.
     func applyLayoutNow(_ id: UUID) {
-        guard sessionArranges, sessionTemplate != nil, isRunning || stageLive,
+        guard sessionArranges, sessionTemplate != nil, phase.isInMeeting,
               let template = layoutLibrary.template(id: id) else { return }
         sessionTemplate = template
         speakerTileQuickHidden = layoutEngine.startsHidden(template)
@@ -1063,7 +1063,7 @@ final class CoordinatorController: ObservableObject {
     /// Otherwise it sets the Start layout, like the Layout menu. nil is None, which
     /// a live class cannot switch to (it only sets what the next Start does).
     func useLayout(_ id: UUID?) {
-        if isRunning || stageLive {
+        if phase.isInMeeting {
             guard let id, layoutLibrary.template(id: id) != nil else {
                 layoutLibrary.select(nil)
                 log("A live class keeps its layout. The next Start will arrange nothing.")
@@ -1516,7 +1516,7 @@ final class CoordinatorController: ObservableObject {
         // (When stop() itself triggered this observer, isStopping blocks
         // the re-entry.)
         guard !isStopping else { return }
-        if stageLive || isRunning {
+        if phase.isInMeeting {
             log("Meeting over \u{2014} ending the session.")
             stop()
         } else {
@@ -2915,7 +2915,7 @@ final class CoordinatorController: ObservableObject {
     func confirmStopRecording() {
         // `isRunning` is only true while a start is under way; a live class is
         // `stageLive` (the guard read isRunning alone, and REC did nothing).
-        guard isRunning || stageLive, !recordOnlyActive, isRecording, !isSavingRecording else { return }
+        guard phase.isInMeeting, !recordOnlyActive, isRecording, !isSavingRecording else { return }
         if exitAsk == .stopRecording {
             disarmExit()
             toggleRecording()
@@ -3559,7 +3559,7 @@ final class CoordinatorController: ObservableObject {
         // With no meeting live, the window minimises as any other does.
         ParticipantGridWindowController.shrinkInsteadOfMinimize = { [weak self] in
             guard let self else { return false }
-            let live = self.isRunning || self.stageLive
+            let live = self.phase.isInMeeting
             let canShrink = self.zoomChatClient.didUseCustomUI && self.meetingWindowOpen
             guard MeetingMinimize.outcome(meetingLive: live, canShrink: canShrink) == .shrinkToControlBar else { return false }
             self.collapseMeeting()
@@ -3658,7 +3658,7 @@ final class CoordinatorController: ObservableObject {
             gridCorrectionHoldUntilTick = 0
             // Runs for as long as the arranged class does. (It used to ride on the
             // chat window being open; a layout need not have a Chat piece.)
-            while !Task.isCancelled, sessionArranges, isRunning || stageLive {
+            while !Task.isCancelled, sessionArranges, phase.isInMeeting {
                 // The layout is read again every tick: an edit or a display change
                 // moves the Meeting piece, and the loop follows it.
                 let planned = sessionTemplate.flatMap { layoutEngine.placedMeeting($0) }
@@ -3970,7 +3970,7 @@ final class CoordinatorController: ObservableObject {
     /// Whether the layout tools (Snap Windows Back, the speaker tile toggle)
     /// mean anything right now. Off only inside a session that arranged nothing.
     var layoutToolsAvailable: Bool {
-        sessionArranges || !(isRunning || stageLive)
+        sessionArranges || !phase.isInMeeting
     }
     private var customUIGridTask: Task<Void, Never>?
     // MARK: Meeting window (custom UI)
@@ -4110,7 +4110,7 @@ final class CoordinatorController: ObservableObject {
     /// From the follow loop: the first person in brings the window up.
     private func growIfSomeoneJoined() {
         guard growWhenSomeoneJoins else { return }
-        guard isRunning || stageLive else { growWhenSomeoneJoins = false; return }
+        guard phase.isInMeeting else { growWhenSomeoneJoins = false; return }
         guard zoomChatClient.meetingRoster().contains(where: { !$0.isMyself }) else { return }
         growWhenSomeoneJoins = false
         if meetingSize == .bar { moveMeeting(to: .window) }
@@ -4205,7 +4205,7 @@ final class CoordinatorController: ObservableObject {
     /// joins it grows into the room (\u{2325}\u{2318}Z, or the pill, brings it back).
     private func meetingWindowClosedByUser() {
         closeMeetingWindow()
-        if sessionArranges, isRunning || stageLive, let template = sessionTemplate,
+        if sessionArranges, phase.isInMeeting, let template = sessionTemplate,
            layoutEngine.placedMeeting(template) != nil, !MeetingViewWindows.anyOpen {
             speakerTileQuickHidden = true
             layoutEngine.moveNeighbour(template, meetingHidden: true)
@@ -4470,7 +4470,7 @@ final class CoordinatorController: ObservableObject {
             if recordOnlyActive, isRecording { confirmStopTake() } else { stopRecordingSession() }
             return
         }
-        guard isRunning || stageLive else { return }
+        guard phase.isInMeeting else { return }
         // Asked in place, like the meeting window's End: the first press arms
         // End (the button turns into Confirm), the second ends. No alert (it
         // went to the main window's desktop, which may be empty) and no
@@ -4542,7 +4542,7 @@ final class CoordinatorController: ObservableObject {
         // picture its settings again alongside the window re-tiling.
         applyShapeForPreview()
         // The meeting's own windows exist only while a class does.
-        guard isRunning || stageLive else { return }
+        guard phase.isInMeeting else { return }
         if zoomChatClient.didUseCustomUI {
             // Our own windows: re-place them rather than hunting for the SDK's.
             presentMeetingSurfaces(resetQuickHideToDefault: false)

@@ -98,7 +98,8 @@ enum RoomScreenRules {
     static func placeSteps(rect: UnitRect, pieceFrame: CGRect, currentFrame: CGRect?,
                            isFullScreen: Bool, ownerTookOver: Bool) -> [PlaceStep] {
         if ownerTookOver { return [] }
-        let frame: [PlaceStep] = currentFrame == pieceFrame ? [] : [.setFrame(pieceFrame)]
+        let alreadyThere = currentFrame.map { !LayoutGeometry.differs($0, from: pieceFrame, tolerance: 0.5) } ?? false
+        let frame: [PlaceStep] = alreadyThere ? [] : [.setFrame(pieceFrame)]
         if isFullDisplay(rect) { return isFullScreen ? [] : frame + [.enterFullScreen] }
         return (isFullScreen ? [.leaveFullScreen] : []) + (isFullScreen ? [.setFrame(pieceFrame)] : frame)
     }

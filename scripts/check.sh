@@ -5,7 +5,7 @@
 # and the "Executed N tests" line. Exits non-zero on any failure.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-DD="$PWD/.build/DerivedData"
+DD="${DERIVED_DATA:-$PWD/.build/DerivedData}"  # override to keep a running build untouched
 LOG="$PWD/.build/check.log"
 mkdir -p .build
 

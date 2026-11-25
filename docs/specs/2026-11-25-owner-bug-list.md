@@ -214,7 +214,7 @@ Decision: lower the average, cap the peak, and keep the 2 s fragments that make
 a recording survive a crash.
 
 - R12.1 At 1080p, the H.264 average bitrate is 3.5 Mbps.
-- R12.2 The peak is capped at 6 Mbps over any one second (DataRateLimits).
+- R12.2 The peak is 1.7 times the average (DataRateLimits): 6 Mbps at 1080p, never more than about 20.6 Mbps. The average stops at 12 Mbps (4K).
 - R12.3 Other sizes scale by pixel count, with a 1 Mbps floor and at most 4x
   the 1080p rate.
 - R12.4 Audio is AAC at 128 kbps.

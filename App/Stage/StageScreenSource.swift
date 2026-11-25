@@ -502,6 +502,10 @@ extension StageScreenSource {
               let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
               let display = content.displays.first(where: { $0.displayID == displayID }) else { return false }
         let filter = Self.displayFilter(display: display, content: content, state: wanted).0
+        // A hidden app that is running but not listed yet (just launched) is not excluded by this
+        // filter; the change is then not recorded as applied, and the next tick tries again (R7.2).
+        let settled = ExclusionResolution.isSettled(hidden: wanted.hiddenAppIDs, running: wanted.runningHiddenIDs,
+                                                    listed: Set(content.applications.map(\.bundleIdentifier)))
         do {
             try await running.updateContentFilter(filter)
         } catch {
@@ -512,7 +516,7 @@ extension StageScreenSource {
         Self.log((n == 0 ? "No Greenroom window is shown on the share." : "\(n) Greenroom window\(n == 1 ? "" : "s") shown on the share.")
                  + (wanted.hiddenAppIDs.isEmpty ? "" : " Kept out of everyone\u{2019}s picture: \(wanted.hiddenAppIDs.sorted().joined(separator: ", ")).")
                  )
-        return true
+        return settled
     }
 }
 

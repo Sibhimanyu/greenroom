@@ -39,7 +39,7 @@ final class LayoutCameraTests: XCTestCase {
     func testMigrationCopiesGlobalsIntoEveryLayoutAndVersion() {
         var lib = library()
         let d = defaults()
-        XCTAssertTrue(lib.migrateCameraAndShare(camera: globalCamera(), share: globalShare(), defaults: d))
+        XCTAssertTrue(lib.migrateCameraAndShare(camera: globalCamera(), share: globalShare(), defaults: d, save: { _ in true }))
         for t in lib.templates {
             XCTAssertEqual(t.camera, globalCamera())
             XCTAssertEqual(t.share, globalShare())
@@ -51,14 +51,49 @@ final class LayoutCameraTests: XCTestCase {
     func testMigrationRunsOnceAndKeepsLaterEdits() {
         var lib = library()
         let d = defaults()
-        _ = lib.migrateCameraAndShare(camera: globalCamera(), share: globalShare(), defaults: d)
+        _ = lib.migrateCameraAndShare(camera: globalCamera(), share: globalShare(), defaults: d, save: { _ in true })
         lib.templates[0].camera?.shape = .square
         lib.templates[0].share?.kind = .whiteboard
         var changedGlobals = globalCamera(); changedGlobals.shape = .cutout
-        XCTAssertFalse(lib.migrateCameraAndShare(camera: changedGlobals, share: ShareTarget(), defaults: d))
+        XCTAssertFalse(lib.migrateCameraAndShare(camera: changedGlobals, share: ShareTarget(), defaults: d, save: { _ in true }))
         XCTAssertEqual(lib.templates[0].camera?.shape, .square)
         XCTAssertEqual(lib.templates[0].share?.kind, .whiteboard)
         XCTAssertEqual(lib.templates[1].camera, globalCamera())
+    }
+
+    // R16.1: a migration writes its key only after its save worked, so a failed save runs again next launch.
+    func testAFailedSaveLeavesTheMigrationKeysUnset() {
+        var lib = library()
+        let d = defaults()
+        XCTAssertFalse(lib.migrateCameraAndShare(camera: globalCamera(), share: globalShare(), defaults: d, save: { _ in false }))
+        XCTAssertFalse(d.bool(forKey: LayoutLibrary.cameraMigratedKey))
+        XCTAssertFalse(d.bool(forKey: LayoutLibrary.shareMigratedKey))
+        XCTAssertTrue(lib.migrateCameraAndShare(camera: globalCamera(), share: globalShare(), defaults: d, save: { _ in true }))
+        XCTAssertTrue(d.bool(forKey: LayoutLibrary.cameraMigratedKey))
+    }
+
+    // R4.2: a layout made after the migration owns a camera and a share from the start.
+    func testANewBlankLayoutOwnsItsCameraAndShare() {
+        var lib = library()
+        let id = lib.addBlank()
+        let t = lib.template(id: id)
+        XCTAssertEqual(t?.camera, LayoutCamera())
+        XCTAssertEqual(t?.share, ShareTarget())
+    }
+
+    // R4.2: a duplicate carries the original's camera, not the defaults.
+    func testADuplicateKeepsTheOriginalsCamera() {
+        var lib = library()
+        lib.templates[0].camera = globalCamera()
+        let id = lib.duplicate(lib.templates[0].id)!
+        XCTAssertEqual(lib.template(id: id)?.camera, globalCamera())
+    }
+
+    // R4.2: a starter added by a later version also owns its camera.
+    func testAStarterAddedLaterOwnsItsCamera() {
+        var lib = LayoutLibrary(templates: [])
+        XCTAssertTrue(lib.addStarters(notIn: []))
+        XCTAssertTrue(lib.templates.allSatisfy { $0.camera != nil && $0.share != nil })
     }
 
     func testGlobalsReadFromDefaultsWithShippedFallbacks() {
@@ -104,6 +139,72 @@ final class LayoutCameraTests: XCTestCase {
         XCTAssertNil(back.templates[1].camera)
     }
 
+
+    // MARK: Who may write the saved layout
+
+    // R4.3, R6.2: Home, the bar and a drag in the meeting change the running meeting only.
+    func testOnlySettingsAndTheWebcamTabWriteTheSavedLayout() {
+        XCTAssertTrue(LayoutEditSource.settingsLayouts.writesSavedLayout)
+        XCTAssertTrue(LayoutEditSource.webcamTab.writesSavedLayout)   // until P8 removes the tab
+        XCTAssertFalse(LayoutEditSource.home.writesSavedLayout)
+        XCTAssertFalse(LayoutEditSource.bar.writesSavedLayout)
+        XCTAssertFalse(LayoutEditSource.meeting.writesSavedLayout)
+    }
+
+    // R5.1: the Webcam tab's edits land in the active layout and nowhere else.
+    func testWritingTheActiveLayoutTouchesOnlyIt() {
+        var lib = library()
+        lib.select(lib.templates[1].id)
+        var cam = globalCamera(); cam.shape = .square
+        XCTAssertTrue(lib.updateActive(camera: cam, share: globalShare()))
+        XCTAssertEqual(lib.templates[1].camera, cam)
+        XCTAssertEqual(lib.templates[1].share, globalShare())
+        XCTAssertNil(lib.templates[0].camera)
+        lib.select(nil)
+        XCTAssertFalse(lib.updateActive(camera: cam, share: nil))
+    }
+
+    // R5.2: a share chosen on Home before Start survives into that meeting; the layout's camera still applies.
+    func testStartKeepsAShareChosenBeforeStart() {
+        var t = LayoutTemplate(name: "A"); t.camera = globalCamera(); t.share = globalShare()
+        let kept = LayoutPieceAdoption.atStart(t, keepingLiveShare: true)
+        XCTAssertNil(kept?.share)
+        XCTAssertEqual(kept?.camera, globalCamera())
+        XCTAssertEqual(LayoutPieceAdoption.atStart(t, keepingLiveShare: false)?.share, globalShare())
+        var onlyShare = LayoutTemplate(name: "B"); onlyShare.share = globalShare()
+        XCTAssertNil(LayoutPieceAdoption.atStart(onlyShare, keepingLiveShare: true))
+    }
+
+    // R5.3: Snap Back loads the layout's share again, and leaves the camera spot alone.
+    func testSnapBackLoadsTheLayoutsShareOnly() {
+        var t = LayoutTemplate(name: "A"); t.camera = globalCamera(); t.share = globalShare()
+        let plan = LayoutPieceAdoption.atSnapBack(t)
+        XCTAssertEqual(plan?.share, globalShare())
+        XCTAssertNil(plan?.camera)
+        XCTAssertNil(LayoutPieceAdoption.atSnapBack(LayoutTemplate(name: "none")))
+        XCTAssertNil(LayoutPieceAdoption.atSnapBack(nil))
+    }
+
+    // R4.1: the camera defaults keys have one home, shared by the global read and the adoption.
+    func testTheCameraDefaultsKeysAreListedOnce() {
+        let d = defaults(["webcamShape": "square", "bubbleWidthFraction": 0.31])
+        XCTAssertTrue(LayoutCamera.defaultsKeys.contains("webcamShape"))
+        XCTAssertTrue(LayoutCamera.defaultsKeys.contains("cutoutRightInset"))
+        XCTAssertEqual(Set(LayoutCamera.defaultsKeys).count, 6)
+        XCTAssertEqual(LayoutCamera.global(from: d).widthFraction, 0.31)
+    }
+
+    // R4.1: a layout's description says where its camera sits.
+    func testTheCameraCornerIsSpokenFromItsSpot() {
+        XCTAssertEqual(LayoutCamera().cornerPhrase, "bottom right")
+        var c = LayoutCamera(); c.rightInset = 0.8
+        XCTAssertEqual(c.cornerPhrase, "bottom left")
+        c.bottomInset = 0.8
+        XCTAssertEqual(c.cornerPhrase, "top left")
+        c.rightInset = 0.02
+        XCTAssertEqual(c.cornerPhrase, "top right")
+    }
+
     // MARK: Start
 
     func testStartTakesCameraAndShareFromTheLayout() {
@@ -115,13 +216,10 @@ final class LayoutCameraTests: XCTestCase {
         XCTAssertEqual(plan?.share, globalShare())
     }
 
+    // resolvedCamera / resolvedShare were removed (nothing called them); no layout means no plan, the globals stand.
     func testNoLayoutFallsBackToTheGlobals() {
         XCTAssertNil(LayoutPieceAdoption.atStart(nil))
-        let fallback = globalCamera()
-        XCTAssertEqual(LayoutTemplate(name: "Blank").resolvedCamera(fallback: fallback), fallback)
-        XCTAssertEqual(LayoutTemplate(name: "Blank").resolvedShare(fallback: globalShare()), globalShare())
-        var t = LayoutTemplate(name: "A"); t.camera = LayoutCamera()
-        XCTAssertEqual(t.resolvedCamera(fallback: fallback), LayoutCamera())
+        XCTAssertNil(LayoutPieceAdoption.atStart(LayoutTemplate(name: "Blank")))
     }
 
     // MARK: Live changes never reach the layout

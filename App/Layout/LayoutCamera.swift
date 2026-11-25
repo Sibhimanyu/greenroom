@@ -53,38 +53,52 @@ struct LayoutCamera: Codable, Equatable {
         cutoutRightInset = number(.cutoutRightInset, cutoutRightInset)
     }
 
+    /// Where the camera sits, in words ("bottom right"), for a layout's description. The insets are
+    /// fractions from the right and bottom edges; a spot past the middle is on the other side.
+    var cornerPhrase: String {
+        let side = rightInset + widthFraction / 2 > 0.5 ? "left" : "right"
+        let vertical = bottomInset > 0.5 ? "top" : "bottom"
+        return "\(vertical) \(side)"
+    }
+
     var box: PresenceBox {
         PresenceBox(widthFraction: widthFraction, rightInset: rightInset, bottomInset: bottomInset,
                     cutoutHeightFraction: cutoutHeightFraction, cutoutRightInset: cutoutRightInset,
                     isCutout: shape == .cutout)
     }
 
+    /// The defaults keys the app's working copy of the camera piece lives under, in one place:
+    /// `global(from:)` reads them and the coordinator's adoption keeps them out of its way.
+    enum Key {
+        static let shape = "webcamShape"
+        static let width = "bubbleWidthFraction"
+        static let rightInset = "bubbleRightInset"
+        static let bottomInset = "bubbleBottomInset"
+        static let cutoutHeight = "cutoutHeightFraction"
+        static let cutoutRightInset = "cutoutRightInset"
+    }
+    static let defaultsKeys = [Key.shape, Key.width, Key.rightInset, Key.bottomInset, Key.cutoutHeight, Key.cutoutRightInset]
+    static let shareDefaultsKey = "shareTarget"
+
     /// Today's global camera settings, straight from the defaults the app has always written.
     static func global(from defaults: UserDefaults) -> LayoutCamera {
         var c = LayoutCamera()
-        c.shape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? c.shape
+        c.shape = WebcamShape(rawValue: defaults.string(forKey: Key.shape) ?? "") ?? c.shape
         func number(_ key: String, _ fallback: Double) -> Double { (defaults.object(forKey: key) as? Double) ?? fallback }
-        c.widthFraction = number("bubbleWidthFraction", c.widthFraction)
-        c.rightInset = number("bubbleRightInset", c.rightInset)
-        c.bottomInset = number("bubbleBottomInset", c.bottomInset)
-        c.cutoutHeightFraction = number("cutoutHeightFraction", c.cutoutHeightFraction)
-        c.cutoutRightInset = number("cutoutRightInset", c.cutoutRightInset)
+        c.widthFraction = number(Key.width, c.widthFraction)
+        c.rightInset = number(Key.rightInset, c.rightInset)
+        c.bottomInset = number(Key.bottomInset, c.bottomInset)
+        c.cutoutHeightFraction = number(Key.cutoutHeight, c.cutoutHeightFraction)
+        c.cutoutRightInset = number(Key.cutoutRightInset, c.cutoutRightInset)
         return c
     }
 
     /// Today's global share target. One app is no longer offered; it reads as the whole screen.
     static func globalShare(from defaults: UserDefaults) -> ShareTarget {
-        var s = defaults.data(forKey: "shareTarget").flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
+        var s = defaults.data(forKey: shareDefaultsKey).flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
         if s.kind == .app { s.kind = .display }
         return s
     }
-}
-
-extension LayoutTemplate {
-    /// The layout's camera piece, or `fallback` (the global settings) when it has none.
-    func resolvedCamera(fallback: LayoutCamera) -> LayoutCamera { camera ?? fallback }
-    /// What the layout shares, or `fallback` when it has none.
-    func resolvedShare(fallback: ShareTarget) -> ShareTarget { share ?? fallback }
 }
 
 extension LayoutLibrary {
@@ -92,22 +106,45 @@ extension LayoutLibrary {
     static let shareMigratedKey = "layoutShareMigrated"
 
     /// One time each: copy today's global camera and share target into every layout, so day
-    /// one looks the same. The key is set once the copy is done; later edits and later globals
-    /// are never copied again. Returns whether anything changed.
+    /// one looks the same. A key is set only after `save` has worked, so a failed save runs
+    /// the copy again next launch; later edits and later globals are never copied again.
+    /// Returns whether anything changed and was saved.
     @discardableResult
-    mutating func migrateCameraAndShare(camera: LayoutCamera, share: ShareTarget, defaults: UserDefaults) -> Bool {
-        var changed = false
+    mutating func migrateCameraAndShare(camera: LayoutCamera, share: ShareTarget, defaults: UserDefaults,
+                                        save: (LayoutLibrary) -> Bool) -> Bool {
+        var keys: [String] = []
         if !defaults.bool(forKey: Self.cameraMigratedKey) {
             for i in templates.indices { templates[i].camera = camera }
-            defaults.set(true, forKey: Self.cameraMigratedKey)
-            changed = true
+            keys.append(Self.cameraMigratedKey)
         }
         if !defaults.bool(forKey: Self.shareMigratedKey) {
             for i in templates.indices { templates[i].share = share }
-            defaults.set(true, forKey: Self.shareMigratedKey)
-            changed = true
+            keys.append(Self.shareMigratedKey)
         }
-        return changed
+        guard !keys.isEmpty else { return false }
+        guard save(self) else { return false }
+        for key in keys { defaults.set(true, forKey: key) }
+        return true
+    }
+}
+
+/// Who is changing the camera piece or what is shared. Only the Layouts tab (and the Webcam
+/// tab, until P8 removes it) write the saved layout; everything else changes the running meeting.
+enum LayoutEditSource: Equatable {
+    case settingsLayouts, webcamTab, home, bar, meeting
+
+    var writesSavedLayout: Bool { self == .settingsLayouts || self == .webcamTab }
+}
+
+extension LayoutLibrary {
+    /// Writes the camera piece and/or share into the active layout only. False with no active layout.
+    @discardableResult
+    mutating func updateActive(camera: LayoutCamera?, share: ShareTarget?) -> Bool {
+        guard var t = active else { return false }
+        if let camera { t.camera = camera }
+        if let share { t.share = share }
+        update(t)
+        return true
     }
 }
 
@@ -121,9 +158,18 @@ enum LayoutPieceAdoption {
     }
 
     /// Start, Stop and launch: the layout's value applies. Nil with no layout (the globals stand).
-    static func atStart(_ template: LayoutTemplate?) -> Plan? {
-        guard let template, template.camera != nil || template.share != nil else { return nil }
-        return Plan(camera: template.camera, share: template.share)
+    /// A share the owner chose on Home before Start (`keepingLiveShare`) stays for that meeting.
+    static func atStart(_ template: LayoutTemplate?, keepingLiveShare: Bool = false) -> Plan? {
+        guard let template else { return nil }
+        let share = keepingLiveShare ? nil : template.share
+        guard template.camera != nil || share != nil else { return nil }
+        return Plan(camera: template.camera, share: share)
+    }
+
+    /// Snap Back: the layout's share returns; the camera spot is left as the meeting has it.
+    static func atSnapBack(_ template: LayoutTemplate?) -> Plan? {
+        guard let share = template?.share else { return nil }
+        return Plan(camera: nil, share: share)
     }
 
     /// The library changed. A different layout brings its pieces in; the same one brings in

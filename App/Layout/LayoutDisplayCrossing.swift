@@ -150,7 +150,7 @@ enum LayoutSharedDisplay {
 enum LayoutKey: Equatable { case delete, deleteForward, left, right, up, down, tab, escape }
 
 enum LayoutKeyAction: Equatable {
-    case remove, deselect, sendToOtherDisplay, ignore
+    case remove, deselect, sendToOtherDisplay, ignore, cancelDrag
     case nudge(cols: Int, rows: Int)
     case grow(cols: Int, rows: Int)
     case cycle(backwards: Bool)
@@ -160,10 +160,11 @@ enum LayoutKeyAction: Equatable {
 /// Option-arrows send it to the other display, Delete removes it").
 enum LayoutKeyRules {
     static func action(for key: LayoutKey, shift: Bool, option: Bool,
-                       hasSelection: Bool, hasOtherDisplay: Bool) -> LayoutKeyAction {
+                       hasSelection: Bool, hasOtherDisplay: Bool,
+                       isDragging: Bool = false) -> LayoutKeyAction {
         switch key {
         case .tab: return .cycle(backwards: shift)
-        case .escape: return hasSelection ? .deselect : .ignore
+        case .escape: return isDragging ? .cancelDrag : (hasSelection ? .deselect : .ignore)
         case .delete, .deleteForward: return hasSelection ? .remove : .ignore
         case .left, .right, .up, .down:
             guard hasSelection else { return .ignore }
@@ -172,5 +173,35 @@ enum LayoutKeyRules {
             let dy = key == .up ? -1 : (key == .down ? 1 : 0)
             return shift ? .grow(cols: dx, rows: dy) : .nudge(cols: dx, rows: dy)
         }
+    }
+
+    /// Reading order: top to bottom, then left to right, so Tab walks a canvas the way the eye does.
+    static func readingOrder(_ pieces: [LayoutPiece]) -> [UUID] {
+        pieces.sorted { ($0.rect.y, $0.rect.x) < ($1.rect.y, $1.rect.x) }.map(\.id)
+    }
+
+    /// Where Tab (or Shift-Tab) goes from `current` along `order`. nil means let go,
+    /// so the keyboard moves on to the next canvas and is never trapped.
+    static func cycleTarget(order: [UUID], current: UUID?, backwards: Bool) -> UUID? {
+        guard !order.isEmpty else { return nil }
+        guard let current, let at = order.firstIndex(of: current) else {
+            return backwards ? order.last : order.first
+        }
+        let next = at + (backwards ? -1 : 1)
+        return order.indices.contains(next) ? order[next] : nil
+    }
+
+    enum Removal: Equatable {
+        case piece(UUID)
+        /// The camera is not a piece; say so, and where to hide it instead.
+        case notice(String)
+        case nothing
+    }
+
+    static let cameraCannotBeRemoved = "Your camera can\u{2019}t be removed. Hide it on your screen instead."
+
+    static func removal(selection: UUID?, cameraID: UUID) -> Removal {
+        guard let selection else { return .nothing }
+        return selection == cameraID ? .notice(cameraCannotBeRemoved) : .piece(selection)
     }
 }

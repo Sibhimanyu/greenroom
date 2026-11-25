@@ -50,7 +50,7 @@ struct HomeCameraPanel: View {
                         HomeTileChoice(id: state.raw, title: state.name, symbol: state.symbol,
                                        selected: state == coordinator.cameraState,
                                        enabled: !state.noCamera || CameraPanelRules.noCameraEnabled(
-                                           shareIsNothing: coordinator.shareTarget.kind == .nothing))
+                                           shareIsNothing: coordinator.shareTarget.sharesNothing))
                     },
                     tileWidth: 76,
                     pick: { coordinator.setLiveCameraState(CameraState.allCases[$0]) })

@@ -70,7 +70,7 @@ struct HomeMicPanel: View {
                 help: "Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Needs something shared under Behind you.")
             HomeTileDependents(hidden: !MicPanelRules.showsNeedsShareHint(
                 recordSystemAudio: coordinator.recordSystemAudio,
-                shareIsNothing: coordinator.shareTarget.kind == .nothing)) {
+                shareIsNothing: coordinator.shareTarget.sharesNothing)) {
                 Text("Share a screen or app to give it sound to record.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }

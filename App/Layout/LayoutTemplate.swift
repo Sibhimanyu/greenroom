@@ -564,7 +564,7 @@ struct LayoutLibrary: Codable, Equatable {
         var name = "Layout \(n)"
         var k = n
         while templates.contains(where: { $0.name == name }) { k += 1; name = "Layout \(k)" }
-        let t = LayoutTemplate(name: name)
+        let t = LayoutTemplate(name: name, camera: LayoutCamera(), share: ShareTarget())
         templates.append(t)
         return t.id
     }
@@ -680,7 +680,10 @@ struct LayoutLibrary: Codable, Equatable {
         for (order, fresh) in Self.starters().enumerated() {
             guard let key = fresh.starter, !known.contains(key),
                   !templates.contains(where: { $0.starter == key }) else { continue }
-            templates.insert(fresh, at: min(templates.count, order))
+            var owned = fresh
+            owned.camera = owned.camera ?? LayoutCamera()
+            owned.share = owned.share ?? ShareTarget()
+            templates.insert(owned, at: min(templates.count, order))
             added = true
         }
         return added
@@ -690,7 +693,9 @@ struct LayoutLibrary: Codable, Equatable {
     @discardableResult
     mutating func starterID(_ key: String) -> UUID? {
         if let t = templates.first(where: { $0.starter == key }) { return t.id }
-        guard let fresh = Self.starters().first(where: { $0.starter == key }) else { return nil }
+        guard var fresh = Self.starters().first(where: { $0.starter == key }) else { return nil }
+        fresh.camera = fresh.camera ?? LayoutCamera()
+        fresh.share = fresh.share ?? ShareTarget()
         templates.append(fresh)
         return fresh.id
     }
@@ -705,8 +710,17 @@ extension LayoutLibrary {
         defaults.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(LayoutLibrary.self, from: $0) }
     }
 
-    func save(to defaults: UserDefaults) {
-        if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.defaultsKey) }
+    /// Writes the library. A failure is logged and returned, never swallowed: a migration
+    /// sets its key only when this says true.
+    @discardableResult
+    func save(to defaults: UserDefaults) -> Bool {
+        do {
+            defaults.set(try JSONEncoder().encode(self), forKey: Self.defaultsKey)
+            return true
+        } catch {
+            NSLog("Greenroom: could not save the layout library: \(error)")
+            return false
+        }
     }
 
     /// The saved library, or - the first time - the starters plus
@@ -724,14 +738,24 @@ extension LayoutLibrary {
                 saved.showEverythingToEveryone()
                 changed = true
             }
-            if changed { saved.save(to: defaults) }
-            defaults.set(true, forKey: shownToEveryoneMigratedKey)
+            // Pieces saved before other apps had a real 📡 switch carry false; once, turn it on.
+            if !defaults.bool(forKey: appsShownMigratedKey) {
+                saved.showAppsToEveryone()
+                changed = true
+            }
+            // The keys follow a successful save (R16.1); with nothing to change they are simply set.
+            if !changed || saved.save(to: defaults) {
+                defaults.set(true, forKey: shownToEveryoneMigratedKey)
+                defaults.set(true, forKey: appsShownMigratedKey)
+            }
             recordKnownStarters(in: defaults)
             return saved
         }
         let library = firstRun(legacy: LegacyLayoutSettings.read(from: defaults, defaultSiteURL: defaultSiteURL))
-        library.save(to: defaults)
-        defaults.set(true, forKey: shownToEveryoneMigratedKey)
+        if library.save(to: defaults) {
+            defaults.set(true, forKey: shownToEveryoneMigratedKey)
+            defaults.set(true, forKey: appsShownMigratedKey)
+        }
         recordKnownStarters(in: defaults)
         return library
     }
@@ -739,12 +763,29 @@ extension LayoutLibrary {
     /// Set once the one-time "show to everyone" flip has run; never cleared, so
     /// a piece hidden afterwards stays hidden.
     static let shownToEveryoneMigratedKey = "layoutLibrary.shownToEveryoneMigrated"
+    static let appsShownMigratedKey = "layoutLibrary.appsShownToEveryoneMigrated"
 
     /// Pure: every piece that offers the switch (Meeting window, Chat, views), in
     /// every template, one- and two-display, is set to shown.
     mutating func showEverythingToEveryone() {
         func flip(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
             pieces.map { var p = $0; if p.offersShareSwitch { p.showsToEveryone = true }; return p }
+        }
+        for i in templates.indices {
+            templates[i].oneDisplay = flip(templates[i].oneDisplay)
+            if var two = templates[i].twoDisplays {
+                two.main = flip(two.main)
+                two.second = flip(two.second)
+                templates[i].twoDisplays = two
+            }
+        }
+    }
+
+    /// Pure: every app piece (other than the Greenroom Browser, which is fixed on anyway)
+    /// has its 📡 turned on, in every template and version.
+    mutating func showAppsToEveryone() {
+        func flip(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
+            pieces.map { var p = $0; if p.kind.app != nil { p.showsToEveryone = true }; return p }
         }
         for i in templates.indices {
             templates[i].oneDisplay = flip(templates[i].oneDisplay)

@@ -197,7 +197,7 @@ final class MeetingControlsModel: ObservableObject {
     func cameraStateMenu() -> [MenuEntry] {
         MeetingBarModel.cameraStateMenu(
             current: coordinator.cameraState,
-            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.kind == .nothing)
+            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.sharesNothing)
         ) { [weak self] state in
             self?.coordinator.setLiveCameraState(state)
             self?.refresh()

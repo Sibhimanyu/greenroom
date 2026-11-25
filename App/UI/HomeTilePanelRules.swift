@@ -191,7 +191,7 @@ enum RecordPanelRules {
     static func headerValue(autoRecord: Bool) -> String { autoRecord ? "Auto-record" : "Manual" }
 }
 
-/// The Settings tabs, in toolbar order. Pure, so the order, the shortcuts and
+/// The Settings tabs, in toolbar order (derived from `MorePanelRules`' one list). Pure, so the order, the shortcuts and
 /// the Home "More" panel stay in step (HomeTilePanelRulesTests).
 enum SettingsTabs {
     /// The Account tab is a mock that only exists in Debug.
@@ -202,8 +202,7 @@ enum SettingsTabs {
     #endif
 
     static func order(includingAccount: Bool) -> [String] {
-        (includingAccount ? ["account"] : [])
-            + ["webcam", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"]
+        MorePanelRules.tabs(includingAccount: includingAccount).map(\.id)
     }
 
     /// ⌘1...⌘9, then ⌘0; nothing past ten. (`Character("10")` would trap.)
@@ -239,6 +238,7 @@ enum MorePanelRules {
 
     private static let account = Tab(id: "account", title: "Account", symbol: "person.crop.circle")
 
+    /// The one list of tabs: `SettingsTabs.order` is derived from it.
     private static let common: [Tab] = [
         Tab(id: "webcam", title: "Webcam", symbol: "video.fill"),
         Tab(id: "layout", title: "Layout", symbol: "rectangle.split.2x1"),

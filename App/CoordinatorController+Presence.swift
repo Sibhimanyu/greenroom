@@ -171,14 +171,13 @@ extension CoordinatorController {
         stage?.updatePlacement(layout)
     }
 
-    func commitPreviewPlacement(_ box: PresenceBox) {
+    /// A drag of the camera in a preview ended. Settings -> Layouts (and the Webcam tab) also write
+    /// the active layout's saved camera; Home's preview changes the running session's working copy
+    /// only (R4.3).
+    func commitPreviewPlacement(_ box: PresenceBox, source: LayoutEditSource) {
         var layout = stageLayout
         layout.apply(box)
         applyPresencePlacement(layout)
-        // Dragged in Settings or Home's preview, with no meeting running: the layout keeps it.
-        if !layoutChoiceLocked, var template = layoutLibrary.active {
-            template.camera = currentLayoutCamera
-            layoutLibrary.update(template)
-        }
+        if source.writesSavedLayout { saveCameraToActiveLayout() }
     }
 }

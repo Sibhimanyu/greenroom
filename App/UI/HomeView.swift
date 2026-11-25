@@ -398,7 +398,7 @@ struct HomeView: View {
                 aspect: layout.cameraShape.cropsToSquare ? 1 : 16.0 / 9.0,
                 content: cropped ? coordinator.shapePreview.contentRect : nil,
                 onStep: { coordinator.previewPlacementStep($0) },
-                onCommit: { coordinator.commitPreviewPlacement($0) })
+                onCommit: { coordinator.commitPreviewPlacement($0, source: .home) })
         }
     }
 
@@ -793,7 +793,7 @@ struct HomeView: View {
         .accessibilityValue(LookSummary.shareText(coordinator.shareTarget))
     }
 
-    /// Same write as Settings > Webcam's camera cards: noCamera false, then re-preview.
+    /// This meeting only (the camera state's live change); the saved default is untouched.
     private func turnCameraOn() { coordinator.turnCameraOnFromHome() }
 
     /// Camera: the same list and the same rule as the Webcam page's cards.

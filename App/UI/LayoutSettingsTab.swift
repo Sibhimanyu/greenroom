@@ -31,16 +31,24 @@ struct LayoutSettingsTab: View {
     /// The one presence placement, shared with the floating bubble and Home.
     private var cameraModel: LayoutCameraModel {
         let layout = coordinator.stageLayout
-        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: !coordinator.savedCameraState.iSee,
-                                 everyoneSees: !(coordinator.savedCameraState.noCamera && !coordinator.cameraDirectorSettings.enabled
-                                                 && coordinator.shareTarget.kind != .nothing),
+        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape,
+                                 cameraOff: !Visibility.cameraOnMyScreen(state: coordinator.savedCameraState).isOn,
+                                 // The one rule decides who sees the camera (R6.1), under this layout's own share.
+                                 everyoneSees: Visibility.cameraEveryoneSees(state: coordinator.savedCameraState, target: shownTarget).isOn,
                                  onStep: { coordinator.previewPlacementStep($0) },
-                                 onCommit: { coordinator.commitPreviewPlacement($0) },
+                                 onCommit: { coordinator.commitPreviewPlacement($0, source: .settingsLayouts) },
                                  state: coordinator.savedCameraState,
                                  setState: { coordinator.setSavedCameraState($0) },
                                  adjust: {
                                      NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
                                  })
+    }
+
+    /// Running: the live target decides what the capture shows. Not running: the layout's own.
+    private var shownTarget: Visibility.Target {
+        Visibility.Target(coordinator.layoutChoiceLocked
+                          ? coordinator.shareTarget
+                          : (coordinator.layoutLibrary.active?.share ?? coordinator.shareTarget))
     }
 
     var body: some View {
@@ -67,10 +75,7 @@ struct LayoutSettingsTab: View {
             liveLayoutID: coordinator.liveSessionLayoutID,
             applyNow: { coordinator.applyLayoutNow($0) },
             camera: cameraModel,
-            // Running: the live target decides what the capture shows. Not running: the layout's own.
-            share: Visibility.Target(coordinator.layoutChoiceLocked
-                                     ? coordinator.shareTarget
-                                     : (coordinator.layoutLibrary.active?.share ?? coordinator.shareTarget)),
+            share: shownTarget,
             fallbackShare: coordinator.shareTarget)
         .onAppear {
             apps = AppCatalog.installedAndRunning()
@@ -179,6 +184,9 @@ struct LayoutPageContent: View {
     @State private var focusRequest: LayoutFocusRequest?
     @FocusState private var focus: LayoutFocus?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The Settings window's undo stack: Cmd-Z, Shift-Cmd-Z and the Edit menu.
+    @Environment(\.undoManager) private var undoManager
+    @State private var recorder: LayoutEditRecorder?
 
     // MARK: Body
 
@@ -225,10 +233,19 @@ struct LayoutPageContent: View {
         .defaultFocus($focus, nil)
         .onExitCommand { focus = nil }
         .onAppear {
+            let binding = $library
+            recorder = LayoutEditRecorder(library: library, read: { binding.wrappedValue },
+                                          write: { binding.wrappedValue = $0 },
+                                          nameOf: { look($0).name })
             focus = nil
             if let o = opensOn { selection = o.selection; showsTwo = o.showsTwo; activeSlot = o.slot }
         }
         .onChange(of: library.activeID) { _, _ in resetEditorState() }
+        .onChange(of: library) { _, new in
+            recorder?.undoManager = undoManager
+            recorder?.observe(new)
+        }
+        .onDisappear { recorder?.forget() }
         .confirmationDialog("Delete \u{201C}\(deleteCandidateName)\u{201D}?",
                             isPresented: Binding(get: { deleteCandidate != nil },
                                                  set: { if !$0 { deleteCandidate = nil } }),
@@ -377,7 +394,7 @@ struct LayoutPageContent: View {
         // Raj Mode as shipped: the Active speaker view is the speaker (a Meeting window
         // stands in for it where views cannot open).
         if isRajAsShipped(template), let browser = opens.first {
-            sentence = "Greenroom opens \(browser) and places the meeting as active speaker, with chat below."
+            sentence = "Greenroom opens \(browser), puts the active speaker top right with chat below, and your camera sits \((template.camera ?? LayoutCamera()).cornerPhrase)."
             sentence += " With a second display connected it uses the two-display version."
             return sentence
         }
@@ -436,16 +453,10 @@ struct LayoutPageContent: View {
     /// Beside it, Show on screen (no shortcut).
     private func previewControls(_ template: LayoutTemplate) -> AnyView {
         AnyView(HStack(spacing: 6) {
-            Picker("Preview", selection: $previewEveryone) {
-                Text("My screen").tag(false)
-                Text("Everyone").tag(true)
+            GreenroomSegmented("Preview", selection: $previewEveryone, options: [false, true]) { everyone in
+                Text(everyone ? "Everyone" : "My screen")
             }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
-            .fixedSize()
             .help("Preview. My screen shows what you see. Everyone shows the meeting\u{2019}s picture: only what everyone sees.")
-            .accessibilityLabel("Preview")
             Button {
                 showOnScreen(template, look)
                 if template.twoDisplays != nil, secondSize(template.twoDisplays?.secondUUID ?? "") == nil {
@@ -511,6 +522,9 @@ struct LayoutPageContent: View {
                     .help("A meeting is running another layout. This moves it to this one now; otherwise this layout starts with the next meeting.")
             }
             Spacer(minLength: 8)
+            // Preview and Show on screen belong to the shared canvas; they sit here so every canvas
+            // header stays one line.
+            previewControls(template)
             if template.twoDisplays != nil {
                 GreenroomSegmented("Layout for", selection: Binding(get: { showsTwo },
                                                         set: { v in
@@ -532,7 +546,6 @@ struct LayoutPageContent: View {
                     Button("Rename") { focus = .name }
                 case .duplicate:
                     Button("Duplicate") { duplicate(template.id) }
-                        .keyboardShortcut("d", modifiers: .command)
                 case .restoreOriginal:
                     EmptyView()
                 case .delete:
@@ -546,8 +559,15 @@ struct LayoutPageContent: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Rename, duplicate or delete this layout")
+        .help("Rename, duplicate (\u{2318}D) or delete this layout")
         .accessibilityLabel("Layout actions")
+        // A shortcut inside a Menu only fires while the menu is open; this one lives as long as
+        // the Layouts tab is on screen.
+        .background(Button("Duplicate layout") { duplicate(template.id) }
+            .keyboardShortcut("d", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true))
     }
 
     private var nameBinding: Binding<String> {
@@ -594,7 +614,7 @@ struct LayoutPageContent: View {
         } else {
             canvas(.one, space: mainSpace, template: template)
                 .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -709,7 +729,6 @@ struct LayoutPageContent: View {
                     case .automatic: Text("Automatic").tag("")
                     case let .display(id): Text(others.first { $0.id == id }?.name ?? id).tag(id)
                     case let .savedNotConnected(id): Text("Saved display (not connected)").tag(id)
-                    case .remove: EmptyView()
                     }
                 }
             }
@@ -735,7 +754,7 @@ struct LayoutPageContent: View {
 
     /// The + on one canvas: it adds to that canvas's display.
     private func addButton(slot: LayoutSlot, template: LayoutTemplate) -> AnyView {
-        let target = LayoutEditorRules.addSlot(canvas: slot)
+        let target = slot   // each canvas's + adds to its own display
         return AnyView(Button { addPanelSlot = addPanelSlot == target ? nil : target } label: {
             Image(systemName: "plus")
         }
@@ -769,8 +788,6 @@ struct LayoutPageContent: View {
                      titleMenu: (two && slot == .second) ? template?.twoDisplays.map { secondMenu($0) } : nil,
                      sharedTag: template.flatMap { t in
                          LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? sharedTag(t) : nil },
-                     headerPreview: template.flatMap { t in
-                         LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? previewControls(t) : nil },
                      headerAdd: template.map { addButton(slot: slot, template: $0) },
                      crossing: two ? crossing(from: slot) : nil,
                      incoming: incoming?.slot == slot ? incoming?.preview : nil,

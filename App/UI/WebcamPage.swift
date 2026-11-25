@@ -36,6 +36,7 @@ struct WebcamSettingsTab: View {
                 set: {
                     coordinator.cutoutHeightFraction = $0.size
                     coordinator.cutoutRightInset = $0.rightInset
+                    coordinator.saveCameraToActiveLayout()
                 })
             : Binding(
                 get: { .init(size: coordinator.bubbleWidthFraction,
@@ -45,20 +46,22 @@ struct WebcamSettingsTab: View {
                     coordinator.bubbleWidthFraction = $0.size
                     coordinator.bubbleRightInset = $0.rightInset
                     coordinator.bubbleBottomInset = $0.bottomInset
+                    coordinator.saveCameraToActiveLayout()
                 })
     }
 
     var body: some View {
         WebcamPageContent(
             shape: Binding(get: { coordinator.webcamShape },
-                           set: { coordinator.webcamShape = $0; coordinator.requestShapeApply() })
+                           set: { coordinator.webcamShape = $0; coordinator.saveCameraToActiveLayout(); coordinator.requestShapeApply() })
                 .animatedCollapse(),
             removal: $coordinator.backgroundRemoval,
             cameraBackground: $coordinator.cameraBackground,
             backgroundImage: $coordinator.cameraBackgroundImage,
             chooseBackgroundImage: { coordinator.chooseCameraBackgroundImage() },
             geometry: geometry,
-            shareKind: $coordinator.shareTarget.kind,
+            shareKind: Binding(get: { coordinator.shareTarget.kind },
+                               set: { coordinator.shareTarget.kind = $0; coordinator.saveShareToActiveLayout() }),
             previewAspect: coordinator.shapePreviewAspect,
             cameraSeesYou: coordinator.cameraSeesYou || !coordinator.webcamShape.usesChromaKey,
             cameraOff: coordinator.cameraIsOff,
@@ -66,12 +69,13 @@ struct WebcamSettingsTab: View {
             apply: { coordinator.requestShapeApply() },
             reset: {
                 coordinator.resetBubbleLayout()
+                coordinator.saveCameraToActiveLayout()
                 coordinator.requestShapeApply()
             },
             livePicture: { LiveCompositePicture(feed: coordinator.shapePreview) },
             shareDetail: {
                 ShareTargetSettings(displays: displays,
-                                    onChange: { coordinator.requestShapeApply(rebuild: true) })
+                                    onChange: { coordinator.saveShareToActiveLayout(); coordinator.requestShapeApply(rebuild: true) })
             })
         .onAppear {
             displays = DisplayResolver.connectedDisplays()

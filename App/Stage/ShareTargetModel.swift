@@ -50,6 +50,8 @@ struct ShareTarget: Codable, Equatable {
     }
 
     var kind: Kind = .display
+    /// Just my camera: nothing shared, the camera fills the picture.
+    var sharesNothing: Bool { kind == .nothing }
     /// The app for `.app` and `.window`.
     var appBundleID: String = ""
     /// Kept so a saved app that is not running can still be named.

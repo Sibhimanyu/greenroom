@@ -75,4 +75,28 @@ final class ShareVisibilityRulesTests: XCTestCase {
         XCTAssertEqual(ShowOnShare.exceptionIDs(kind: .display, registry: [3], alwaysShared: [7]), [3, 7])
         XCTAssertNil(ShowOnShare.exceptionIDs(kind: .app, registry: [], alwaysShared: [7]))
     }
+
+    // R6.1: one named question for "is Just my camera chosen", instead of three spellings of it.
+    func testSharesNothingIsTheJustMyCameraChoice() {
+        var t = ShareTarget()
+        XCTAssertFalse(t.sharesNothing)
+        t.kind = .nothing
+        XCTAssertTrue(t.sharesNothing)
+        t.kind = .whiteboard
+        XCTAssertFalse(t.sharesNothing)
+    }
+
+    // R7.2: a newly launched hidden app that ScreenCaptureKit hasn't listed yet is retried, not recorded as done.
+    func testAHiddenAppTheCaptureCannotSeeYetIsRetried() {
+        let unresolved = ExclusionResolution.unresolved(hidden: ["a.safari", "b.mail"], running: ["a.safari", "b.mail"],
+                                                        listed: ["b.mail"])
+        XCTAssertEqual(unresolved, ["a.safari"])
+        XCTAssertFalse(ExclusionResolution.isSettled(hidden: ["a.safari"], running: ["a.safari"], listed: []))
+        XCTAssertTrue(ExclusionResolution.isSettled(hidden: ["a.safari"], running: ["a.safari"], listed: ["a.safari"]))
+    }
+
+    // R7.2: a hidden app that is not running has nothing to exclude, so it never blocks "done".
+    func testAHiddenAppThatIsNotRunningIsSettled() {
+        XCTAssertTrue(ExclusionResolution.isSettled(hidden: ["a.safari"], running: [], listed: []))
+    }
 }

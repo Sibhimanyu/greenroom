@@ -80,7 +80,9 @@ struct PreviewCameraDragLayer: View {
                         handle
                             .gesture(resize(corner, frame: frame))
                             .onHover { inside in (inside ? Self.cursor(for: corner) : NSCursor.arrow).set(); hovering = inside || hovering }
-                            .offset(x: point(of: corner, in: rect).x - 14, y: point(of: corner, in: rect).y - 14)
+                            // Kept inside the canvas: the clip below would cut a handle on the edge.
+                            .offset(x: min(max(point(of: corner, in: rect).x, 7), frame.width - 7) - 14,
+                                    y: min(max(point(of: corner, in: rect).y, 7), frame.height - 7) - 14)
                     }
                     .transition(.opacity)
                 }
@@ -92,6 +94,8 @@ struct PreviewCameraDragLayer: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your camera in the preview")
         .accessibilityHint("Drag to move it. It moves for everyone.")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : (onSelect == nil ? [] : .isButton))
+        .accessibilityAction(.default) { onSelect?() }
     }
 
     // MARK: Placement

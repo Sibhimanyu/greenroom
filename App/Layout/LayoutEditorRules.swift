@@ -9,6 +9,24 @@
 //
 import Foundation
 
+/// Where a piece's caption goes when the camera sits over the piece.
+enum LayoutCaptionRules {
+    /// The largest strip of `tile` (above, below, left or right of the covered part) that the
+    /// camera does not cover, so the caption and the camera's own label never draw over each
+    /// other. The whole tile when nothing is covered.
+    static func freeRegion(tile: CGRect, covered: CGRect?) -> CGRect {
+        guard let covered, covered.intersects(tile) else { return tile }
+        let c = covered.intersection(tile)
+        let strips = [
+            CGRect(x: tile.minX, y: tile.minY, width: tile.width, height: c.minY - tile.minY),
+            CGRect(x: tile.minX, y: c.maxY, width: tile.width, height: tile.maxY - c.maxY),
+            CGRect(x: tile.minX, y: tile.minY, width: c.minX - tile.minX, height: tile.height),
+            CGRect(x: c.maxX, y: tile.minY, width: tile.maxX - c.maxX, height: tile.height),
+        ]
+        return strips.filter { $0.width > 0 && $0.height > 0 }.max { $0.width * $0.height < $1.width * $1.height } ?? tile
+    }
+}
+
 enum LayoutEditorRules {
 
     // MARK: The layout's ⋯ menu
@@ -18,7 +36,8 @@ enum LayoutEditorRules {
     }
 
     /// The ⋯ menu beside the layout name. Restore original only for a built-in
-    /// layout that can be restored; Delete is always last.
+    /// layout that can be restored (`canRestore` is false until P9 builds `restoreOriginal`; kept for it);
+    /// Delete is always last.
     static func layoutMenu(isBuiltIn: Bool, canRestore: Bool) -> [LayoutAction] {
         var items: [LayoutAction] = [.rename, .duplicate]
         if isBuiltIn && canRestore { items.append(.restoreOriginal) }
@@ -37,18 +56,16 @@ enum LayoutEditorRules {
         case display(String)
         /// A saved display that is unplugged stays visible and valid.
         case savedNotConnected(String)
-        case remove
     }
 
     /// The "Second ▾" menu on the second canvas's header: the display picker
     /// (Automatic, each connected non-main display, the saved one if it is
-    /// away), then Remove two-display version.
+    /// away). Remove two-display version is a button the view adds under it.
     static func secondMenu(connectedNonMainIDs: [String], savedUUID: String) -> [SecondChoice] {
         var items: [SecondChoice] = [.automatic] + connectedNonMainIDs.map { SecondChoice.display($0) }
         if !savedUUID.isEmpty, !connectedNonMainIDs.contains(savedUUID) {
             items.append(.savedNotConnected(savedUUID))
         }
-        items.append(.remove)
         return items
     }
 
@@ -79,35 +96,59 @@ enum LayoutEditorRules {
         return rows
     }
 
-    // MARK: Where "+" is allowed to add
-
-    /// Every canvas has its own +; it adds to that canvas's display. On a
-    /// version with two displays the slot is the canvas's own, never the last
-    /// one clicked.
-    static func addSlot(canvas: LayoutSlot) -> LayoutSlot { canvas }
-
-    // MARK: The inspector
-
-    enum Inspector: Equatable {
-        case empty
-        case camera
-        case piece(UUID)
-    }
-
-    /// What the inspector shows. `selection` is a piece id, the camera's id or
-    /// nil; an id that is no longer in the layout is the empty state.
-    static func inspector(selection: UUID?, cameraID: UUID, hasCamera: Bool, pieceIDs: Set<UUID>) -> Inspector {
-        guard let selection else { return .empty }
-        if selection == cameraID { return hasCamera ? .camera : .empty }
-        return pieceIDs.contains(selection) ? .piece(selection) : .empty
-    }
-
-    /// Nothing selected: the inspector carries the layout's description sentence
-    /// (the separate caption is gone while a layout is open).
-    static func inspectorShowsDescription(_ inspector: Inspector) -> Bool { inspector == .empty }
-
     /// The caption under the cards only while no editor is open (None).
     static func captionUnderCards(hasActiveLayout: Bool) -> Bool { !hasActiveLayout }
+
+    // MARK: Right-click on a piece
+
+    enum PieceAction: Hashable {
+        case moveToOtherDisplay(toSecond: Bool)
+        case showToEveryone, hideFromEveryone
+        case showOnMyScreen, hideOnMyScreen
+        case remove
+    }
+
+    /// The rows of a piece's right-click menu, in order. A switch the rule has settled
+    /// (the Greenroom Browser is always shown to everyone; the Chat is always on your screen)
+    /// is not offered. Remove is always last.
+    static func pieceMenu(piece: LayoutPiece, target: Visibility.Target, slot: LayoutSlot,
+                          hasOtherDisplay: Bool) -> [PieceAction] {
+        var items: [PieceAction] = []
+        if hasOtherDisplay { items.append(.moveToOtherDisplay(toSecond: slot != .second)) }
+        let everyone = Visibility.everyoneSees(piece: piece, target: target)
+        if !everyone.isFixed { items.append(everyone.isOn ? .hideFromEveryone : .showToEveryone) }
+        let mine = Visibility.onMyScreen(piece: piece)
+        if !mine.isFixed { items.append(mine.isOn ? .hideOnMyScreen : .showOnMyScreen) }
+        items.append(.remove)
+        return items
+    }
+
+    // MARK: What VoiceOver says
+
+    /// "Chat, 3 of 12 columns, everyone sees it". The state words follow the two badges.
+    static func spokenPiece(name: String, columns: Int, everyone: Bool, onMyScreen: Bool) -> String {
+        var words = "\(name), \(columns) of \(LayoutGeometry.divisions) columns, "
+            + (everyone ? "everyone sees it" : "hidden from everyone")
+        if !onMyScreen { words += ", not on your screen" }
+        return words
+    }
+
+    /// "Main display, everyone sees this".
+    static func spokenCanvas(name: String, isShared: Bool) -> String {
+        isShared ? "\(name), everyone sees this" : name
+    }
+
+    /// The words on a menu row. Another app's eye means where it opens.
+    static func title(for action: PieceAction, isApp: Bool) -> String {
+        switch action {
+        case let .moveToOtherDisplay(toSecond): return toSecond ? "Move to second display" : "Move to main display"
+        case .showToEveryone: return "Show to everyone"
+        case .hideFromEveryone: return "Hide from everyone"
+        case .showOnMyScreen: return isApp ? "Open on my screen" : "Show on my screen"
+        case .hideOnMyScreen: return isApp ? "Open minimised" : "Hide on my screen"
+        case .remove: return "Remove"
+        }
+    }
 
     // MARK: Keys, as help text
 

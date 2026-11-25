@@ -171,15 +171,76 @@ final class ShareVisibilityTruthTests: XCTestCase {
         XCTAssertTrue(Visibility.onMyScreen(piece: piece(.roomScreen, shown: true)).isOn)
     }
 
+    // R6.1, R1: Off and Only me hide the camera from everyone on every share; Just my camera
+    // (share Nothing) is the one exception, the camera is then the whole picture.
     func testTheCameraAcrossTheFourStatesAndEveryTarget() {
         for (noCamera, mine, state) in [(false, true, CameraState.everyoneAndMe), (false, false, .onlyEveryone),
                                         (true, true, .onlyMe), (true, false, .off)] {
             XCTAssertEqual(CameraState(noCamera: noCamera, shownOnMyScreen: mine), state)
             XCTAssertEqual(Visibility.cameraOnMyScreen(state: state).isOn, mine)
             for target in targets {
-                XCTAssertEqual(Visibility.cameraEveryoneSees(state: state, target: target).isOn, !noCamera, "\(state) \(target)")
+                let expected = target == .justMe ? true : !noCamera
+                XCTAssertEqual(Visibility.cameraEveryoneSees(state: state, target: target).isOn, expected, "\(state) \(target)")
             }
         }
+    }
+
+    // MARK: Flipping a badge (R2.3)
+
+    private enum Eye { case on, off }
+    private func eye(_ p: LayoutPiece) -> Bool { Visibility.onMyScreen(piece: p).isOn }
+
+    // R2.3: a window can't be everyone-but-not-me, so 📡 on brings 👁 on.
+    func testTurningBroadcastOnTurnsTheEyeOn() {
+        for s in [Sample.meeting, .view, .otherApp] {
+            let hiddenAndOff = piece(s, shown: false, startsHidden: true)
+            XCTAssertFalse(eye(hiddenAndOff))
+            let flipped = Visibility.flipped(hiddenAndOff, side: .everyone)
+            XCTAssertTrue(flipped.showsToEveryone, "\(s)")
+            XCTAssertTrue(eye(flipped), "\(s): 👁 follows 📡 on")
+        }
+    }
+
+    // R2.3: the other direction, as before: 👁 off takes the window out of the picture.
+    func testTurningTheEyeOffTurnsBroadcastOffForOwnWindows() {
+        for s in [Sample.meeting, .view] {
+            let shown = piece(s, shown: true, startsHidden: false)
+            let flipped = Visibility.flipped(shown, side: .me)
+            XCTAssertFalse(eye(flipped))
+            XCTAssertFalse(flipped.showsToEveryone, "\(s)")
+            // Turning the eye back on leaves 📡 where it is.
+            let back = Visibility.flipped(flipped, side: .me)
+            XCTAssertTrue(eye(back))
+            XCTAssertFalse(back.showsToEveryone)
+        }
+    }
+
+    // R2.1, R2.2: a badge that can't change is not flipped (Chat's eye, the browser, the Room screen).
+    func testFixedBadgesDoNotFlip() {
+        for p in [piece(.chat, shown: true), piece(.browser, shown: true), piece(.roomScreen, shown: false)] {
+            XCTAssertEqual(Visibility.flipped(p, side: .me), p)
+        }
+        let browser = piece(.browser, shown: true)
+        XCTAssertEqual(Visibility.flipped(browser, side: .everyone), browser)
+    }
+
+    func testBroadcastFlipsBackOffForChat() {
+        let chat = piece(.chat, shown: true)
+        XCTAssertFalse(Visibility.flipped(chat, side: .everyone).showsToEveryone)
+    }
+
+    // MARK: The cross-check compares like with like
+
+    // R1.3: the DEBUG cross-check asks the rule about the share the capture really has,
+    // so a layout that says "whole screen" while nothing is captured raises no alarm.
+    func testCrossCheckUsesTheCapturesOwnKind() {
+        XCTAssertEqual(Visibility.Target(captureKind: .display), .wholeScreen)
+        XCTAssertEqual(Visibility.Target(captureKind: .window), .window(bundleID: nil))
+        XCTAssertEqual(Visibility.Target(captureKind: .app), .window(bundleID: nil))
+        XCTAssertEqual(Visibility.Target(captureKind: .other), .justMe)
+        let browser = piece(.browser, shown: true)
+        let target = Visibility.Target(captureKind: .other)
+        XCTAssertTrue(Visibility.mismatches(windows: [(browser, 3)], target: target, exceptionList: []).isEmpty)
     }
 
     func testCrossCheckFlagsAFixedWindowTheListDisagreesWith() {

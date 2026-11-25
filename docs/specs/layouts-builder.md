@@ -85,22 +85,22 @@ different order; this table is the authority.
 
 | R | Requirement | Phase | Status |
 | --- | --- | --- | --- |
-| R1 | One rule for who sees what | P1 | built |
+| R1 | One rule for who sees what | P1 | built; the camera answers through it too (`cameraEveryoneSees`) |
 | R2 | Two badges per piece | P1 | built |
 | R3 | Preview: My screen / Everyone | P1, P5 | built |
-| R4 | Each layout owns its camera piece | P3 | built |
-| R5 | Each layout owns what's shared and its shared display | P3 | built |
-| R6 | Four-way camera state everywhere | P2 | built |
-| R7 | Other apps' 📡 and 👁 | P4 | built |
+| R4 | Each layout owns its camera piece | P3 | built; new layouts own a camera from creation |
+| R5 | Each layout owns what's shared and its shared display | P3 | built; the Webcam tab writes the active layout until P8 |
+| R6 | Four-way camera state everywhere | P2 | built; "Only me" is not a true mirror yet (known gap) |
+| R7 | Other apps' 📡 and 👁 | P4 | built; existing app pieces migrated to 📡 on once |
 | R8 | Direction A canvas | P5 | built |
-| R9 | Mac editor basics | P6 | planned (parts built) |
+| R9 | Mac editor basics | P6 | built (R9.1 to R9.7) |
 | R10 | Devices and General tabs | P7 | built |
 | R11 | Camera look in Layouts; Webcam tab gone | P8 | planned |
 | R12 | Six built-in layouts, one always active | P9 | planned |
 | R13 | Restore original and Reset all | P9 | planned |
 | R14 | Built-ins on existing installs | P9 | planned |
 | R15 | Room + laptop | P10 | planned |
-| R16 | Day one looks the same; downgrade works | P2, P3, P9 | built for P2, P3 |
+| R16 | Day one looks the same; downgrade works | P2, P3, P9 | built for P2, P3 (migration keys follow a successful save) |
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -136,7 +136,8 @@ different order; this table is the authority.
 - R5.1 A layout saves what's shared (`LayoutTemplate.share`: kind, window,
   follow the slide show) and its shared display.
 - R5.2 Home's Share panel and the bar change only the running meeting.
-- R5.3 Start and Snap Back load the active layout's share again.
+- R5.3 Start and Snap Back load the active layout's share again. A share chosen
+  on Home before Start is kept for that meeting only.
 
 **R6. Four-way camera state everywhere.** (Q12)
 - R6.1 The same four words and meanings appear in Settings > Layouts, the bar's
@@ -144,6 +145,12 @@ different order; this table is the authority.
 - R6.2 Settings holds the saved default used at each Start. A change from the
   bar or Home is for the running meeting and never writes the default.
 - R6.3 Start and Snap Back drop the live change.
+- R6.4 Off and Only me hide the camera from everyone whatever else is set,
+  camera switching included. The one exception is Just my camera (share
+  Nothing): the camera is then the whole picture and stays in.
+  `Visibility.cameraEveryoneSees` is the only place that decides it.
+- Known gap: "Only me" isn't a true mirror yet (see Known gaps).
+- The Devices tab holds devices only: it has no "No camera" card.
 
 **R7. Other apps' 📡 and 👁.** (Q25, Q26)
 - R7.1 An app piece's 📡 is on by default. Off keeps that app out of a
@@ -152,6 +159,8 @@ different order; this table is the authority.
   a second.
 - R7.3 An app piece with 👁 off opens minimised.
 - R7.4 The Greenroom Browser stays fixed on.
+- R7.5 An app that launches and is not yet listed by ScreenCaptureKit is retried
+  on the next one-second tick, not recorded as excluded.
 
 **R8. Direction A canvas.** (Q18, Q19, Q23)
 - R8.1 The inspector sits below the canvases and shows only for a selection;
@@ -160,8 +169,10 @@ different order; this table is the authority.
   two-display version.
 - R8.3 "Second ▾" holds the display picker and Remove two-display version.
 - R8.4 One ⋯ menu holds Rename, Duplicate (⌘D) and Delete.
-- R8.5 The shared canvas header holds "Everyone sees this ▾", the Preview
-  switch and Show on screen, and fits at Settings' 760pt width.
+- R8.5 Every canvas header is one line. The shared canvas's holds "Everyone sees this ▾",
+  which also marks it as the shared display (no separate SHARED tag); the Preview switch and
+  Show on screen sit on the layout's title row beside One display / Two displays, and fit at
+  Settings' 760pt width.
 
 **R9. Mac editor basics.**
 - R9.1 ⌘Z and ⇧⌘Z undo and redo every committed edit; a drag is one step; the
@@ -173,8 +184,8 @@ different order; this table is the authority.
 - R9.5 Tab continues to the other canvas and the camera piece.
 - R9.6 Tiles show a 1pt hover outline.
 - R9.7 VoiceOver names the canvases, the camera piece and the hidden state.
-- Already built: Delete, Esc and Tab within a canvas (a7e3082, `LayoutKeyRules`);
-  ⌘D (3f6a68c). The rest is P6.
+- Built: Delete, Esc and Tab within a canvas (a7e3082, `LayoutKeyRules`); ⌘D is a
+  real shortcut while the Layouts tab is on screen; the rest is P6.
 
 **R10. Devices and General tabs.** (Q16, Q24, Q27)
 - R10.1 Devices holds cameras, the microphone, the four Recording options and
@@ -227,9 +238,11 @@ different order; this table is the authority.
   me) × badge state, and checks the rule against a pure model of the capture
   filter. Its sample list is an exhaustive switch, so it breaks when a kind is
   added.
-- **The DEBUG cross-check.** In DEBUG builds, Preview: Everyone draws from
-  `ShareVisibleWindows.effectiveNumbers`, the list the capture really uses. A
-  disagreement with the rule is logged and hits `assertionFailure`.
+- **The DEBUG cross-check.** In DEBUG builds, turning Preview to Everyone while a
+  capture is live compares the rule, asked about the capture's own share kind
+  (`Visibility.Target(captureKind:)`), with `ShareVisibleWindows.effectiveNumbers`,
+  the list the capture really uses. A disagreement is logged and hits
+  `assertionFailure`. With no capture running it does nothing.
 
 ## Phases
 
@@ -240,7 +253,7 @@ different order; this table is the authority.
 | P3 Per-layout camera piece and what's shared | R4, R5, R16 | built | 2f1961a (camera follows shared display: c80debb) |
 | P4 Other apps' 📡 and 👁 | R7 | built | f50a6cd |
 | P5 Direction A canvas | R3, R8 | built | 3f6a68c |
-| P6 Basics | R9 | in progress | |
+| P6 Basics | R9 | built | |
 | P7 Settings reshuffle | R10 | built | f5d4b97 |
 | P8 Camera look into Layouts | R11 | planned | |
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | planned | |

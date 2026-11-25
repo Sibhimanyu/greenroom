@@ -84,6 +84,7 @@ final class CameraStateTests: XCTestCase {
     func testBadgesReadTheState() {
         for s in CameraState.allCases {
             XCTAssertEqual(Visibility.cameraEveryoneSees(state: s, target: .wholeScreen).isOn, s.everyoneSees)
+            XCTAssertEqual(Visibility.cameraEveryoneSees(state: s, target: .window(bundleID: nil)).isOn, s.everyoneSees)
             XCTAssertEqual(Visibility.cameraOnMyScreen(state: s).isOn, s.iSee)
         }
     }

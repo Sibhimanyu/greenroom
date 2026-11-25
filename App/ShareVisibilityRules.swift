@@ -113,3 +113,16 @@ struct ShareSwitchState: Equatable {
 enum LayoutShareRule {
     static func startsShown(placedBy piece: LayoutPiece?) -> Bool { piece.map { Visibility.everyoneSees(piece: $0, target: .wholeScreen).isOn } ?? false }
 }
+
+/// Whether the capture's app exclusion has caught up with the apps that should be hidden.
+/// An app that is running but not yet in ScreenCaptureKit's list is not excluded yet, so the
+/// watcher retries on its next tick instead of recording the change as applied.
+enum ExclusionResolution {
+    static func unresolved(hidden: Set<String>, running: Set<String>, listed: Set<String>) -> Set<String> {
+        hidden.intersection(running).subtracting(listed)
+    }
+
+    static func isSettled(hidden: Set<String>, running: Set<String>, listed: Set<String>) -> Bool {
+        unresolved(hidden: hidden, running: running, listed: listed).isEmpty
+    }
+}

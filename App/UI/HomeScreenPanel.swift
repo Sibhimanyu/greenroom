@@ -194,7 +194,7 @@ struct HomeScreenPanel: View {
             coordinator.shareTarget.kind = .whiteboard
         case .camera:
             browsing = false
-            // Same write as the Look tile: noCamera false, then re-preview.
+            // Same live change as the Look tile: camera on for this meeting only.
             if CameraTileRules.justMeTurnsCameraOn(cameraState) {
                 coordinator.turnCameraOnFromHome()
             }

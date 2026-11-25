@@ -27,13 +27,30 @@ final class LayoutMigrationTests: XCTestCase {
         return LayoutLibrary(templates: [t])
     }
 
+    // The Greenroom-window flip leaves other apps to their own migration (below); it no longer pins Safari to false.
     func testFlipShowsEveryPieceThatOffersTheSwitch() {
         var lib = hiddenLibrary()
         lib.showEverythingToEveryone()
         let t = lib.templates[0]
-        for p in t.oneDisplay + t.twoDisplays!.main + t.twoDisplays!.second {
-            XCTAssertEqual(p.showsToEveryone, p.offersShareSwitch)
+        for p in t.oneDisplay + t.twoDisplays!.main + t.twoDisplays!.second where p.kind.app == nil {
+            XCTAssertTrue(p.showsToEveryone)
         }
+    }
+
+    // R7.1, R16: pieces saved before 02169d9 carry 📡 false for apps; once, every app piece goes on so day one looks the same.
+    func testExistingAppPiecesGoOnceAndALaterOffSurvives() {
+        let d = defaults()
+        hiddenLibrary().save(to: d)
+        d.set(true, forKey: LayoutLibrary.shownToEveryoneMigratedKey)   // the old flip already ran
+        var lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        var mine = lib.templates.first { $0.name == "Mine" }!
+        XCTAssertTrue(mine.oneDisplay[3].showsToEveryone, "Safari 📡 on after the migration")
+        XCTAssertTrue(d.bool(forKey: LayoutLibrary.appsShownMigratedKey))
+        mine.oneDisplay[3].showsToEveryone = false
+        lib.update(mine)
+        lib.save(to: d)
+        let again = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        XCTAssertFalse(again.templates.first { $0.name == "Mine" }!.oneDisplay[3].showsToEveryone)
     }
 
     func testFlipRunsOnceAndALaterHideSurvives() {

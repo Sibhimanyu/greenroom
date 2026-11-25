@@ -109,9 +109,10 @@ enum ShowOnShare {
     /// Derived from `Visibility.windowBadge`, the one rule the canvas badges read too.
     static func exceptionIDs(kind: ShareKind, registry: Set<Int>, alwaysShared: Set<Int> = []) -> Set<Int>? {
         guard kind == .display else { return nil }
-        let marked = Visibility.windowBadge(.meetingWindow, marked: true, target: .wholeScreen).isOn ? registry : []
+        // `registry` is the windows already marked on (the owner's per-window choice, which the
+        // rule answers with `marked`); the always-shared ones come from the rule.
         let always = Visibility.windowBadge(.browser, marked: false, target: .wholeScreen).isOn ? alwaysShared : []
-        return marked.union(always)
+        return registry.union(always)
     }
 
     static func isAvailable(_ kind: ShareKind) -> Bool { kind == .display }

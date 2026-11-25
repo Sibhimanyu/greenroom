@@ -16,10 +16,21 @@ final class StageEncoderRulesTests: XCTestCase {
         XCTAssertEqual(StageEncoderRules.peakBitrate(for: size), 2_666_666, accuracy: 2)
     }
 
-    func test4KScalesUpFourTimes() {
+    // R12.2 (owner bug list): a 4K picture averages at most 12 Mbps, and the peak stays
+    // 1.7 times the average at every size, so the cap does not grow past it (it was 24 Mbps at 4K).
+    func test4KAveragesTwelveAndItsPeakStaysAboutOnePointSevenTimesThat() {
         let size = CGSize(width: 3840, height: 2160)
-        XCTAssertEqual(StageEncoderRules.averageBitrate(for: size), 14_000_000)
-        XCTAssertEqual(StageEncoderRules.peakBitrate(for: size), 24_000_000)
+        XCTAssertEqual(StageEncoderRules.averageBitrate(for: size), 12_000_000)
+        XCTAssertEqual(Double(StageEncoderRules.peakBitrate(for: size)), 12_000_000 * 1.7, accuracy: 0.02 * 12_000_000)
+        XCTAssertLessThan(StageEncoderRules.peakBitrate(for: size), 21_000_000)
+    }
+
+    func testThePeakIsAlwaysAboutOnePointSevenTimesTheAverage() {
+        for size in [CGSize(width: 160, height: 90), CGSize(width: 1280, height: 720), CGSize(width: 1920, height: 1080),
+                     CGSize(width: 2560, height: 1440), CGSize(width: 3840, height: 2160), CGSize(width: 7680, height: 4320)] {
+            let ratio = Double(StageEncoderRules.peakBitrate(for: size)) / Double(StageEncoderRules.averageBitrate(for: size))
+            XCTAssertEqual(ratio, 1.7, accuracy: 0.02, "\(size)")
+        }
     }
 
     func testTinyAndHugeStagesAreClamped() {

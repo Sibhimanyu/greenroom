@@ -194,11 +194,9 @@ struct LayoutCanvas: View {
     /// This is the display everyone sees (a two-display layout's "Everyone sees"): the header says so.
     var isShared = false
     /// Header pieces the page supplies (Direction A): the second display's "Second" menu
-    /// in place of its name, the "Everyone sees this" tag on the shared canvas, and the
-    /// Preview and Show on screen, and the +.
+    /// in place of its name, the "Everyone sees this" tag on the shared canvas, and the +.
     var titleMenu: AnyView?
     var sharedTag: AnyView?
-    var headerPreview: AnyView?
     var headerAdd: AnyView?
     /// Drag between the two displays; nil on a one-display layout.
     var crossing: LayoutCrossing?
@@ -213,6 +211,10 @@ struct LayoutCanvas: View {
     var previewEveryone = false
 
     @State private var drag: DragState?
+    /// Esc cancelled the drag in flight: the gesture keeps reporting until the button
+    /// comes up, and must not start it again.
+    @State private var dragCancelled = false
+    @State private var hoverID: UUID?
     @State private var dropTargeted = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -244,27 +246,15 @@ struct LayoutCanvas: View {
         }
     }
 
-    /// The name (or, for the second display, its "Second" menu), the shared tag
-    /// where this canvas carries it, Preview and Show on screen, then the canvas's
-    /// own +. When the canvas is too narrow for one row, Preview and Show on
-    /// screen drop to a second row. The resolution is not drawn: it is in the
-    /// piece's inspector.
+    /// One line: the name (or, for the second display, its "Second" menu), the shared tag where
+    /// this canvas carries it ("Everyone sees this" is what marks the shared display), then the
+    /// canvas's own +. Preview and Show on screen sit on the layout's title row. The resolution
+    /// is not drawn: it is in the piece's inspector.
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                headerLeading
-                if let headerPreview { headerPreview }
-                Spacer(minLength: 4)
-                if let headerAdd { headerAdd }
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    headerLeading
-                    Spacer(minLength: 4)
-                    if let headerAdd { headerAdd }
-                }
-                if let headerPreview { headerPreview }
-            }
+        HStack(spacing: 8) {
+            headerLeading
+            Spacer(minLength: 4)
+            if let headerAdd { headerAdd }
         }
     }
 
@@ -321,9 +311,7 @@ struct LayoutCanvas: View {
                     .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow,
                                        .delete, .deleteForward, .tab, .escape], action: handleKey)
                     // The system's own Delete command, in case the key press is not delivered.
-                    .onDeleteCommand {
-                        if let id = selection, id != LayoutCameraModel.selectionID { remove(id) }
-                    }
+                    .onDeleteCommand { removeSelection() }
                     .onTapGesture {
                         selection = nil
                         takeKeyboard()
@@ -383,9 +371,11 @@ struct LayoutCanvas: View {
                 }
             }
             .coordinateSpace(name: Self.space)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(LayoutEditorRules.spokenCanvas(name: display.name, isShared: isShared || slot == .one))
             #if DEBUG
             .onChange(of: previewEveryone) { _, on in
-                if on { ShareVisibleWindows.crossCheck(pieces: pieces, target: share) }
+                if on { ShareVisibleWindows.crossCheck(pieces: pieces) }
             }
             #endif
             .dropDestination(for: String.self) { items, location in
@@ -414,16 +404,25 @@ struct LayoutCanvas: View {
         let readout = LayoutGeometry.pointSize(of: rect, display: display.size)
         let span = LayoutGeometry.cellSpan(of: rect)
         let appearance = look(piece)
+        // Where the camera covers this tile, in the tile's own points: the caption keeps clear of it.
+        let covered = cameraRect(canvas: canvas).map { $0.offsetBy(dx: -box.minX, dy: -box.minY) }
         let drawn = LayoutPieceTile(piece: piece, look: appearance, size: box.size,
                                pointSize: readout, columns: span.cols.count,
-                               selected: isSelected, invalid: isDragging && (drag?.invalid ?? false))
+                               selected: isSelected, invalid: isDragging && (drag?.invalid ?? false),
+                               covered: covered)
             .frame(width: box.width, height: box.height)
         // The gesture goes before .position: that modifier fills its parent, so a
         // gesture added after it would answer across the whole canvas.
         return drawn
             .contentShape(Rectangle())
+            .overlay(RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(Brand.green.opacity(0.7), lineWidth: 1)
+                .opacity(hoverID == piece.id && !isSelected && drag == nil ? 1 : 0)
+                .allowsHitTesting(false))
             .gesture(moveGesture(piece, canvas: canvas))
+            .contextMenu { pieceMenu(piece) }
             .onHover { inside in
+                if inside { hoverID = piece.id } else if hoverID == piece.id { hoverID = nil }
                 (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
             }
             .opacity(isDragging && (drag?.crossing ?? false) ? 0.35 : (hiddenFromEveryone(piece) ? 0.5 : 1))
@@ -431,11 +430,36 @@ struct LayoutCanvas: View {
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
             .position(x: box.midX, y: box.midY)
             .modifier(TileAccessibility(
-                name: appearance.name, value: spokenSpan(span), selected: isSelected,
+                name: LayoutEditorRules.spokenPiece(
+                    name: appearance.name, columns: span.cols.count,
+                    everyone: Visibility.everyoneSees(piece: piece, target: share).isOn,
+                    onMyScreen: Visibility.onMyScreen(piece: piece).isOn),
+                value: spokenSpan(span), selected: isSelected,
                 select: { select(piece.id) },
                 nudge: { nudge(piece.id, cols: $0, rows: $1) },
                 grow: { grow(piece.id, cols: $0, rows: $1) },
-                remove: { remove(piece.id) }))
+                remove: { remove(piece.id) },
+                flipEveryone: piece.isFixed ? nil : { flip(.everyone, piece) },
+                flipMine: piece.isFixed ? nil : { flip(.me, piece) },
+                sendAcross: crossing == nil ? nil : { crossing?.send(piece.id) }))
+    }
+
+    /// The piece's right-click menu: the rows are `LayoutEditorRules.pieceMenu`'s.
+    @ViewBuilder
+    private func pieceMenu(_ piece: LayoutPiece) -> some View {
+        let isApp = piece.kind.app != nil
+        ForEach(LayoutEditorRules.pieceMenu(piece: piece, target: share, slot: slot, hasOtherDisplay: crossing != nil),
+                id: \.self) { action in
+            if action == .remove { Divider() }
+            Button(role: action == .remove ? .destructive : nil) {
+                switch action {
+                case .moveToOtherDisplay: crossing?.send(piece.id)
+                case .showToEveryone, .hideFromEveryone: flip(.everyone, piece)
+                case .showOnMyScreen, .hideOnMyScreen: flip(.me, piece)
+                case .remove: remove(piece.id)
+                }
+            } label: { Text(LayoutEditorRules.title(for: action, isApp: isApp)) }
+        }
     }
 
     private func spokenSpan(_ span: (cols: ClosedRange<Int>, rows: ClosedRange<Int>)) -> String {
@@ -601,33 +625,31 @@ struct LayoutCanvas: View {
         }
     }
 
-    /// Flips a badge the rule leaves open. Turning the eye off also takes the piece
-    /// out of the meeting's picture: a window that starts hidden is not shared.
+    /// Flips a badge the rule leaves open. The rule is `Visibility.flipped` (👁 off takes an own window
+    /// out of the picture; 📡 on brings 👁 on); this only writes the result, so the undo recorder
+    /// still sees one change.
     private func flip(_ which: BadgeKind, _ piece: LayoutPiece) {
         guard let i = pieces.firstIndex(where: { $0.id == piece.id }) else { return }
-        switch which {
-        case .everyone:
-            pieces[i].showsToEveryone.toggle()
-        case .me:
-            switch pieces[i].kind {
-            case let .meeting(fills, hidden):
-                pieces[i].kind = .meeting(fillsDisplay: fills, startsHidden: !hidden)
-            case let .view(view, hidden):
-                pieces[i].kind = .view(view, startsHidden: !hidden)
-            case var .app(app):
-                // Another app's eye: opens minimised. Not coupled to the broadcast badge.
-                guard app.bundleID != Visibility.builtInBrowserID else { return }
-                app.opensMinimised.toggle()
-                pieces[i].kind = .app(app)
-                return
-            case .chat, .roomScreen:
-                return
-            }
-            if Visibility.onMyScreen(piece: pieces[i]) == .off { pieces[i].showsToEveryone = false }
-        }
+        let next = Visibility.flipped(pieces[i], side: which == .me ? .me : .everyone)
+        if next != pieces[i] { pieces[i] = next }
     }
 
     // MARK: Camera
+
+    /// The camera's rect on this canvas while it is drawn (nil: not on this canvas, or hidden in Preview: Everyone).
+    private func cameraRect(canvas: CGSize) -> CGRect? {
+        guard let camera, !previewEveryone || camera.everyoneSees else { return nil }
+        if camera.shape == .presenterLarge {
+            let h = canvas.height, w = min(h * 0.62, canvas.width * 0.3)
+            return CGRect(x: canvas.width * 0.24 - w / 2, y: 0, width: w, height: h)
+        }
+        let aspect = LayoutCameraRules.aspect(for: camera.shape)
+        if let space = display.cameraSpace {
+            return LayoutCameraRules.rect(box: camera.box, aspect: aspect, frame: canvas, space: space)
+        }
+        return PreviewFrameRules.cameraRect(box: camera.box, aspect: aspect, frame: canvas,
+                                            content: LayoutCameraRules.content(displayAspect: display.aspect))
+    }
 
     @ViewBuilder
     private func cameraOverlay(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
@@ -732,6 +754,7 @@ struct LayoutCanvas: View {
     private func moveGesture(_ piece: LayoutPiece, canvas: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
             .onChanged { value in
+                if dragCancelled { return }
                 if drag == nil {
                     select(piece.id)
                     // A piece that fills its display stays put here, but can still be
@@ -767,7 +790,10 @@ struct LayoutCanvas: View {
                 d.invalid = LayoutGeometry.hasOverlap(snap.rect, with: others)
                 drag = d
             }
-            .onEnded { value in finishMove(piece, pointer: value.location, canvas: canvas) }
+            .onEnded { value in
+                if dragCancelled { dragCancelled = false; drag = nil; return }
+                finishMove(piece, pointer: value.location, canvas: canvas)
+            }
     }
 
     private func finishMove(_ piece: LayoutPiece, pointer: CGPoint, canvas: CGSize) {
@@ -800,6 +826,7 @@ struct LayoutCanvas: View {
     private func resizeGesture(_ piece: LayoutPiece, handle: LayoutGeometry.Handle, canvas: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
             .onChanged { value in
+                if dragCancelled { return }
                 if drag == nil {
                     takeKeyboard()
                     onActivate()
@@ -820,6 +847,7 @@ struct LayoutCanvas: View {
                 drag = d
             }
             .onEnded { _ in
+                if dragCancelled { dragCancelled = false; drag = nil; return }
                 if let d = drag, d.id == piece.id, d.moved { commit(d.rect, for: piece.id) }
                 drag = nil
             }
@@ -841,15 +869,17 @@ struct LayoutCanvas: View {
         guard let key = keys[press.key] else { return .ignored }
         let action = LayoutKeyRules.action(for: key, shift: press.modifiers.contains(.shift),
                                            option: press.modifiers.contains(.option),
-                                           hasSelection: selection != nil, hasOtherDisplay: crossing != nil)
+                                           hasSelection: selection != nil, hasOtherDisplay: crossing != nil,
+                                           isDragging: drag != nil)
         let id = selection
         switch action {
         case .ignore: return .ignored
         case let .cycle(backwards): return cycle(backwards: backwards)
         case .deselect: selection = nil
-        case .remove:
-            // The camera is not a piece: Delete does nothing (Hide is in its card).
-            if let id, id != LayoutCameraModel.selectionID { remove(id) }
+        case .remove: removeSelection()
+        case .cancelDrag:
+            dragCancelled = true
+            withAnimation(animation(.easeInOut(duration: 0.2))) { drag = nil }
         case let .nudge(cols, rows): if let id { nudge(id, cols: cols, rows: rows) }
         case let .grow(cols, rows): if let id { grow(id, cols: cols, rows: rows) }
         case .sendToOtherDisplay:
@@ -858,19 +888,25 @@ struct LayoutCanvas: View {
         return .handled
     }
 
-    /// Reading order, so Tab walks the canvas the way the eye does. Past the
-    /// last piece it lets go, so the keyboard is never trapped here.
+    /// Reading order (the camera last), so Tab walks the canvas the way the eye does.
+    /// Past the last one it lets go, so the next canvas takes the keys and the
+    /// keyboard is never trapped here.
     private func cycle(backwards: Bool) -> KeyPress.Result {
-        let order = pieces.sorted { ($0.rect.y, $0.rect.x) < ($1.rect.y, $1.rect.x) }
-        guard !order.isEmpty else { return .ignored }
-        guard let current = order.firstIndex(where: { $0.id == selection }) else {
-            selection = (backwards ? order.last : order.first)?.id
-            return .handled
+        let order = LayoutKeyRules.readingOrder(pieces) + (camera == nil ? [] : [LayoutCameraModel.selectionID])
+        guard let next = LayoutKeyRules.cycleTarget(order: order, current: selection, backwards: backwards) else {
+            return .ignored
         }
-        let next = current + (backwards ? -1 : 1)
-        guard order.indices.contains(next) else { return .ignored }
-        selection = order[next].id
+        selection = next
         return .handled
+    }
+
+    /// Delete: the piece goes; the camera says why it stays.
+    private func removeSelection() {
+        switch LayoutKeyRules.removal(selection: selection, cameraID: LayoutCameraModel.selectionID) {
+        case let .piece(id): remove(id)
+        case let .notice(text): onNotice(text)
+        case .nothing: break
+        }
     }
 
     private func nudge(_ id: UUID, cols: Int, rows: Int) {
@@ -942,6 +978,9 @@ private struct TileAccessibility: ViewModifier {
     let nudge: (Int, Int) -> Void
     let grow: (Int, Int) -> Void
     let remove: () -> Void
+    var flipEveryone: (() -> Void)?
+    var flipMine: (() -> Void)?
+    var sendAcross: (() -> Void)?
 
     func body(content: Content) -> some View {
         content
@@ -959,6 +998,7 @@ private struct TileAccessibility: ViewModifier {
             }
             .modifier(TileMoveActions(nudge: nudge))
             .modifier(TileSizeActions(grow: grow, remove: remove))
+            .modifier(TileBadgeActions(flipEveryone: flipEveryone, flipMine: flipMine, sendAcross: sendAcross))
     }
 }
 
@@ -970,6 +1010,19 @@ private struct TileMoveActions: ViewModifier {
             .accessibilityAction(named: "Move right") { nudge(1, 0) }
             .accessibilityAction(named: "Move up") { nudge(0, -1) }
             .accessibilityAction(named: "Move down") { nudge(0, 1) }
+    }
+}
+
+/// The badges and the other display, which are clicks and a drag for everyone else.
+private struct TileBadgeActions: ViewModifier {
+    let flipEveryone: (() -> Void)?
+    let flipMine: (() -> Void)?
+    let sendAcross: (() -> Void)?
+    func body(content: Content) -> some View {
+        content
+            .accessibilityAction(named: "Show or hide for everyone") { flipEveryone?() }
+            .accessibilityAction(named: "Show or hide on my screen") { flipMine?() }
+            .accessibilityAction(named: "Move to the other display") { sendAcross?() }
     }
 }
 
@@ -999,6 +1052,13 @@ struct LayoutPieceTile: View {
     let columns: Int
     let selected: Bool
     var invalid = false
+    /// The part of the tile the camera covers (tile points), or nil. The content is laid out in
+    /// the largest part left free, so the caption and the camera's own label never draw over each other.
+    var covered: CGRect?
+
+    private var free: CGRect {
+        LayoutCaptionRules.freeRegion(tile: CGRect(origin: .zero, size: size), covered: covered)
+    }
 
     /// The Meeting window and the views are dark tiles, like a video tile.
     private var isMeeting: Bool { piece.kind.isMeetingSurface }
@@ -1016,10 +1076,10 @@ struct LayoutPieceTile: View {
     private static let smallNameFont = NSFont.systemFont(ofSize: 11, weight: .medium)
     private static let captionFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
 
-    private var room: CGSize { CGSize(width: max(size.width - 2 * Self.inset, 0), height: max(size.height - 2 * Self.inset, 0)) }
+    private var room: CGSize { CGSize(width: max(free.width - 2 * Self.inset, 0), height: max(free.height - 2 * Self.inset, 0)) }
 
     /// The icon's side at full detail: grows with the tile, 24 to 44.
-    private var fullGlyph: CGFloat { min(max(min(size.width, size.height) * 0.34, 24), 44) }
+    private var fullGlyph: CGFloat { min(max(min(free.width, free.height) * 0.34, 24), 44) }
 
     var detail: Detail {
         let w = room.width - 2, h = room.height   // a little slack on the width
@@ -1076,7 +1136,7 @@ struct LayoutPieceTile: View {
             }
         case .noSize:
             VStack(spacing: 3) {
-                glyph(min(max(min(size.width, size.height) * 0.34, 24), 44, room.height - 18))
+                glyph(min(max(min(free.width, free.height) * 0.34, 24), 44, room.height - 18))
                 nameText(12)
             }
         case .twoLines:
@@ -1131,6 +1191,9 @@ struct LayoutPieceTile: View {
                 .fill(isMeeting ? Color.black.opacity(0.78) : Color(nsColor: .controlBackgroundColor))
             content
                 .padding(Self.inset)
+                .frame(width: free.width, height: free.height)
+                .frame(width: size.width, height: size.height, alignment: .topLeading)
+                .offset(x: free.minX, y: free.minY)
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(border, style: StrokeStyle(lineWidth: selected ? 2 : 1,
                                                          dash: (look.missing || look.comingLater || invalid) ? [4, 3] : []))
@@ -1355,5 +1418,9 @@ private struct CameraStandIn: View {
             }
         }
         .foregroundStyle(.primary)
+        // Its own small background, so the label reads over whatever piece sits under the camera.
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor).opacity(0.85)))
     }
 }

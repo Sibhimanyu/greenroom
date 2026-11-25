@@ -54,6 +54,15 @@ enum Visibility {
         case justMe
 
         /// The same answer in the capture's own words.
+        /// The rule's view of a capture's own kind (what the DEBUG cross-check asks about).
+        init(captureKind: ShowOnShare.ShareKind) {
+            switch captureKind {
+            case .display: self = .wholeScreen
+            case .window, .app: self = .window(bundleID: nil)
+            case .other: self = .justMe
+            }
+        }
+
         var shareKind: ShowOnShare.ShareKind {
             switch self {
             case .wholeScreen: return .display
@@ -158,11 +167,53 @@ enum Visibility {
 
     // MARK: Camera
 
+    static let justMeCameraReason = "Only your camera is shared, so everyone sees it"
+
+    /// Does the meeting see the owner's camera? The one answer for every reader (the badge,
+    /// the picture, the camera cards). Off and Only me hide it. The exception is Just my
+    /// camera: the camera is then the whole picture, so it is always in (an empty backdrop
+    /// would be no picture at all).
     static func cameraEveryoneSees(state: CameraState, target: Target) -> Badge {
-        state.everyoneSees ? .on : .off
+        if target == .justMe { return .fixedOn(justMeCameraReason) }
+        return state.everyoneSees ? .on : .off
     }
 
     static func cameraOnMyScreen(state: CameraState) -> Badge { state.iSee ? .on : .off }
+
+    // MARK: Flipping a badge
+
+    enum Side { case me, everyone }
+
+    /// The piece after a click on one of its badges. A fixed badge does not move. Turning 📡
+    /// on turns 👁 on, since a window can't be everyone-but-not-me (R2.3); turning an own
+    /// window's 👁 off turns its 📡 off. Another app's 👁 (opens minimised) never switches
+    /// its 📡 off: that badge decides the capture filter alone.
+    static func flipped(_ piece: LayoutPiece, side: Side) -> LayoutPiece {
+        var p = piece
+        switch side {
+        case .everyone:
+            guard !everyoneSees(piece: piece, target: .wholeScreen).isFixed else { return piece }
+            p.showsToEveryone.toggle()
+            if p.showsToEveryone {
+                switch p.kind {
+                case let .meeting(fills, _): p.kind = .meeting(fillsDisplay: fills, startsHidden: false)
+                case let .view(view, _): p.kind = .view(view, startsHidden: false)
+                case var .app(app): app.opensMinimised = false; p.kind = .app(app)
+                case .chat, .roomScreen: break
+                }
+            }
+        case .me:
+            guard !onMyScreen(piece: piece).isFixed else { return piece }
+            switch p.kind {
+            case let .meeting(fills, hidden): p.kind = .meeting(fillsDisplay: fills, startsHidden: !hidden)
+            case let .view(view, hidden): p.kind = .view(view, startsHidden: !hidden)
+            case var .app(app): app.opensMinimised.toggle(); p.kind = .app(app); return p
+            case .chat, .roomScreen: return piece
+            }
+            if !onMyScreen(piece: p).isOn { p.showsToEveryone = false }
+        }
+        return p
+    }
 
     // MARK: Cross-check
 

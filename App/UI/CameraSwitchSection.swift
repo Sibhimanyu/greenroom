@@ -71,9 +71,6 @@ struct CameraSwitchSection: View {
                 pick: pick,
                 aim: { uid in coordinator.aimCamera(uid: uid) },
                 refresh: { cameras = LocalDeviceResolver.availableCameras() },
-                noCamera: coordinator.cameraIsOff,
-                noCameraAllowed: coordinator.shareTarget.kind != .nothing,
-                chooseNoCamera: chooseNoCamera,
                 liveDetail: { liveDetail })
         }
         .onAppear { cameras = LocalDeviceResolver.availableCameras() }
@@ -108,15 +105,7 @@ struct CameraSwitchSection: View {
         var settings = coordinator.cameraDirectorSettings
         settings.cameraUIDs = settings.cameraUIDs.filter { $0 != uid }
         settings.cameraUIDs.insert(uid, at: 0)
-        settings.noCamera = false
         coordinator.cameraDirectorSettings = settings
-        coordinator.previewCamerasChanged()
-    }
-
-    /// No camera: the picture is what you share, alone. The chosen camera
-    /// stays first in the list, so picking a camera again is one click on it.
-    private func chooseNoCamera() {
-        coordinator.cameraDirectorSettings.noCamera = true
         coordinator.previewCamerasChanged()
     }
 
@@ -222,11 +211,6 @@ struct CameraSwitchContent<LiveDetail: View>: View {
     let pick: (String) -> Void
     let aim: (String) -> Void
     let refresh: () -> Void
-    /// "No camera" is picked. Only offered with switching off.
-    var noCamera = false
-    /// False while nothing is shared: no camera would leave nothing to show.
-    var noCameraAllowed = true
-    var chooseNoCamera: () -> Void = {}
     @ViewBuilder let liveDetail: () -> LiveDetail
 
     var body: some View {
@@ -310,7 +294,7 @@ struct CameraSwitchContent<LiveDetail: View>: View {
                 CameraCard(camera: camera,
                            // Numbered only when there is an order to show.
                            position: enabled ? position : nil,
-                           chosen: enabled ? position != nil : !noCamera && single == camera.id,
+                           chosen: enabled ? position != nil : single == camera.id,
                            isLive: liveCameraName == camera.name,
                            isAiming: aiming == camera.id,
                            aimDone: aimed == camera.id,
@@ -321,9 +305,6 @@ struct CameraSwitchContent<LiveDetail: View>: View {
             }
             if cameras.count < 2 && enabled {
                 AddCameraHint()
-            }
-            if !enabled {
-                NoCameraCard(chosen: noCamera, allowed: noCameraAllowed, choose: chooseNoCamera)
             }
             Button(action: refresh) { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
@@ -400,38 +381,6 @@ private struct CameraCard: View {
         if camera.isBuiltIn { return "laptopcomputer" }
         if camera.name.localizedCaseInsensitiveContains("iphone") { return "iphone" }
         return "web.camera"
-    }
-}
-
-/// The camera left out: the picture is the shared content alone.
-private struct NoCameraCard: View {
-    let chosen: Bool
-    let allowed: Bool
-    let choose: () -> Void
-
-    var body: some View {
-        Button(action: choose) {
-            HStack(spacing: 8) {
-                Image(systemName: "video.slash")
-                    .font(.system(size: 18))
-                    .foregroundStyle(chosen ? Brand.text : Color.secondary)
-                    .frame(height: 28)
-                Text("No camera")
-                    .font(.callout.weight(chosen ? .semibold : .regular))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 56)
-            .contentShape(Rectangle())
-        }
-        .greenroomTile(role: .choice(selected: chosen))
-        .disabled(!allowed)
-        .opacity(allowed ? 1 : 0.5)
-        .help(allowed ? "Just what you share, full frame. No camera is opened."
-                      : "Pick something for Behind you first. With nothing behind you and no camera, there\u{2019}s nothing to show.")
-        .accessibilityLabel("No camera")
     }
 }
 

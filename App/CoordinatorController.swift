@@ -841,19 +841,16 @@ final class CoordinatorController: ObservableObject {
                     cutoutRightInset: cutoutRightInset,
                     shape: webcamShape,
                     // The whiteboard is content too (a page behind the camera).
-                    showsContent: shareTarget.kind != .nothing,
+                    showsContent: !shareTarget.sharesNothing,
                     showsCamera: !cameraIsOff)
     }
 
-    /// "No camera" picked on the Webcam page, and honoured.
-    ///
-    /// Not with switching on: that is a choice to have cameras. And not with
-    /// nothing shared either, since the picture would then be an empty
-    /// backdrop - the page refuses that pair, and this is the backstop for a
-    /// pair that arrived anyway (an imported settings file, say).
+    /// The camera is not in everyone's picture: Off or Only me, whatever else is set
+    /// (camera switching included). Not with Just my camera: the picture would be an
+    /// empty backdrop, so the camera stays (`Visibility.cameraEveryoneSees` says so).
+    /// Every "does everyone see my camera" decision goes through that one rule.
     var cameraIsOff: Bool {
-        cameraState.noCamera && !cameraDirectorSettings.enabled
-            && shareTarget.kind != .nothing
+        !Visibility.cameraEveryoneSees(state: cameraState, target: Visibility.Target(shareTarget)).isOn
     }
 
     /// The Webcam page's picture is in use by a session - a meeting, or a
@@ -1001,10 +998,30 @@ final class CoordinatorController: ObservableObject {
     /// Puts a layout's camera piece and share target into the live settings. The global
     /// defaults keep their own values (they are the fallback with no layout); the live
     /// values are only the working copy.
+    /// True while `adoptLayoutPieces` writes the share, so that write is not taken for a choice
+    /// the owner made on Home.
+    private var adoptingLayoutPieces = false
+    /// The owner chose what to share on Home (or the bar) since the layout last set it: it
+    /// survives Start, for that meeting only, and Stop or a layout change drops it.
+    private var liveShareChosen = false
+
+    /// The Webcam tab (until P8) and Settings -> Layouts edit the saved layout: write the working
+    /// copy of the camera piece into the active layout. Home, the bar and the meeting never call this.
+    func saveCameraToActiveLayout() {
+        var next = layoutLibrary
+        if next.updateActive(camera: currentLayoutCamera, share: nil) { layoutLibrary = next }
+    }
+
+    /// The same for what's shared. Not while a meeting runs: the picker then changes only that meeting.
+    func saveShareToActiveLayout() {
+        guard !layoutChoiceLocked else { return }
+        var next = layoutLibrary
+        if next.updateActive(camera: nil, share: shareTarget) { layoutLibrary = next }
+    }
+
     func adoptLayoutPieces(_ plan: LayoutPieceAdoption.Plan?) {
         guard let plan else { return }
-        let keys = ["webcamShape", "bubbleWidthFraction", "bubbleRightInset", "bubbleBottomInset",
-                    "cutoutHeightFraction", "cutoutRightInset", "shareTarget"]
+        let keys = LayoutCamera.defaultsKeys + [LayoutCamera.shareDefaultsKey]
         let saved = keys.map { ($0, defaults.object(forKey: $0)) }
         if let c = plan.camera {
             webcamShape = c.shape
@@ -1016,7 +1033,10 @@ final class CoordinatorController: ObservableObject {
         }
         if var s = plan.share {
             if s.kind == .app { s.kind = .display }
+            adoptingLayoutPieces = true
             if shareTarget != s { shareTarget = s }
+            adoptingLayoutPieces = false
+            liveShareChosen = false
         }
         for (key, value) in saved { defaults.set(value, forKey: key) }
         refreshCaptureDisplay()
@@ -1280,8 +1300,9 @@ final class CoordinatorController: ObservableObject {
 
     @Published var shareTarget: ShareTarget {
         didSet {
+            if !adoptingLayoutPieces, shareTarget != oldValue { liveShareChosen = true }
             if let data = try? JSONEncoder().encode(shareTarget) {
-                defaults.set(data, forKey: "shareTarget")
+                defaults.set(data, forKey: LayoutCamera.shareDefaultsKey)
             }
             targetBeforeWhiteboard = WhiteboardOpenRules.remembered(
                 targetBeforeWhiteboard, replaced: oldValue,
@@ -1338,9 +1359,9 @@ final class CoordinatorController: ObservableObject {
         // layout" (see LayoutLibrary.loadOrMigrate); the old keys stay as they were.
         var library = LayoutLibrary.loadOrMigrate(from: defaults, defaultSiteURL: AppLinks.site)
         // P3, once each: today's global camera and share go into every layout.
-        if library.migrateCameraAndShare(camera: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults), defaults: defaults) {
-            library.save(to: defaults)
-        }
+        // The keys are set only after the save worked (R16.1); a failure is logged by `save` and retried next launch.
+        library.migrateCameraAndShare(camera: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults),
+                                      defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
         layoutLibrary = library
         let bubbleDefaults = StageLayout()
         bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
@@ -1599,13 +1620,10 @@ final class CoordinatorController: ObservableObject {
 
     /// Home's camera and Just me controls: camera on again (not "No camera"), then re-preview.
     /// Same write as Settings > Webcam's camera cards.
+    /// This meeting only: the saved default (Settings -> Layouts) is not written (R6.2).
     func turnCameraOnFromHome() {
-        cameraDirectorSettings.noCamera = false
-        // A live "Off" or "Only me" from the bar would still hide the camera from everyone.
-        if let live = cameraSession.live, live.noCamera {
-            cameraSession.setLive(CameraState(noCamera: false, shownOnMyScreen: live.shownOnMyScreen))
-        }
-        previewCamerasChanged()
+        guard cameraState.noCamera else { return }
+        setLiveCameraState(CameraState(noCamera: false, shownOnMyScreen: cameraState.shownOnMyScreen))
     }
     var presenceTimer: Timer?
     /// A refresh is queued (bursts of changes make one); the timer's tick count; whether the stage has the self-view handler.
@@ -1804,7 +1822,9 @@ final class CoordinatorController: ObservableObject {
         // the whole class. None (nil) arranges nothing.
         sessionTemplate = layoutLibrary.active
         // At Start the layout's camera and What's shared apply; no layout keeps the globals.
-        adoptLayoutPieces(LayoutPieceAdoption.atStart(sessionTemplate))
+        adoptLayoutPieces(LayoutPieceAdoption.atStart(sessionTemplate, keepingLiveShare: liveShareChosen))
+        // R6.3: the camera state a live change set before Start is dropped; the saved default stands.
+        resetPresenceBubbleToLayoutDefault()
         sessionArranges = sessionTemplate != nil
         if !sessionArranges { LayoutShareChoice.reset() }
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
@@ -2136,6 +2156,7 @@ final class CoordinatorController: ObservableObject {
             warmUpForStart()
             sessionTemplate = nil
             // A live change in the meeting does not outlast it: Home shows the layout's own again.
+            liveShareChosen = false
             adoptLayoutPieces(LayoutPieceAdoption.atStart(layoutLibrary.active))
             LayoutShareChoice.reset()
             speakerTileQuickHidden = false
@@ -2394,7 +2415,7 @@ final class CoordinatorController: ObservableObject {
     /// Drawing needs a picture to draw on: a session or the Record view is up
     /// and something is shared (a screen, or the whiteboard).
     var canDraw: Bool {
-        stage != nil && phase.isCameraBusy && shareTarget.kind != .nothing
+        stage != nil && phase.isCameraBusy && !shareTarget.sharesNothing
     }
 
     private func wireDrawing() {
@@ -2493,7 +2514,7 @@ final class CoordinatorController: ObservableObject {
         localWhiteboardWindow.hide()
         switch WhiteboardOpenRules.closeOutcome(wasSuspended: drawingSuspended,
                                                 shareIsWhiteboard: shareTarget.kind == .whiteboard,
-                                                shareIsNothing: shareTarget.kind == .nothing) {
+                                                shareIsNothing: shareTarget.sharesNothing) {
         case .untouched:
             break
         case .drawingOff:
@@ -4271,6 +4292,8 @@ final class CoordinatorController: ObservableObject {
             // starts hidden, shown otherwise.
             speakerTileQuickHidden = layoutEngine.startsHidden(template)
             resetPresenceBubbleToLayoutDefault()
+            // R5.3: the layout's own share returns.
+            adoptLayoutPieces(LayoutPieceAdoption.atSnapBack(template))
         } else if !layoutEngine.hasPlacedSurface(template) {
             // A display change can turn a placed Meeting into a whole-display one
             // (or take it away): nothing is hidden then.
@@ -4824,7 +4847,7 @@ final class CoordinatorController: ObservableObject {
             let name = LocalDeviceResolver.cameraName(uid: configuration.cameraUIDs[0]) ?? "The camera"
             log("\u{201C}\(name)\u{201D} hasn\u{2019}t sent a picture yet. It may be unplugged, or in use by another app. The class sees the screen until it does.")
         }
-        if shareTarget.kind == .nothing {
+        if shareTarget.sharesNothing {
             log("Nothing shared, as set in Settings \u{2192} Webcam \u{2014} your camera fills the picture.")
         }
         if shareTarget.kind == .whiteboard {

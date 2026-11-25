@@ -37,13 +37,17 @@ enum ShareVisibleWindows {
         var hiddenAppIDs: Set<String> = []
         /// The running processes of those apps: a relaunch is a new process.
         var hiddenPIDs: Set<pid_t> = []
+        /// The hidden apps that have a running process right now (`ExclusionResolution` compares
+        /// them with what ScreenCaptureKit lists).
+        var runningHiddenIDs: Set<String> = []
     }
 
     static var filterState: FilterState {
         // Only a whole-display share has an app exclusion (Visibility.hiddenAppIDs says so too).
         let hidden = kind == .display ? hiddenAppIDs : []
         let pids = hidden.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).map(\.processIdentifier) }
-        return FilterState(windowNumbers: effectiveNumbers, hiddenAppIDs: hidden, hiddenPIDs: Set(pids))
+        let running = hidden.filter { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
+        return FilterState(windowNumbers: effectiveNumbers, hiddenAppIDs: hidden, hiddenPIDs: Set(pids), runningHiddenIDs: running)
     }
 
     static func contains(_ number: Int) -> Bool { windowNumbers.contains(number) }
@@ -104,7 +108,12 @@ extension ShareVisibleWindows {
     /// DEBUG cross-check: the live windows of the pieces, against the list the
     /// stream really passes to ScreenCaptureKit (`effectiveNumbers`). A disagreement
     /// is logged and trips an assertion: it is the Greenroom Browser bug again.
-    static func crossCheck(pieces: [LayoutPiece], target: Visibility.Target) {
+    /// It asks the rule about the capture's own kind (`Visibility.Target(captureKind:)`),
+    /// so it compares like with like, and only runs while a capture is live: with no
+    /// meeting there is no list to compare against.
+    static func crossCheck(pieces: [LayoutPiece]) {
+        guard let c = CoordinatorController.shared, c.stage != nil, c.sceneInUse || c.isRunning else { return }
+        let target = Visibility.Target(captureKind: kind)
         var live: [(piece: LayoutPiece, number: Int)] = []
         for p in pieces {
             var number: Int?

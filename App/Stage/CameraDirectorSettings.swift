@@ -55,9 +55,10 @@ struct CameraDirectorSettings: Codable, Equatable {
     /// Kept here, beside the camera list, because the same cards set both:
     /// picking a camera card clears it. A flag rather than a sentinel in
     /// `cameraUIDs`, which is a list of real devices that `availableOnly`,
-    /// the director and the transfer file all read as such. Only meaningful
-    /// with switching off - switching is a choice to have cameras - so it is
-    /// read through `CoordinatorController.cameraIsOff`, never directly.
+    /// the director and the transfer file all read as such. It is one half of the
+    /// camera state (Off / Only me), read through `Visibility.cameraEveryoneSees`
+    /// (`CoordinatorController.cameraIsOff`), never directly. It holds with
+    /// switching on too.
     var noCamera: Bool = false
 
     static let key = "cameraDirectorSettings"

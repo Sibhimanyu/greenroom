@@ -48,7 +48,7 @@ struct StageConfiguration: Equatable {
     /// something to show .
     var normalizedLayout: StageLayout {
         var l = layout
-        if share.kind == .nothing { l.showsContent = false }
+        if share.sharesNothing { l.showsContent = false }
         if !l.showsContent { l.showsCamera = true }
         return l
     }

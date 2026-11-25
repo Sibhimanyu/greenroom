@@ -157,7 +157,7 @@ final class MeetingSurfaceTests: XCTestCase {
         }
     }
     func testReopenGoesToTheBarWhenThePersonChoseIt() {
-        let chosen: [[M.Event]] = [[.collapse], [.toggle], [.closeRequested, .closeShrink], [.windowClosedByCode], [.tileHidden]]
+        let chosen: [[M.Event]] = [[.collapse], [.toggle], [.closeRequested, .closeShrink], [.tileHidden]]
         for events in chosen {
             var m = liveWindow()
             for e in events { m.apply(e) }
@@ -179,6 +179,33 @@ final class MeetingSurfaceTests: XCTestCase {
         var mini = liveWindow()
         mini.apply(.minimised); mini.apply(.morphFinished); mini.apply(.reopen)
         XCTAssertEqual(mini.surface, .window)
+    }
+    func testReopenAfterACodeCloseBringsTheWindowBack() {
+        var m = liveWindow()
+        m.apply(.windowClosedByCode)
+        XCTAssertEqual(m.surface, .bar)
+        XCTAssertEqual(m.reopenTarget, .window)
+        m.apply(.reopen)
+        XCTAssertEqual(m.surface, .window)
+        // A collapse after the code close is the person's choice again.
+        var n = liveWindow()
+        n.apply(.windowClosedByCode); n.apply(.collapse)
+        XCTAssertEqual(n.reopenTarget, .bar)
+    }
+    func testWaitingForSomeoneOnlyWhileAnAutoSmallBarCouldGrow() {
+        XCTAssertFalse(M().isWaitingForSomeone)
+        XCTAssertTrue(model(.startBegan, .wentLiveAlone).isWaitingForSomeone)
+        XCTAssertFalse(model(.startBegan, .wentLiveAlone, .collapse).isWaitingForSomeone)
+        XCTAssertFalse(model(.startBegan, .wentLiveAlone, .someoneJoined).isWaitingForSomeone)
+        XCTAssertFalse(model(.startBegan, .wentLiveAlone, grow: false).isWaitingForSomeone)
+        XCTAssertFalse(model(.startBegan, .wentLiveWithOthers).isWaitingForSomeone)
+    }
+    func testTheEnvironmentFlagsAreReadable() {
+        var m = liveWindow()
+        m.apply(.covered); m.apply(.movedToOtherDesktop); m.apply(.minimised)
+        XCTAssertTrue(m.isCovered); XCTAssertTrue(m.onOtherDesktop); XCTAssertTrue(m.isMinimised)
+        m.apply(.expand)
+        XCTAssertFalse(m.isCovered); XCTAssertFalse(m.onOtherDesktop); XCTAssertFalse(m.isMinimised)
     }
     func testReopenOfTheBarChangesNothing() {
         var m = liveWindow()

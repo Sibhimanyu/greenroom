@@ -1206,6 +1206,12 @@ enum MeetingControlBarController {
         if wanted != panel.isVisible { reconcile(immediately: false) }
     }
 
+    /// Draws what `MeetingSurfaceOwner.model` says. (Wired in the next step.)
+    static func render() {}
+
+    /// A shrink or expand animation is running.
+    static var morphRunning: Bool { morphTimeline != nil }
+
     // MARK: Shrink to the bar, and back
 
     private static var morphTimeline: MeetingMorph.Timeline?

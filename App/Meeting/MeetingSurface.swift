@@ -59,9 +59,12 @@ struct MeetingSurface: Hashable {
     private var startedSmallByItself = false
     /// The person (or a code close) put the window away.
     private var collapsed = false
-    private var isCovered = false
-    private var onOtherDesktop = false
-    private var isMinimised = false
+    /// The window was closed by code (or never opened): the Bar stands in, but it is
+    /// not the person's choice, so a reopen brings the window back.
+    private var closedByCode = false
+    private(set) var isCovered = false
+    private(set) var onOtherDesktop = false
+    private(set) var isMinimised = false
     private var hiddenByTile = false
     private var morphing = false
     private var settling = false
@@ -103,6 +106,9 @@ struct MeetingSurface: Hashable {
     var isMorphing: Bool { morphing }
     var isSettling: Bool { settling }
     var closePromptUp: Bool { askingToClose }
+    /// The Bar is up only because the meeting is empty, and the first person to join
+    /// grows it to the window.
+    var isWaitingForSomeone: Bool { phase == .live && startedSmallByItself && growIfSomeoneJoined }
 
     /// What a Dock click or menu choice brings forward. The window, unless the
     /// person chose the Bar (collapse, close then shrink, toggle, the speaker
@@ -112,7 +118,7 @@ struct MeetingSurface: Hashable {
         switch phase {
         case .idle: return nil
         case .starting: return .bar
-        case .live: return (collapsed || hiddenByTile) ? .bar : .window
+        case .live: return ((collapsed && !closedByCode) || hiddenByTile) ? .bar : .window
         }
     }
 
@@ -146,6 +152,7 @@ struct MeetingSurface: Hashable {
             phase = .live
             let small = event == .wentLiveAlone && startSmallWhileAlone
             collapsed = small
+            closedByCode = false
             startedSmallByItself = small
             kind = .morph
         case .someoneJoined:
@@ -157,6 +164,7 @@ struct MeetingSurface: Hashable {
             guard phase == .live else { return }
             startedSmallByItself = false
             collapsed = true
+            closedByCode = false
             kind = .morph
         case .expand:
             guard phase == .live else { return }
@@ -164,7 +172,7 @@ struct MeetingSurface: Hashable {
             kind = .morph
         case .toggle:
             guard phase == .live else { return }
-            if windowIsUp { startedSmallByItself = false; collapsed = true } else { expandAll() }
+            if windowIsUp { startedSmallByItself = false; collapsed = true; closedByCode = false } else { expandAll() }
             kind = .morph
         case .closeRequested:
             guard phase == .live else { return }
@@ -178,9 +186,11 @@ struct MeetingSurface: Hashable {
             guard phase == .live else { return }
             startedSmallByItself = false
             collapsed = true
+            closedByCode = false
             kind = .morph
         case .windowClosedByCode:
             collapsed = true
+            closedByCode = true
         case .covered: isCovered = true; kind = .settle
         case .uncovered: isCovered = false; kind = .settle
         case .movedToOtherDesktop: onOtherDesktop = true; kind = .settle
@@ -192,6 +202,7 @@ struct MeetingSurface: Hashable {
         case .reopen:
             // Brought forward: whatever only covered it is cleared. A chosen Bar stays.
             guard phase == .live, reopenTarget == .window else { return }
+            collapsed = false; closedByCode = false
             isCovered = false; onOtherDesktop = false; isMinimised = false
         case .morphFinished:
             morphing = false
@@ -224,6 +235,7 @@ struct MeetingSurface: Hashable {
     private mutating func expandAll() {
         startedSmallByItself = false
         collapsed = false
+        closedByCode = false
         isMinimised = false
         hiddenByTile = false
         onOtherDesktop = false

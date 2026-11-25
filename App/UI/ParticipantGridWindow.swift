@@ -417,6 +417,17 @@ enum ParticipantGridWindowController {
         return panel.isVisible && !panel.isMiniaturized && panel.isOnActiveSpace && panel.occlusionState.contains(.visible)
     }
 
+    /// What the window says about itself, for `MeetingSurfaceOwner.syncWindowFacts`.
+    /// Ordered out on purpose (shrunk, hidden) is none of the three: the person's
+    /// choice reaches the model as its own event.
+    static var windowFacts: (exists: Bool, minimised: Bool, elsewhere: Bool, covered: Bool) {
+        guard let panel else { return (false, false, false, false) }
+        if panel.isMiniaturized { return (true, true, false, false) }
+        guard panel.isVisible else { return (true, false, false, false) }
+        if !panel.isOnActiveSpace { return (true, false, true, false) }
+        return (true, false, false, !panel.occlusionState.contains(.visible))
+    }
+
     /// The meeting window exists but is out of sight on purpose: shrunk to the
     /// control bar, minimised or ordered out. Not the same as covered by another
     /// window, which `meetingWindowIsShowing` also reports as not showing.

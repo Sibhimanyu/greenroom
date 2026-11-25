@@ -88,6 +88,7 @@ All in `Tests/`, one XCTestCase per file named after the subject. The bundle com
 | Settings file | `SettingsTransferTests` (format, round trip, old-file fixture), `SettingsImportRulesTests` (validations, Blur fallback, mic), `SettingsDefaultsBridgeTests`, `SettingsCatalogTests` (guard: scans `App/` for persisted keys, fails on any not classified) | `App/Settings/*` (not the coordinator extension), `CameraDirectorSettings.swift`, `CameraBackgroundChoice.swift`, `ShareTarget.swift` |
 | Sessions/recording | `SessionsQueryTests`, `SessionSelectionTests`, `SessionDetailRulesTests`, `SessionFolderRulesTests`, `SessionTitleSuggesterTests`, `PauseClockTests` (also audio mix), `SegmentedMathTests` | `UI/SessionsQuery`, `SessionSelection`, `SessionDetailRules`, `Recording/SessionFolderRules`, `UI/SessionTitleSuggester`, `Recording/PauseClock`, `AudioMixer`, `UI/SegmentedMath` |
 | Zoom requests | `NewMeetingRequestTests` | `Zoom/NewMeetingRequest`, `ZoomScopes`, `ZoomServerToServerClient` |
+| Source scans | `SourceScanTests` (reads `App/` from disk, fails at file:line: raw `Color(red:` in `App/UI`, "class" in `App/UI` strings, `.sharingType =` outside `RecorderVisibility.swift`, exact `==` on rects in `App/Layout`; allow-lists carry a reason each, `knownDrift` entries are real violations to fix) | the sources themselves, compiles none |
 
 Not covered by XCTest: `CoordinatorController`, windows/AppKit controllers, Cues detector (covered by `CuesBench` instead), Screenroom, Editor, YouTube, Zoom SDK client.
 
@@ -109,6 +110,7 @@ Not covered by XCTest: `CoordinatorController`, windows/AppKit controllers, Cues
 - Update the Apptics vendored scripts -> replace `Vendor/Apptics/scripts/` from the matching HelperScripts.zip and keep `exactVersion` in `project.yml` in step.
 - Add a site page -> new `docs/<name>.html`; add to `docs/sitemap.xml`; follow DESIGN.md tokens.
 - Update the logo -> `Branding/` sources, then `App/Assets.xcassets` (`AppIcon`, `LogoMark`, `MenuBarMark`) and `docs/brand/`.
+- A source scan fails -> fix the line; only a legitimate use joins an allow-list in `Tests/SourceScanTests.swift`, with its reason. Fixing a `knownDrift` entry means deleting it (a stale entry fails).
 - Record a visual decision or drift -> `DESIGN.md` ("Open drift to fix", "Decisions Log").
 - Measure quit speed -> `scripts/measure-quit.sh [settle-seconds]`.
 - Log a follow-up to verify live -> `TODOS.md`.

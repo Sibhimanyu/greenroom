@@ -271,4 +271,14 @@ struct SessionPhase: Equatable {
     /// A start task is running and the meeting picture is not up yet. Also true
     /// while a Record session starts (its start task is `isRunning` too).
     var isStarting: Bool { isRunning && !stageLive }
+
+    /// A session of either kind is up or starting, ignoring a take. Differs from
+    /// `hasSessionOrTakeOnScreen` only when a take is rolling or paused with no
+    /// session (the YouTube hand-off asks this one). Same answer as `isCameraBusy`
+    /// in every state today; kept as its own name.
+    var isSessionUp: Bool { isRunning || stageLive || recordOnlyActive }
+
+    /// `hasSessionOrTakeOnScreen`, unless Stop is already under way: what the
+    /// End / Quit confirmations ask about (`hasLiveSession`).
+    var isLiveAndNotStopping: Bool { !isStopping && hasSessionOrTakeOnScreen }
 }

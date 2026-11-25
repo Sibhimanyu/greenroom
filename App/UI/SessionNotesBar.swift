@@ -63,7 +63,7 @@ final class SessionNotes: ObservableObject {
     /// A session is under way: a Zoom class, a live stage, a recording, or a
     /// Record-mode session (live from "Ready to record", before Record).
     static func sessionIsLive(_ c: CoordinatorController) -> Bool {
-        c.isRunning || c.stageLive || c.isRecording || c.recordOnlyActive
+        c.phase.hasSessionOrTakeOnScreen
     }
     private var wasLive = false
 
@@ -114,8 +114,7 @@ final class SessionNotes: ObservableObject {
     /// flags are what say a session is actually under way.
     private var liveFolder: URL? {
         guard let coordinator,
-              coordinator.isRunning || coordinator.stageLive || coordinator.isRecording
-                || coordinator.recordOnlyActive
+              coordinator.phase.hasSessionOrTakeOnScreen
         else { return nil }
         return coordinator.sessionFolder
     }

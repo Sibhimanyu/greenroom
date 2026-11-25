@@ -4324,7 +4324,7 @@ final class CoordinatorController: ObservableObject {
     /// second confirmation, and asking again during teardown would be a dialog
     /// nobody can act on usefully.
     var hasLiveSession: Bool {
-        !isStopping && (isRunning || sceneInUse || isRecording)
+        phase.isLiveAndNotStopping
     }
 
     /// Asks before quitting out from under a live class.

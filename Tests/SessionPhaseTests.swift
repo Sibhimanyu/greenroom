@@ -272,4 +272,23 @@ final class SessionPhaseTests: XCTestCase {
             XCTAssertEqual(p.isStarting, p.isRunning && !p.stageLive, "\(p.session)")
         }
     }
+
+    /// The five "anything live" spellings, each against its own old expression.
+    func testAnythingLiveVariantsMatchOldExpressions() {
+        var onlyOnTake = 0
+        for p in reachableStates() {
+            // SessionNotesBar (twice) and UpdateGate.
+            XCTAssertEqual(p.hasSessionOrTakeOnScreen,
+                           p.isRunning || p.stageLive || p.isRecording || p.recordOnlyActive, "\(p.session)")
+            // UpdateGate before the fix: no Record session between takes.
+            // YouTube hand-off: no take.
+            XCTAssertEqual(p.isSessionUp, p.isRunning || p.stageLive || p.recordOnlyActive, "\(p.session)")
+            XCTAssertEqual(!p.isSessionUp, !p.isRunning && !p.stageLive && !p.recordOnlyActive)
+            // hasLiveSession.
+            XCTAssertEqual(p.isLiveAndNotStopping, !p.isStopping && (p.isRunning || p.sceneInUse || p.isRecording), "\(p.session)")
+            if p.hasSessionOrTakeOnScreen != p.isSessionUp { onlyOnTake += 1 }
+        }
+        // The two differ somewhere (a take with no session), so they stay two questions.
+        XCTAssertGreaterThan(onlyOnTake, 0)
+    }
 }

@@ -49,3 +49,9 @@ every change to a question is a change to a flag, and the coordinator is its
   (`sceneInUse && !isRunning`).
 - `isStarting`: `isRunning && !stageLive`. True during a Record session's start
   too; the menu bar shows "Starting" for both.
+- Anything live, in three honest forms (they differ):
+  `hasSessionOrTakeOnScreen` (`isRunning || stageLive || recordOnlyActive ||
+  isRecording`: Notes bar, automatic update gate), `isSessionUp` (the same
+  without the take: the YouTube "session ended?" check, equal to `isCameraBusy`
+  today), and `isLiveAndNotStopping` (the first, unless stopping: `hasLiveSession`,
+  the End / Quit confirmations).

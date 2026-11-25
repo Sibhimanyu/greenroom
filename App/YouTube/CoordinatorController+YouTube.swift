@@ -46,7 +46,7 @@ extension CoordinatorController {
     func recordingFinished(path: String) {
         let file = URL(fileURLWithPath: path)
         lastFinishedRecording = file
-        if !isRunning, !stageLive, !recordOnlyActive { presentFinishedSession() }
+        if !phase.isSessionUp { presentFinishedSession() }
         guard youtubeUploadMode == .automatic else { return }
         guard youtubeConnected else {
             log("YouTube upload is on, but no Google account is connected \u{2014} the card after the class has Connect & Upload.")

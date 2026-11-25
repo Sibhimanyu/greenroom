@@ -822,6 +822,48 @@ private struct WebViewHost: NSViewRepresentable {
 /// Reports a view's frame in SCREEN coordinates, and its window, whenever
 /// AppKit lays it out. The suggestion panel is a separate window, so it
 /// has to be placed in AppKit's space, not SwiftUI's.
+/// An empty part of the browser's top (the tab strip around the tabs, the
+/// toolbar around its controls): a press moves the window with the system's own
+/// drag, and a double-click does what System Settings says (BrowserChromeDrag).
+/// It sits behind the controls, so tabs, buttons and the address field keep
+/// their clicks. A drag here is the owner's own move: the layout's record
+/// (LayoutEngine.placedFrames) then reads the browser as moved by hand, and
+/// only Snap Back puts it back (R45).
+private struct WindowDragArea: NSViewRepresentable {
+    let region: BrowserChromeDrag.Region
+
+    func makeNSView(context: Context) -> DragView {
+        let view = DragView()
+        view.region = region
+        return view
+    }
+
+    func updateNSView(_ view: DragView, context: Context) { view.region = region }
+
+    final class DragView: NSView {
+        var region: BrowserChromeDrag.Region = .tabStripEmpty
+
+        override var mouseDownCanMoveWindow: Bool { BrowserChromeDrag.dragsWindow(region) }
+        // The first click on a window of an inactive Greenroom drags it too.
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            guard BrowserChromeDrag.dragsWindow(region), let window else { return super.mouseDown(with: event) }
+            if event.clickCount == 2 {
+                let global = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)
+                switch BrowserChromeDrag.doubleClick(actionSetting: global?["AppleActionOnDoubleClick"] as? String,
+                                                     legacyMinimise: global?["AppleMiniaturizeOnDoubleClick"] as? Bool) {
+                case .zoom: window.performZoom(nil)
+                case .minimise: window.performMiniaturize(nil)
+                case .nothing: break
+                }
+                return
+            }
+            window.performDrag(with: event)
+        }
+    }
+}
+
 private struct AnchorReporter: NSViewRepresentable {
     let onChange: (NSRect, NSWindow?) -> Void
 
@@ -930,6 +972,9 @@ private struct TabStrip: View {
                     // A horizontal ScrollView centres content narrower than
                     // itself; one tab then floated mid-strip (AX: x=682).
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // The scroll view takes every press over the strip: the
+                    // empty part after the tabs drags the window from in here.
+                    .background(WindowDragArea(region: .tabStripEmpty))
                 }
                 Button { model.newTab() } label: {
                     Image(systemName: "plus")
@@ -946,7 +991,12 @@ private struct TabStrip: View {
             .frame(height: geometry.size.height, alignment: .bottom)
         }
         .frame(height: Self.height)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                WindowDragArea(region: .tabStripEmpty)
+            }
+        }
     }
 }
 
@@ -1119,7 +1169,12 @@ private struct AddressBar: View {
         .buttonStyle(.borderless)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background {
+            ZStack {
+                Color(nsColor: .controlBackgroundColor)
+                WindowDragArea(region: .toolbarEmpty)
+            }
+        }
         // The dropdown is its own window (SuggestionPanel), placed under the
         // field in screen coordinates: nothing in this view hierarchy can
         // draw over the WKWebView below, and a SwiftUI overlay hung the list

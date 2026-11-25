@@ -319,6 +319,7 @@ targets:
       - path: App/Layout/LayoutPlacementRules.swift
       - path: App/Layout/StrandedWindowRule.swift
       - path: App/UI/WindowStackRules.swift
+      - path: App/Browser/BrowserChromeDrag.swift
       - path: App/UI/LayoutEditRecorder.swift
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift

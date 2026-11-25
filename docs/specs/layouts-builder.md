@@ -147,7 +147,8 @@ different order; this table is the authority.
   not the Meeting coming back from the bar or the speaker-tile shortcut, not the one-second loop, not a
   resolution, arrangement or Dock change. A window that appears later (an app that launched late, a view that
   never opened) is placed once, when it first appears.
-- R45.3 The neighbour that grows into the Meeting's gap stays where the owner put it if they moved it.
+- R45.3 The neighbour that grows into the Meeting's gap stays where the owner put it if they moved it. Dragging
+  the Greenroom Browser by the empty parts of its tab strip or toolbar is such a move (`BrowserChromeDrag`).
 - R45.4 Placing never activates an app or takes keyboard focus. The one hand-off is the end of Start (the largest
   app on the main display). Only a pass the owner asked for orders placed windows front.
 - R45.5 A display plugged in or pulled out keeps today's behaviour: everything is placed again and ordered front

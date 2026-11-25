@@ -239,6 +239,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: Self.eyebrowGap) {
                 eyebrow.frame(height: Self.eyebrowHeight)
                 pictureFace(size: fit.size)
+                previewFooter
             }
             .frame(width: fit.width, height: fit.height + Self.eyebrowSpace)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
@@ -248,7 +249,9 @@ struct HomeView: View {
 
     static let eyebrowHeight: CGFloat = 14
     static let eyebrowGap: CGFloat = 6
-    static var eyebrowSpace: CGFloat { eyebrowHeight + eyebrowGap }
+    static let footerHeight: CGFloat = 20
+    /// Always reserved, so the picture does not change size when the row comes or goes.
+    static var eyebrowSpace: CGFloat { eyebrowHeight + eyebrowGap * 2 + footerHeight }
 
     /// DESIGN.md eyebrow: mono, uppercase, .08em, 10pt, in the text green;
     /// the red dot says it is live. Only while there is a live picture (the
@@ -313,14 +316,46 @@ struct HomeView: View {
         }
     }
 
-    /// Set when the layout in effect (the same resolver Start uses, against
-    /// the displays connected now) has pieces on a second display.
-    private var secondDisplayNote: String? {
-        guard let template = coordinator.layoutLibrary.active, template.twoDisplays != nil else { return nil }
-        let result = LayoutResolver.resolve(
-            template, screens: LayoutEngine.connectedScreens(),
-            primaryHeight: DisplayResolver.mainDisplayScreen()?.frame.height ?? 0)
-        return PreviewSecondDisplayRules.note(for: result)
+    /// The row under the picture, from the layout in effect (the same resolver
+    /// Start uses, against the displays connected now); nil when it places no windows.
+    private var previewRow: PreviewSecondDisplayRules.Row? {
+        guard let template = coordinator.layoutLibrary.active else { return nil }
+        var second: [Bool] = []
+        if template.twoDisplays != nil {
+            let result = LayoutResolver.resolve(
+                template, screens: LayoutEngine.connectedScreens(),
+                primaryHeight: DisplayResolver.mainDisplayScreen()?.frame.height ?? 0)
+            second = result.placed.filter { $0.slot == .second }.map { $0.piece.kind.isMeeting }
+        }
+        return PreviewSecondDisplayRules.row(pieceCount: template.pieceCount, secondPieceIsMeeting: second)
+    }
+
+    /// Under the picture, never over it: the second-display note, and the
+    /// same Show on screen the Layouts page and the Layout tile use.
+    @ViewBuilder private var previewFooter: some View {
+        if let row = previewRow, let template = coordinator.layoutLibrary.active {
+            HStack(spacing: 8) {
+                if let note = row.note {
+                    Label(note, systemImage: "display")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
+                                                   canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                } label: {
+                    Label(VisibilitySymbol.showOnScreen.words, systemImage: VisibilitySymbol.showOnScreen.name)
+                        .font(.system(size: 11, weight: .medium))
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Show on screen: outline where each window of this layout will go")
+                .accessibilityLabel(VisibilitySymbol.showOnScreen.words)
+            }
+            .frame(height: Self.footerHeight)
+        } else {
+            Color.clear.frame(height: Self.footerHeight)
+        }
     }
 
     /// Green outlines over the screen in the picture, where each window goes.
@@ -365,21 +400,6 @@ struct HomeView: View {
                 // compositor's own camera alpha (your cutout, the bubble) is
                 // cut out of them, frame by frame.
                 .mask { CameraOpenMask(feed: coordinator.shapePreview, canvas: canvas) }
-                // The picture is one display; say so when Start would put
-                // pieces (the Meeting window) on the second one.
-                if let note = secondDisplayNote {
-                    HStack(spacing: 5) {
-                        Image(systemName: "display")
-                        Text(note).lineLimit(1)
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(.black.opacity(0.72)))
-                    .padding(6)
-                    .frame(width: shown.width, height: shown.height, alignment: .bottomLeading)
-                    .position(x: shown.midX, y: shown.midY)
-                }
             }
             .allowsHitTesting(false)
             .transition(.opacity)

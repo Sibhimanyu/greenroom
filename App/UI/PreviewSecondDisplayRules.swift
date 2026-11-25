@@ -27,4 +27,16 @@ enum PreviewSecondDisplayRules {
     static func note(for result: LayoutResolver.Result) -> String? {
         note(secondPieceIsMeeting: result.placed.filter { $0.slot == .second }.map { $0.piece.kind.isMeeting })
     }
+
+    /// The row under the picture: the note (if any) on the left, Show on
+    /// screen on the right. Present whenever the layout places windows, since
+    /// the button is always where you expect it; absent for a layout with no
+    /// pieces (Show on screen has nothing to outline; the camera outline is
+    /// not part of Home's action).
+    struct Row: Equatable { var note: String? }
+
+    static func row(pieceCount: Int?, secondPieceIsMeeting: [Bool]) -> Row? {
+        guard (pieceCount ?? 0) > 0 else { return nil }
+        return Row(note: note(secondPieceIsMeeting: secondPieceIsMeeting))
+    }
 }

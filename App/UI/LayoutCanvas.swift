@@ -330,7 +330,7 @@ struct LayoutCanvas: View {
                     ForEach(pieces) { piece in badges(piece, canvas: canvas) }
                 }
 
-                if let selected = pieces.first(where: { $0.id == selection }) {
+                if let selected = pieces.first(where: { $0.id == selection }), interactive(selected) {
                     ForEach(LayoutGeometry.Handle.allCases, id: \.self) { handle in
                         handleView(handle, piece: selected, canvas: canvas)
                     }
@@ -423,6 +423,7 @@ struct LayoutCanvas: View {
                 (inside ? (NSCursor.openHand) : NSCursor.arrow).set()
             }
             .opacity(isDragging && (drag?.crossing ?? false) ? 0.35 : (hiddenFromEveryone(piece) ? 0.5 : 1))
+            .allowsHitTesting(interactive(piece))
             .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
             .position(x: box.midX, y: box.midY)
@@ -566,7 +567,15 @@ struct LayoutCanvas: View {
         previewEveryone ? pieces.filter { Visibility.everyoneSees(piece: $0, target: share).isOn } : pieces
     }
 
-    /// A piece the meeting does not see looks faded on My screen.
+    /// The rule for the pointer and the keyboard; the fade below never takes part in it.
+    private func interactive(_ piece: LayoutPiece) -> Bool {
+        LayoutEditorRules.piecesAreInteractive(
+            previewEveryone: previewEveryone,
+            everyoneSees: Visibility.everyoneSees(piece: piece, target: share).isOn,
+            displayConnected: display.connected)
+    }
+
+    /// A piece the meeting does not see looks faded on My screen. A look only.
     private func hiddenFromEveryone(_ piece: LayoutPiece) -> Bool {
         !previewEveryone && !Visibility.everyoneSees(piece: piece, target: share).isOn
     }
@@ -868,6 +877,7 @@ struct LayoutCanvas: View {
                                            hasSelection: selection != nil, hasOtherDisplay: crossing != nil,
                                            isDragging: drag != nil)
         let id = selection
+        if previewEveryone, !(action == .ignore) { return .ignored }
         switch action {
         case .ignore: return .ignored
         case let .cycle(backwards): return cycle(backwards: backwards)

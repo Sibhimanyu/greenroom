@@ -302,4 +302,24 @@ final class LayoutFillDisplayTests: XCTestCase {
         XCTAssertEqual(back.templates[0].oneDisplay[0].rect, .full)
         XCTAssertEqual(back.templates[0].oneDisplay[0].kind, .meeting(fillsDisplay: true, startsHidden: true))
     }
+
+    // The fade on My screen is only a look: every piece stays editable, seen by everyone or not,
+    // on a connected display or on one that is not plugged in yet. Preview: Everyone is the
+    // read-only picture of what the meeting sees.
+    func testMyScreenPiecesAreAlwaysInteractive() {
+        for everyone in [true, false] {
+            for connected in [true, false] {
+                XCTAssertTrue(LayoutEditorRules.piecesAreInteractive(
+                    previewEveryone: false, everyoneSees: everyone, displayConnected: connected),
+                    "My screen, everyone=\(everyone), connected=\(connected)")
+            }
+        }
+    }
+
+    func testPreviewEveryoneIsReadOnly() {
+        for connected in [true, false] {
+            XCTAssertFalse(LayoutEditorRules.piecesAreInteractive(
+                previewEveryone: true, everyoneSees: true, displayConnected: connected))
+        }
+    }
 }

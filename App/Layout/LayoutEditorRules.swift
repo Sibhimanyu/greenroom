@@ -152,6 +152,16 @@ enum LayoutEditorRules {
             : "The whole display shows the meeting and the people in it. Off, this is an ordinary piece and the people gallery no longer opens on this display."
     }
 
+    // MARK: Which pieces answer the pointer and the keyboard
+
+    /// Whether a piece on the canvas can be selected, dragged, resized, right-clicked and moved
+    /// by key. On My screen always: the fade on a piece the meeting does not see is only a look,
+    /// and a display that is not connected yet is still set up by hand. Preview: Everyone is the
+    /// read-only picture of what the meeting sees, so nothing in it is edited there.
+    static func piecesAreInteractive(previewEveryone: Bool, everyoneSees: Bool, displayConnected: Bool) -> Bool {
+        !previewEveryone
+    }
+
     // MARK: The live camera picture
 
     /// R11.3: the camera is opened for the picture only while someone looks at it.

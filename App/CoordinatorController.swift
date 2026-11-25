@@ -393,6 +393,8 @@ final class CoordinatorController: ObservableObject {
         if recordingFirst, isRecording != phase.isRecording { isRecording = phase.isRecording }
         if isSavingRecording != phase.isSavingRecording { isSavingRecording = phase.isSavingRecording }
         if isRecording != phase.isRecording { isRecording = phase.isRecording }
+        // The preview drops to its meeting rate while the meeting encodes.
+        previewSink.meetingLive = phase.isInMeeting
     }
 
     /// The cameras the scene should hold for these settings: the director's

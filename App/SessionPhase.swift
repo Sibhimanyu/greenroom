@@ -224,4 +224,11 @@ struct SessionPhase: Equatable {
     var isRecording: Bool { take == .rolling || take == .paused }
     var isRecordingPaused: Bool { take == .paused || pauseLeftover }
     var isSavingRecording: Bool { take == .saving }
+
+    // MARK: Named questions
+
+    /// A session or a take is on screen: a meeting (starting or live), a Record
+    /// session (starting, or live between takes), or a take being made. What
+    /// keeps an automatic update dialog off a shared screen.
+    var hasSessionOrTakeOnScreen: Bool { isRunning || stageLive || recordOnlyActive || isRecording }
 }

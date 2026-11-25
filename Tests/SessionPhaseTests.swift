@@ -157,4 +157,18 @@ final class SessionPhaseTests: XCTestCase {
         p.apply(.recorderStoppedItself)
         XCTAssertEqual(flags(p), Flags(recordOnly: true))
     }
+
+    func testSessionOrTakeOnScreenCountsRecordSessionBetweenTakes() {
+        XCTAssertFalse(SessionPhase().hasSessionOrTakeOnScreen)
+        // Record session up, start task finished, no take rolling: the old check missed this.
+        let between = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished])
+        XCTAssertTrue(between.recordOnlyActive)
+        XCTAssertFalse(between.isRunning || between.stageLive || between.isRecording)
+        XCTAssertTrue(between.hasSessionOrTakeOnScreen)
+        XCTAssertTrue(run([.meetingStartRequested]).hasSessionOrTakeOnScreen)
+        XCTAssertTrue(run([.meetingStartRequested, .meetingPictureUp, .meetingStartTaskFinished]).hasSessionOrTakeOnScreen)
+        XCTAssertTrue(run([.recordStartRequested, .recordPictureUp, .takeBegan, .recordStartTaskFinished]).hasSessionOrTakeOnScreen)
+        let done = run([.recordStartRequested, .recordPictureUp, .recordStartTaskFinished, .stopRequested, .recordPictureDown, .recordStopFinished])
+        XCTAssertFalse(done.hasSessionOrTakeOnScreen)
+    }
 }

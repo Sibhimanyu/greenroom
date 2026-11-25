@@ -372,7 +372,7 @@ final class CoordinatorController: ObservableObject {
     /// The single source of truth for the eight session and take flags below
     /// (SessionPhase.swift). Events go in through `apply`; the flags are only
     /// ever assigned by `syncFlags`, so they cannot disagree with each other.
-    private var phase = SessionPhase()
+    private(set) var phase = SessionPhase()
 
     /// Reports what happened. Each flag is assigned only when it changes, in
     /// the order the old hand-written assignments used.

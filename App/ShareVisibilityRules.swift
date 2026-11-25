@@ -45,6 +45,9 @@ enum ShareVisibility: Equatable {
 /// apps' recorders see is `sharingType`, decided by PresenceRecorderRules.) Tools and anything private never carry it.
 enum ShareableWindow: CaseIterable {
     case main, settings, meetingChat, participants, meetingWindow, meetingView
+    /// The whiteboard Annotations opens (a plain window for the owner). The one Greenroom
+    /// window that starts visible to everyone (`startsShown`); its eye still turns it off.
+    case localWhiteboard
     // Never offered:
     /// Credentials are typed here (always `sharingType = .none` for other apps,
     /// via RecorderVisibility; our own capture excludes it by filter).
@@ -59,11 +62,15 @@ enum ShareableWindow: CaseIterable {
 
     var offersSwitch: Bool {
         switch self {
-        case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView: return true
+        case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView, .localWhiteboard: return true
         case .setupGuide, .controlBar, .island, .recordingChrome, .annotation, .drawingToolbar,
              .whiteboard, .browser: return false
         }
     }
+
+    /// Does the window's eye start on each time it opens? Greenroom's own windows start hidden,
+    /// except the Annotations whiteboard (owner's decision 2026-11-25). The one place that says so.
+    var startsShown: Bool { self == .localWhiteboard }
 
     /// Why a window is left out, for the record.
     var exclusionReason: String? {

@@ -134,6 +134,33 @@ final class MeetingBarModelTests: XCTestCase {
         XCTAssertEqual(picked, [.off])
     }
 
+    // R6, R17 (owner, 2026-11-25): one camera button. A click toggles Everyone and me <-> Off and
+    // brings back the last "on" state; the arrow opens the four states. Meeting only, never the saved default.
+    func testTheCameraButtonClickTogglesOnAndOffAndKeepsTheLastOnState() {
+        XCTAssertEqual(M.cameraClickTarget(current: .everyoneAndMe, lastOn: .everyoneAndMe, noCameraAllowed: true), .off)
+        XCTAssertEqual(M.cameraClickTarget(current: .off, lastOn: .everyoneAndMe, noCameraAllowed: true), .everyoneAndMe)
+        XCTAssertEqual(M.cameraClickTarget(current: .off, lastOn: .onlyEveryone, noCameraAllowed: true), .onlyEveryone,
+                       "Only everyone comes back as Only everyone")
+        XCTAssertEqual(M.cameraClickTarget(current: .onlyMe, lastOn: .onlyMe, noCameraAllowed: true), .off)
+        // Nothing shared: Off would leave an empty picture, so a click does not turn it off.
+        XCTAssertEqual(M.cameraClickTarget(current: .everyoneAndMe, lastOn: .everyoneAndMe, noCameraAllowed: false), .everyoneAndMe)
+        XCTAssertEqual(M.lastOnState(after: .onlyEveryone, previous: .everyoneAndMe), .onlyEveryone)
+        XCTAssertEqual(M.lastOnState(after: .off, previous: .onlyEveryone), .onlyEveryone, "Off never overwrites it")
+    }
+
+    func testTheCameraButtonShowsTheStateWithItsNameInTheTooltipAndSpokenLabel() {
+        for state in CameraState.allCases {
+            let cell = M.cameraStateCell(state)
+            XCTAssertEqual(cell.symbol, VisibilitySymbol.camera(state).name)
+            XCTAssertEqual(cell.symbolBadge, VisibilitySymbol.camera(state).badge)
+            XCTAssertTrue(cell.help.contains(state.name), cell.help)
+            XCTAssertTrue(cell.spoken.contains(state.name), cell.spoken)
+            XCTAssertTrue(cell.help.contains("Click"), "the click's job is said: \(cell.help)")
+        }
+        XCTAssertEqual(M.cameraStateCell(.off).symbol, "video.slash")
+        XCTAssertEqual(M.cameraStateCell(.everyoneAndMe).symbol, "video.fill")
+    }
+
     func testNoCameraStatesAreOffWhileNothingIsShared() {
         let menu = M.cameraStateMenu(current: .everyoneAndMe, noCameraAllowed: false) { _ in }
         XCTAssertEqual(menu.filter { $0.kind == .item }.map(\.enabled), [true, true, false, false])
@@ -177,7 +204,17 @@ final class MeetingBarModelTests: XCTestCase {
         }
         XCTAssertEqual(L.width(videoButtons: true) - L.width(videoButtons: false),
                        L.meeting + L.icon + 2 * L.spacing)  // Meeting, and the Views icon beside it
-        XCTAssertLessThan(L.width(videoButtons: true), 740)  // was 720 before the bubble toggle (+34) and without the Meeting chevron (-14)
+        // One camera button (mic + camera + a small arrow) brought the bar back under 720: it was 739 with two cells.
+        XCTAssertLessThan(L.width(videoButtons: true), 720)
+    }
+
+    func testTheBarHasOneCameraCellAfterTheMic() {
+        typealias L = MeetingBarLayout
+        let cells = L.cells(videoButtons: false)
+        XCTAssertEqual(cells.filter { $0 == L.camera }.count, 1)
+        let i = cells.firstIndex(of: L.camera)!
+        XCTAssertEqual(cells[i - 1], L.icon, "the mic is just before it")
+        XCTAssertEqual(cells[i + 1], L.divider, "no second camera cell after it")
     }
 
     func testShareCellSitsBesideDrawAndCountsInBothBars() {

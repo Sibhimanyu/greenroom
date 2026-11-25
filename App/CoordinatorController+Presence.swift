@@ -95,8 +95,13 @@ extension CoordinatorController {
         let kind = presenceShareKind
         let windowShare = kind == .app || kind == .window
         let inMeeting = zoomChatClient.myUserID != nil
-        let shared = stage != nil ? capturedFrameInCocoa(wholeDisplay: !windowShare) : nil
-        let content = stage?.lastContentRect
+        // The share kind decides only where the bubble sits. A whiteboard or Just my camera has no
+        // captured screen, so it sits on the display holding the whiteboard (else the main display):
+        // its visible frame, with the picture's whole canvas as the content, never hidden for lack of a frame.
+        let noScreenShare = kind == .whiteboard || kind == .nothing
+        let shared = stage != nil
+            ? (noScreenShare ? presenceFallbackFrame(for: kind) : capturedFrameInCocoa(wholeDisplay: !windowShare)) : nil
+        let content = noScreenShare ? CGRect(x: 0, y: 0, width: 1920, height: 1080) : stage?.lastContentRect
         let inputs = PresenceVisibility.Inputs(
             live: stage != nil && phase.isCameraBusy,
             layoutPlaceable: layout.isPresencePlaceable,
@@ -120,6 +125,13 @@ extension CoordinatorController {
         stage.setSelfViewHandler { [feed = presenceBubble.feed] in feed.push($0) }
         presenceFeedInstalled = true
         presenceBubble.show(layout: layout, geometry: PresenceGeometry(display: shared, content: content))
+    }
+
+    /// Where the bubble sits when nothing of the screen is captured: the visible frame of the display
+    /// holding the presented whiteboard, else of the main display (Just my camera: the layout's camera spot there).
+    private func presenceFallbackFrame(for kind: PresenceVisibility.ShareKind) -> CGRect? {
+        let screen = (kind == .whiteboard ? presentedWhiteboardScreen : nil) ?? NSScreen.screens.first
+        return screen?.visibleFrame
     }
 
     /// The captured display or window as Cocoa points (bottom-left origin).

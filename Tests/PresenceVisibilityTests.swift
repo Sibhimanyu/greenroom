@@ -18,9 +18,28 @@ final class PresenceVisibilityTests: XCTestCase {
     func testHidesWhenTheLookHasNoBoxToMove() { XCTAssertEqual(decide { $0.layoutPlaceable = false }, .hide) }
     func testHidesUntilTheCameraHasAFrame() { XCTAssertEqual(decide { $0.hasCapturedFrame = false }, .hide) }
     func testHidesUntilTheContentWasDrawn() { XCTAssertEqual(decide { $0.hasContentRect = false }, .hide) }
-    func testHidesForWhiteboardAndNothingShared() {
-        XCTAssertEqual(decide { $0.shareKind = .whiteboard }, .hide)
-        XCTAssertEqual(decide { $0.shareKind = .nothing }, .hide)
+    // R1, R6 (owner, 2026-11-25): the camera's state decides whether the bubble shows, never the share kind.
+    func testShowsForWhiteboardWhenCameraIsOnMyScreen() {
+        XCTAssertEqual(decide { $0.shareKind = .whiteboard }, .show)
+        XCTAssertEqual(decide { $0.shareKind = .whiteboard; $0.hiddenByPresenter = true }, .hideKeepingPlacement)
+    }
+    func testShowsForJustMyCameraWhenCameraIsOnMyScreen() {
+        XCTAssertEqual(decide { $0.shareKind = .nothing }, .show)
+        XCTAssertEqual(decide { $0.shareKind = .nothing; $0.hiddenByPresenter = true }, .hideKeepingPlacement)
+    }
+    // R1, R6: every share kind x the four camera states: the bubble follows `Visibility.cameraOnMyScreen`.
+    func testTheBubbleAgreesWithTheMenuForEveryShareKindAndCameraState() {
+        let kinds: [PresenceVisibility.ShareKind] = [.display, .app, .window, .whiteboard, .nothing]
+        for kind in kinds {
+            for state in CameraState.allCases {
+                let seen = Visibility.cameraOnMyScreen(state: state).isOn
+                let got = decide {
+                    $0.shareKind = kind
+                    $0.hiddenByPresenter = PresenceVisibility.bubbleStartsHidden(state: state)
+                }
+                XCTAssertEqual(got == .show, seen, "\(kind) \(state)")
+            }
+        }
     }
     func testVideoOffHidesButKeepsThePlacement() { XCTAssertEqual(decide { $0.cameraOn = false }, .hideKeepingPlacement) }
     func testHideFlagHidesButKeepsThePlacement() { XCTAssertEqual(decide { $0.hiddenByPresenter = true }, .hideKeepingPlacement) }

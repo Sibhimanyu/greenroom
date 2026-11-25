@@ -163,6 +163,7 @@ final class BuiltInLayoutsTests: XCTestCase {
         old.save(to: d)
         d.set(true, forKey: LayoutLibrary.shownToEveryoneMigratedKey)
         d.set(true, forKey: LayoutLibrary.appsShownMigratedKey)
+        d.set(true, forKey: LayoutLibrary.rajRenamedKey)   // the Raj rename has its own once-only test (LayoutMigrationTests)
         return (d, old)
     }
 

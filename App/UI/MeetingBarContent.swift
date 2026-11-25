@@ -9,7 +9,7 @@
 //  MeetingBarModel.swift.
 //
 //  Left to right:
-//    grip | [Meeting] | mic camera | REC pill, pause | Share Draw | chat people Notes Views Collapse | [End]
+//    grip | [Meeting] | mic camera▾ | REC pill, pause | Share Draw | chat people Notes Views Collapse | [End]
 //
 //  Red appears in two places only: the muted mic and stopped camera (state the
 //  bar has always shown), and the End button. The REC dot is the recording signal
@@ -183,6 +183,7 @@ struct BarIconButton: View {
 
 struct MeetingBarActions {
     var toggleMute: () -> Void = {}
+    /// The camera button's click: Off <-> the last on state, for everyone (this meeting only).
     var toggleCamera: () -> Void = {}
     /// The four camera states, built when the menu opens (this meeting only).
     var cameraStateMenu: () -> [MenuEntry] = { [] }
@@ -283,7 +284,6 @@ struct MeetingBarContent: View {
             BarDivider()
             micButton
             cameraButton
-            bubbleButton
             BarDivider()
             recordCell
             BarDivider()
@@ -325,25 +325,23 @@ struct MeetingBarContent: View {
             .disabled(!s.inMeeting)
     }
 
+    /// The one camera button: its icon is the state (a click turns the camera off for everyone, or
+    /// back on as it was), and the small arrow opens the four states. For this meeting only.
     private var cameraButton: some View {
-        let name = s.cameraOn ? "Stop Video" : "Start Video"
-        return BarIconButton(symbol: (s.cameraOn ? VisibilitySymbol.cameraOn : VisibilitySymbol.cameraOff).name,
-                             tint: s.cameraOn ? .primary : .red,
-                             help: help(s.cameraOn ? "Turn your camera off" : "Turn your camera on", .toggleCamera),
-                             spoken: name, action: a.toggleCamera)
-            .disabled(!s.inMeeting)
-    }
-
-    /// Hides the camera bubble on your own screen. It can only exist with the
-    /// camera on, so with the camera off its cell stays (the bar never changes
-    /// width) but is empty and out of the accessibility tree.
-    private var bubbleButton: some View {
         let cell = MeetingBarModel.cameraStateCell(s.cameraState)
-        return BarIconButton(symbol: cell.symbol, on: cell.on, symbolBadge: cell.symbolBadge, help: cell.help, spoken: cell.spoken, action: {})
-            .overlay { if s.cameraOn { MenuPopUpOverlay(label: cell.spoken, entries: a.cameraStateMenu) } }
-            .opacity(s.cameraOn ? 1 : 0)
-            .allowsHitTesting(s.cameraOn)
-            .accessibilityHidden(!s.cameraOn)
+        return HStack(spacing: 0) {
+            BarIconButton(symbol: cell.symbol, tint: s.cameraState == .off ? .red : .primary, on: cell.on,
+                          symbolBadge: cell.symbolBadge, help: cell.help, spoken: cell.spoken, action: a.toggleCamera)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: MeetingBarLayout.cameraArrow, height: 32)
+                .contentShape(Rectangle())
+                .overlay { MenuPopUpOverlay(label: "Who sees my camera", entries: a.cameraStateMenu) }
+                .help("Who sees my camera: Everyone and me, Only everyone, Only me, Off")
+        }
+        .frame(width: MeetingBarLayout.camera)
+        .disabled(!s.inMeeting)
     }
 
     /// The REC pill, and beside it Pause while a recording runs. Not recording,

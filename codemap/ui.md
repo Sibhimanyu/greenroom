@@ -85,7 +85,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/PresenceBubble.swift, PresenceBubbleInteractionView.swift | Floating camera bubble that drives the picture | `PresenceBubble`, `PresenceFeed`, `PresenceQuickModel`; panel `sharingType` follows the Devices tab's "Show Greenroom on screen in other apps' recordings"; Mirror my camera is greyed while that is on (Devices tab, HomeCameraPanel) |
 | UI/OnboardingView.swift, OnboardingWindow.swift, OnboardingPlacement.swift | Setup guide: own window, 7 pages | `OnboardingView`, `OnboardingWindowController.shared` |
 | UI/ChatWindow.swift (+ChatGrouping, ChatMessageRow, ChatMessageField) | Chat window | `ChatWindowController`, `ChatWindowView`, `ChatGrouping` |
-| UI/WhiteboardViews.swift, AnnotationToolbar.swift | Whiteboard/annotation (Recorditor port) | `WhiteboardWindowController` (`Mode`: `.presented` share target, `.local` from the tools), `AnnotationToolbarView` |
+| UI/WhiteboardViews.swift, AnnotationToolbar.swift | Whiteboard/annotation (Recorditor port) | `WhiteboardWindowController` (`Mode`: `.presented` share target, `.local` from the tools; it opens with its eye on, `ShareableWindow.startsShown`), `AnnotationToolbarView` |
 | UI/WindowShareController.swift | Per-window "show to the meeting" eye; layout-placed windows start shown (`LayoutPiece.defaultShowsToEveryone` = true, 2026-11-25), the rest hidden; no amber edge | `WindowShareController`, `ShareableWindowAnchor`, `LayoutShareChoice` |
 | UI/PresentMenuSpec.swift, PresentMenuLive.swift | Present menu as data + live wiring | `PresentMenu`, `CoordinatorController.presentMenu` ext |
 

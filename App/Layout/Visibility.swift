@@ -110,7 +110,7 @@ enum Visibility {
         case .window: return .fixedOff(ShowOnShare.unavailableTip)
         case .wholeScreen:
             switch window {
-            case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView:
+            case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView, .localWhiteboard:
                 return marked ? .on : .off
             case .browser:
                 return ShareVisibilityRules.alwaysShared(windowKind: window) ? .fixedOn(browserReason) : (marked ? .on : .off)

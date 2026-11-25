@@ -199,15 +199,30 @@ enum MeetingBarModel {
                  spoken: open ? "Hide notes" : "Show notes", on: open)
     }
 
-    /// Who sees your camera: one button for the four camera states, a menu rather than
-    /// a cycle (four steps round is slow and a mis-click would put you in front of
-    /// the meeting without a look). For this meeting only; the saved default is in
-    /// Settings -> Layouts. The symbol is Zoom\u{2019}s camera (VisibilitySymbols.swift); Only me wears the struck eye.
+    /// The one camera button (owner, 2026-11-25: the Zoom video button and the bubble cell merged).
+    /// A click toggles the camera for everyone (`cameraClickTarget`); its small arrow opens the four
+    /// states (`cameraStateMenu`). For this meeting only; the saved default is in Settings -> Layouts.
+    /// The symbol shows the state (Zoom\u{2019}s camera, the dashed look for Only everyone, the struck
+    /// eye for Only me, video.slash for Off, VisibilitySymbols.swift); tooltip and spoken label say its name.
     static func cameraStateCell(_ state: CameraState) -> IconCell {
         IconCell(symbol: VisibilitySymbol.camera(state).name,
-                 help: "Who sees your camera: \(state.name). \(state.detail) Click to change it for this meeting.",
-                 spoken: "Camera: \(state.name). Menu", on: state != .everyoneAndMe,
+                 help: "Camera: \(state.name). \(state.detail) Click to turn it \(state == .off ? "on" : "off"); the arrow chooses who sees it.",
+                 spoken: "Camera: \(state.name). Click to turn it \(state == .off ? "on" : "off")",
+                 on: state != .everyoneAndMe && state != .off,
                  symbolBadge: VisibilitySymbol.camera(state).badge)
+    }
+
+    /// What a click on the camera button does: any "on" state goes Off; Off comes back as the last
+    /// "on" state (Only everyone returns as Only everyone). With nothing shared Off would leave an
+    /// empty picture, so a click then leaves the state alone.
+    static func cameraClickTarget(current: CameraState, lastOn: CameraState, noCameraAllowed: Bool) -> CameraState {
+        if current == .off { return lastOn == .off ? .everyoneAndMe : lastOn }
+        return noCameraAllowed ? .off : current
+    }
+
+    /// The "on" state to bring back after a click: any state but Off replaces it.
+    static func lastOnState(after state: CameraState, previous: CameraState) -> CameraState {
+        state == .off ? previous : state
     }
 
     /// The four states as a menu. The two that hide you from the meeting are off while
@@ -239,7 +254,7 @@ enum MeetingBarModel {
 // MARK: - Width
 
 /// The bar's size, from its cells, so the panel and the content cannot disagree.
-/// Left to right: grip, Collapse, Meeting, Views, | mic, camera, bubble, | REC pill and
+/// Left to right: grip, Collapse, Meeting, Views, | mic, camera (with its arrow), | REC pill and
 /// pause, | Share, Draw, Notes, | chat, people, | End. Share opens the Present menu: what the
 /// class sees, your look, the layout.
 enum MeetingBarLayout {
@@ -250,6 +265,9 @@ enum MeetingBarLayout {
     static let grip: CGFloat = 18
     static let meeting: CGFloat = 78
     static let icon: CGFloat = 32
+    /// The camera button: an icon and the small arrow that opens the four states.
+    static let cameraArrow: CGFloat = 12
+    static let camera: CGFloat = icon + cameraArrow
     /// The REC pill, the same width in every state so the bar never jumps.
     static let recPill: CGFloat = 132
     static let pause: CGFloat = 28
@@ -270,7 +288,7 @@ enum MeetingBarLayout {
     static func cells(videoButtons: Bool) -> [CGFloat] {
         var out: [CGFloat] = [grip, icon]
         if videoButtons { out += [meeting, icon] }
-        out += [divider, icon, icon, icon, divider, recCell, divider, present, draw, icon, divider,
+        out += [divider, icon, camera, divider, recCell, divider, present, draw, icon, divider,
                 icon, people, divider, end]
         return out
     }

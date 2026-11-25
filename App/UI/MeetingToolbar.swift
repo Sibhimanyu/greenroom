@@ -59,7 +59,6 @@ struct MeetingToolbarState {
 struct MeetingToolbarMenus {
     var audio: () -> [MenuEntry] = { [] }
     var video: () -> [MenuEntry] = { [] }
-    var cameraState: () -> [MenuEntry] = { [] }
     var security: () -> [MenuEntry] = { [] }
     var react: () -> [MenuEntry] = { [] }
     var share: () -> [MenuEntry] = { [] }
@@ -179,23 +178,16 @@ struct MeetingToolbarBar: View {
                 }
             }
         case .video:
-            withCaret(menus.video, label: "Choose camera") {
-                cell(symbol: (state.cameraOn ? VisibilitySymbol.cameraOn : VisibilitySymbol.cameraOff).name,
-                     caption: state.cameraOn ? "Stop Video" : "Start Video",
-                     tint: state.cameraOn ? .white : MeetingTheme.red, action: actions.toggleVideo)
+            // One camera control: the icon is the state, a click turns it off or back on, the arrow
+            // opens the four states (and the camera choice). The bar's cell says the words.
+            let cam = MeetingBarModel.cameraStateCell(state.cameraState)
+            withCaret(menus.video, label: "Who sees my camera") {
+                cell(symbol: cam.symbol, caption: state.cameraState.name,
+                     tint: state.cameraState == .off ? MeetingTheme.red : .white, on: cam.on,
+                     symbolBadge: cam.symbolBadge, help: cam.help, action: actions.toggleVideo)
+                    .accessibilityLabel(cam.spoken)
                     .disabled(!state.inMeeting)
             }
-        case .bubble:
-            // The bar's cell (its symbol, help and spoken label). With the
-            // camera off there is no bubble, so the cell keeps its place (the
-            // row never changes width) but is empty and out of the accessibility tree.
-            let cam = MeetingBarModel.cameraStateCell(state.cameraState)
-            menuCell(symbol: cam.symbol, caption: state.cameraState.name, on: cam.on, symbolBadge: cam.symbolBadge,
-                     enabled: state.cameraOn, entries: menus.cameraState)
-                .help(cam.help)
-                .accessibilityLabel(cam.spoken)
-                .opacity(state.cameraOn ? 1 : 0)
-                .accessibilityHidden(!state.cameraOn)
         case .security:
             menuCell(symbol: "checkmark.shield", caption: "Security", enabled: state.inMeeting,
                      entries: menus.security)
@@ -282,11 +274,7 @@ struct MeetingToolbarBar: View {
         switch id {
         case .mute: return nil
         case .video:
-            return .item(state.cameraOn ? "Stop Video" : "Start Video", enabled: state.inMeeting, actions.toggleVideo)
-        case .bubble:
-            guard state.cameraOn else { return nil }
-            return .submenu(MeetingBarModel.cameraStateCell(state.cameraState).spoken.replacingOccurrences(of: ". Menu", with: ""),
-                            menus.cameraState())
+            return .submenu("Camera: \(state.cameraState.name)", enabled: state.inMeeting, menus.video())
         case .security: return .submenu("Security", enabled: state.inMeeting, menus.security())
         case .people:
             return .item(state.waiting > 0 ? "Participants (\(state.waiting) waiting)" : "Participants",
@@ -320,11 +308,11 @@ struct MeetingToolbarBar: View {
     }
 
     private func cell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
-                      badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
+                      badge: String? = nil, symbolBadge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
                       help: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge,
-                  badgeFilled: badgeFilled, captionPill: captionPill)
+                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge)
         }
         .buttonStyle(.plain)
         .help(help ?? caption)

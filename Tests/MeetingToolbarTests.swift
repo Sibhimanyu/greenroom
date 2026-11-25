@@ -4,9 +4,8 @@ import CoreGraphics
 final class MeetingToolbarLayoutTests: XCTestCase {
     private typealias L = MeetingToolbarLayout
 
-    /// The specs without the bubble, which is its own story (see the last tests).
     private func specs(host: Bool) -> [ToolbarItemSpec] {
-        L.specs(showsSecurity: host).filter { $0.id != .bubble }
+        L.specs(showsSecurity: host)
     }
 
     private func fit(host: Bool = true, _ width: CGFloat) -> L.Fit {
@@ -121,13 +120,11 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         XCTAssertTrue(f.visible.contains(.people) && f.visible.contains(.chat) && f.visible.contains(.share))
     }
 
-    func testTheBubbleSitsAfterCameraAndGoesIntoMoreFirst() {
+    // R6, R17: one camera control; the second (bubble) cell is gone.
+    func testThereIsOneCameraControlAndNoBubbleCell() {
         let all = L.specs(showsSecurity: true)
-        XCTAssertEqual(all.prefix(3).map(\.id), [.mute, .video, .bubble])
-        XCTAssertEqual(all.prefix(3).map(\.group), [0, 0, 0])
-        let need = L.required(items: all, showsClock: true)
-        XCTAssertTrue(L.fit(specs: all, width: need).overflow.isEmpty)
-        XCTAssertEqual(L.fit(specs: all, width: need - 1).overflow, [.bubble])
+        XCTAssertEqual(all.prefix(2).map(\.id), [.mute, .video])
+        XCTAssertEqual(all.map(\.id.rawValue).filter { $0 == "bubble" }, [])
     }
 }
 

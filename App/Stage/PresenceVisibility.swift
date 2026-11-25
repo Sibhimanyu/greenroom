@@ -47,10 +47,9 @@ enum PresenceVisibility {
     static func decide(_ i: Inputs) -> Decision {
         // Nothing honest to show.
         guard i.live, i.layoutPlaceable, i.hasCapturedFrame, i.hasContentRect else { return .hide }
-        switch i.shareKind {
-        case .whiteboard, .nothing: return .hide      // no real screen to sit on
-        case .display, .app, .window: break
-        }
+        // The share kind decides only WHERE the bubble sits, never whether it shows: that is the
+        // camera state alone (Visibility.cameraOnMyScreen, fed in as `hiddenByPresenter`), so the
+        // menu's promise and the screen agree for a whiteboard and for Just my camera too.
         // Taken off this screen; the camera keeps its place in the picture.
         if !i.cameraOn || i.hiddenByPresenter || i.nativeZoomShareActive { return .hideKeepingPlacement }
         if (i.shareKind == .app || i.shareKind == .window) && !i.sharedWindowVisible { return .hideKeepingPlacement }

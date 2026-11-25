@@ -2283,6 +2283,8 @@ final class CoordinatorController: ObservableObject {
     let whiteboardModel = CameraWhiteboardModel()
     /// The whiteboard as the share target (Home's Screen panel).
     private let whiteboardWindow = WhiteboardWindowController()
+    /// The display holding the presented whiteboard (where the camera bubble sits during it).
+    var presentedWhiteboardScreen: NSScreen? { whiteboardWindow.screen }
     /// The whiteboard opened from the drawing tools: a plain window on the
     /// owner's screen; the share target and the Stage are never touched by it.
     private let localWhiteboardWindow = WhiteboardWindowController(mode: .local)

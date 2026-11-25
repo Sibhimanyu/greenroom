@@ -347,12 +347,14 @@ final class WhiteboardWindowController: NSObject, NSWindowDelegate {
     enum Mode { case presented, local }
 
     private var window: NSWindow?
+    private var share: WindowShareController?
     private let mode: Mode
     var onClosed: (() -> Void)?
 
     init(mode: Mode = .presented) { self.mode = mode }
 
     var isVisible: Bool { window?.isVisible ?? false }
+    var screen: NSScreen? { window?.screen }
 
     func show(board: CameraWhiteboardModel, onDone: @escaping () -> Void) {
         if window == nil {
@@ -369,7 +371,7 @@ final class WhiteboardWindowController: NSObject, NSWindowDelegate {
                 // An ordinary window: normal level, never full screen.
                 created.level = .normal
                 created.collectionBehavior.insert(.fullScreenNone)
-                WindowShareController.attach(to: created, dark: false)
+                share = WindowShareController.attach(to: created, dark: false)
             } else {
                 // The presented whiteboard: other apps record it per the switch; our own capture
                 // excludes the window through the app-wide filter (it is its own share target).
@@ -383,6 +385,9 @@ final class WhiteboardWindowController: NSObject, NSWindowDelegate {
             window = created
         }
         window?.makeKeyAndOrderFront(nil)
+        // Each opening starts visible to everyone (ShareableWindow.startsShown, R8.6); the owner's eye
+        // choice then holds while it is open. Set after ordering front: the registry needs a window number.
+        if mode == .local { share?.set(ShareableWindow.localWhiteboard.startsShown) }
     }
 
     func hide() {

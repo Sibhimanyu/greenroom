@@ -155,6 +155,15 @@ different order; this table is the authority.
 - R6.5 Only me keeps the camera open for the owner's bubble while the Stage leaves it out
   of everyone's picture (`Visibility.cameraMirrorOnly`, `cameraRuns`; `StageLayout.mirrorsCamera`).
   Only Off closes the camera. Needs a live check (item 10 below).
+- R6.6 (2026-11-25) One camera button on the bar and the Meeting window toolbar (the second, bubble cell is
+  gone). A click toggles the camera for everyone: any "on" state goes Off, and Off returns as the last "on"
+  state (Only everyone comes back as Only everyone); with nothing shared a click does not turn it off. A small
+  arrow opens the four states (the toolbar's also lists the cameras). For the running meeting only, never the
+  saved default. `MeetingBarModel.cameraClickTarget`, `lastOnState`, `MeetingBarLayout.camera`.
+- R6.7 (2026-11-25) Whether the owner's camera bubble shows is decided only by `Visibility.cameraOnMyScreen`
+  (fed to `PresenceVisibility` as `hiddenByPresenter`), for every share kind (Whole screen, A window,
+  Whiteboard, Just my camera). The share kind decides only where it sits: a whiteboard or Just my camera
+  uses the visible frame of the whiteboard's display, else the main display.
 - The Devices tab holds devices only: it has no "No camera" card.
 
 **R7. Other apps' 📡 and 👁.** (Q25, Q26)
@@ -241,6 +250,7 @@ different order; this table is the authority.
 - R17.3 The camera uses Zoom's icons: `video.fill` on, `video.slash` off. Only everyone: `video.fill` and the dashed
   look; Only me: `video.fill` with an `eye.slash` badge; Off: `video.slash`. Never `eye` alone, never `camera`.
   No camera connected is `video` with a `questionmark.circle.fill` badge.
+  The one camera button (R6.6) shows the current state with these icons; tooltip and VoiceOver use the state name.
 - R17.4 `App/UI/VisibilitySymbols.swift` is the only place these symbol names are spelled; a test greps
   `App/` and fails on strays (allowed: physical `display` glyph, Cues/Zoom/Debug word lists, the Screenroom
   Recording diagram node).

@@ -106,7 +106,7 @@ While a meeting is live, the controls are in exactly one place. Code:
 
 **Leave my windows alone**: the built-in layout that does not move the owner's windows and only places the camera. Replaces "None".
 
-**Everyone sees**: what the meeting gets: the shared display (or window, or whiteboard) with hidden windows left out. "Hidden" here means hidden from everyone, not from the owner. Shown everywhere in the app by the eye (open: everyone sees it; struck: only you); the eye means nothing else.
+**Everyone sees**: what the meeting gets: the shared display (or window, or whiteboard) with hidden windows left out. "Hidden" here means hidden from everyone, not from the owner. Shown everywhere in the app by the eye (open: everyone sees it; struck: only you); the eye means nothing else. Greenroom's own windows start hidden, except the Annotations whiteboard, which opens visible to everyone.
 
 **Starts hidden**: a window placed by a layout that does not appear on the owner's screen at Start (an app opens minimised). Shown by a dashed outline, never by the eye.
 

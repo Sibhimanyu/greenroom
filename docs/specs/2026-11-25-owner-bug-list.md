@@ -157,9 +157,15 @@ nothing the meeting sees changes. Share > Whiteboard is how to present it.
 - R8.3 Whiteboard "Back to screen" returns to the share that was there before.
 - R8.4 Closing the local whiteboard always turns drawing back on.
 - R8.5 The local whiteboard follows its 👁.
+- R8.6 Decision changed 2026-11-25: the Annotations whiteboard opens visible to
+  everyone. Its eye starts on (amber, "Everyone sees this"), so a Whole screen
+  share shows it at once. This is the one exception to "Greenroom's own windows
+  start hidden". The owner can turn the eye off and that holds while the window
+  is open; each new opening starts visible again. Opening it still never changes
+  what is shared. The rule lives in `ShareableWindow.startsShown`.
 
-Commits 02169d9, a7e3082 (R8.3 to R8.5). Tests: `WhiteboardOpenRulesTests`.
-Status: built.
+Commits 02169d9, a7e3082 (R8.3 to R8.5). Tests: `WhiteboardOpenRulesTests` (R8.6 included).
+Status: built (R8.6 added 2026-11-25).
 
 ## R9. One home for "What everyone sees" in the menus
 

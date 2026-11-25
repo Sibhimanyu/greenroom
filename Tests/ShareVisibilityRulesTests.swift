@@ -27,7 +27,7 @@ final class ShareVisibilityRulesTests: XCTestCase {
     }
 
     func testWhichWindowsOfferTheSwitch() {
-        let offered: [ShareableWindow] = [.main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView]
+        let offered: [ShareableWindow] = [.main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView, .localWhiteboard]
         for window in ShareableWindow.allCases {
             XCTAssertEqual(window.offersSwitch, offered.contains(window), "\(window)")
             XCTAssertEqual(window.exclusionReason == nil, window.offersSwitch, "\(window)")

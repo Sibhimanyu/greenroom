@@ -167,6 +167,87 @@ final class LayoutEditorRulesTests: XCTestCase {
         XCTAssertEqual(R.title(for: .hideOnMyScreen, isApp: true), "Open minimised")
         XCTAssertEqual(R.title(for: .remove, isApp: false), "Remove")
     }
+
+    // MARK: After an undo or redo the editor's own state follows the library
+
+    private let cameraID = UUID()
+    private func state(two: Bool, slot: LayoutSlot, selection: UUID? = nil) -> LayoutEditorRules.EditorState {
+        .init(showsTwo: two, activeSlot: slot, selection: selection)
+    }
+
+    // R9.1: undoing "Add Second Display" leaves no two-display version to show.
+    func testNoTwoDisplayVersionDropsBackToOneDisplay() {
+        let t = template(two: false)
+        let r = LayoutEditorRules.reconciled(state(two: true, slot: .main), in: t, cameraID: cameraID)
+        XCTAssertEqual(r, state(two: false, slot: .one))
+    }
+
+    // R9.1: redoing "Add Second Display" shows one display at a time on a valid canvas.
+    func testAShownTwoDisplayVersionNeverHasTheOneDisplaySlotActive() {
+        let t = template(two: true)
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .one), in: t, cameraID: cameraID),
+                       state(two: true, slot: .main))
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .second), in: t, cameraID: cameraID),
+                       state(two: true, slot: .second))
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .main), in: t, cameraID: cameraID),
+                       state(two: false, slot: .one))
+    }
+
+    // R9.1: a selection whose piece an undo took away is cleared; the camera and live pieces stay.
+    func testASelectionThatNoLongerExistsIsCleared() {
+        let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0, y: 0, w: 0.25, h: 0.5))
+        var t = template(two: false)
+        t.oneDisplay = [chat]
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .one, selection: chat.id), in: t, cameraID: cameraID).selection, chat.id)
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .one, selection: cameraID), in: t, cameraID: cameraID).selection, cameraID)
+        XCTAssertNil(LayoutEditorRules.reconciled(state(two: false, slot: .one, selection: UUID()), in: t, cameraID: cameraID).selection)
+    }
+
+    // R9.1: no active layout, nothing to show.
+    func testNoActiveLayoutResetsTheEditor() {
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .second, selection: UUID()), in: nil, cameraID: cameraID),
+                       state(two: false, slot: .one))
+    }
+
+    // R9.7: the camera's spoken note follows the camera state, never a fixed "moves for everyone".
+    func testTheCameraNoteFollowsTheCameraState() {
+        XCTAssertEqual(LayoutEditorRules.cameraMoveNote(everyoneSees: true, onMyScreen: true), "It moves for everyone.")
+        XCTAssertEqual(LayoutEditorRules.cameraMoveNote(everyoneSees: true, onMyScreen: false),
+                       "It moves for everyone, but is hidden on your screen.")
+        XCTAssertEqual(LayoutEditorRules.cameraMoveNote(everyoneSees: false, onMyScreen: true),
+                       "Only you see it, so it does not move for everyone.")
+        XCTAssertEqual(LayoutEditorRules.cameraMoveNote(everyoneSees: false, onMyScreen: false),
+                       "The camera is off, so nobody sees it.")
+        for state in CameraState.allCases where state != .everyoneAndMe && state != .onlyEveryone {
+            XCTAssertFalse(LayoutEditorRules.cameraMoveNote(everyoneSees: state.everyoneSees, onMyScreen: state.iSee)
+                            .contains("moves for everyone."), "\(state)")
+        }
+    }
+
+    // R9.7, R2.2: the "everyone" and "my screen" actions are offered only where the badge is a switch
+    // under this share, as the right-click menu does.
+    func testTheBadgeActionsAreOfferedOnlyWhereTheBadgesCanChange() {
+        let browser = LayoutPiece(kind: .app(AppPiece(bundleID: Visibility.builtInBrowserID)), rect: chat.rect)
+        let safari = LayoutPiece(kind: .app(AppPiece(bundleID: "com.apple.Safari")), rect: chat.rect)
+        XCTAssertFalse(LayoutEditorRules.offersEveryoneAction(piece: browser, target: .wholeScreen))
+        XCTAssertTrue(LayoutEditorRules.offersEveryoneAction(piece: safari, target: .wholeScreen))
+        XCTAssertFalse(LayoutEditorRules.offersEveryoneAction(piece: safari, target: .justMe), "fixed off under Just my camera")
+        XCTAssertFalse(LayoutEditorRules.offersEveryoneAction(piece: safari, target: .window(bundleID: "com.apple.Notes")))
+        XCTAssertFalse(LayoutEditorRules.offersMyScreenAction(piece: chat), "the Chat is always on your screen")
+        XCTAssertTrue(LayoutEditorRules.offersMyScreenAction(piece: safari))
+    }
+
+    private var chat: LayoutPiece { LayoutPiece(kind: .chat, rect: UnitRect(x: 0, y: 0, w: 0.25, h: 0.5)) }
+
+    // R11.3: the camera preview runs only while the camera piece is selected or in Preview: Everyone,
+    // and never when the Layouts tab is not on screen.
+    func testTheCameraPreviewRunsOnlyWhereItIsLooked() {
+        typealias R = LayoutEditorRules
+        XCTAssertFalse(R.runsCameraPreview(cameraSelected: false, previewEveryone: false, tabShown: true))
+        XCTAssertTrue(R.runsCameraPreview(cameraSelected: true, previewEveryone: false, tabShown: true))
+        XCTAssertTrue(R.runsCameraPreview(cameraSelected: false, previewEveryone: true, tabShown: true))
+        XCTAssertFalse(R.runsCameraPreview(cameraSelected: true, previewEveryone: true, tabShown: false))
+    }
 }
 
 /// A Meeting window that fills its display is an ordinary piece the owner can resize.

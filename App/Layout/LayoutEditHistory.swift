@@ -15,6 +15,21 @@ enum LayoutEditHistory {
         var coalesceKey: String?
     }
 
+    /// Edits that live outside the library (the camera state and the camera look), each one undoable step.
+    enum SettingEdit: CaseIterable {
+        case cameraState, background, backgroundPicture, removal, mirror
+
+        var name: String {
+            switch self {
+            case .cameraState: return "Change Camera State"
+            case .background: return "Change Camera Background"
+            case .backgroundPicture: return "Change Background Picture"
+            case .removal: return "Change Background Removal"
+            case .mirror: return "Change Mirror"
+            }
+        }
+    }
+
     static func describe(from old: LayoutLibrary, to new: LayoutLibrary,
                          pieceName: (LayoutPiece) -> String) -> Step? {
         if new.templates.count > old.templates.count { return Step(name: "Add Layout", coalesceKey: nil) }
@@ -29,17 +44,19 @@ enum LayoutEditHistory {
         }
         if old.templates[i].camera != new.templates[i].camera {
             let was = old.templates[i].camera ?? LayoutCamera(), now = new.templates[i].camera ?? LayoutCamera()
-            let what = was.shape != now.shape ? "Change Camera Shape"
-                : (was.widthFraction != now.widthFraction || was.cutoutHeightFraction != now.cutoutHeightFraction
-                   ? "Resize Camera" : "Move Camera")
-            return Step(name: what, coalesceKey: nil)
+            if was.shape != now.shape { return Step(name: "Change Camera Shape", coalesceKey: nil) }
+            if was.widthFraction != now.widthFraction || was.cutoutHeightFraction != now.cutoutHeightFraction {
+                // The Size slider writes on every tick: one drag is one step.
+                return Step(name: "Resize Camera", coalesceKey: "camera:size:\(new.templates[i].id)")
+            }
+            return Step(name: "Move Camera", coalesceKey: nil)
         }
         let before = placed(old.templates[i]), after = placed(new.templates[i])
         for (id, now) in after {
             guard let was = before[id] else { return Step(name: "Add \(pieceName(now.piece))", coalesceKey: nil) }
             if was.slot != now.slot {
-                let where_ = now.slot == .second ? "Second" : "Main"
-                return Step(name: "Move \(pieceName(now.piece)) to \(where_) Display", coalesceKey: nil)
+                let display = now.slot == .second ? "Second" : "Main"
+                return Step(name: "Move \(pieceName(now.piece)) to \(display) Display", coalesceKey: nil)
             }
             if was.piece.rect != now.piece.rect {
                 let resized = was.piece.rect.w != now.piece.rect.w || was.piece.rect.h != now.piece.rect.h
@@ -76,11 +93,7 @@ enum LayoutEditHistory {
 
     /// Every piece of a layout by id, with the display it is on.
     private static func placed(_ t: LayoutTemplate) -> [UUID: Placed] {
-        var all: [UUID: Placed] = [:]
-        for slot in [LayoutSlot.one, .main, .second] {
-            for piece in t.pieces(for: slot) { all[piece.id] = (slot, piece) }
-        }
-        return all
+        Dictionary(t.placedPieces.map { ($0.piece.id, (slot: $0.slot, piece: $0.piece)) }, uniquingKeysWith: { $1 })
     }
 
     /// Typing makes a stream of edits; they are one step while they keep coming.
@@ -93,9 +106,14 @@ enum LayoutEditHistory {
     /// `from` the one being left, `current` what is there now.
     static func restoring(_ target: LayoutLibrary, undoing from: LayoutLibrary, onto current: LayoutLibrary) -> LayoutLibrary {
         var result = target
-        // A step that did not choose a layout leaves the choice alone, if it still exists.
-        if target.activeID == from.activeID, let keep = current.activeID, target.template(id: keep) != nil {
-            result.activeID = keep
+        // A step that did not choose a layout leaves the choice alone: the one made since
+        // (None included), if it still exists.
+        if target.activeID == from.activeID {
+            if let keep = current.activeID {
+                if target.template(id: keep) != nil { result.activeID = keep }
+            } else {
+                result.activeID = nil
+            }
         }
         return result
     }

@@ -325,7 +325,7 @@ private struct Lossy<T: Decodable>: Decodable {
 
 /// Where a set of pieces lives: the only display, or the main / second one of
 /// a two-display version.
-enum LayoutSlot: String, Codable, Hashable {
+enum LayoutSlot: String, Codable, Hashable, CaseIterable {
     case one, main, second
 }
 
@@ -418,6 +418,11 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
         case .main: twoDisplays?.main = pieces
         case .second: twoDisplays?.second = pieces
         }
+    }
+
+    /// Every piece of the layout with the display it sits on (the one place that walks the slots).
+    var placedPieces: [(slot: LayoutSlot, piece: LayoutPiece)] {
+        LayoutSlot.allCases.flatMap { slot in pieces(for: slot).map { (slot: slot, piece: $0) } }
     }
 
     /// Every piece of the version the slot belongs to: one display, or both of

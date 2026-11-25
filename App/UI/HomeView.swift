@@ -13,13 +13,13 @@
 //  session line sits under both. The New / Join / Record switcher lives in
 //  the window toolbar (ContentView).
 //
-//  The card draws the look from the Webcam page's own numbers
+//  The card draws the look from the working copy's own numbers
 //  (`WebcamShapePreview`), so the camera is NOT on just because Home is
-//  visible. "Show live" asks for the same preview the Webcam page and the
+//  visible. "Show live" asks for the same preview Settings -> Layouts and the
 //  Record view use (`startShapePreview`) and it is turned off again when
 //  Home goes away or a start begins.
 //
-//  Nothing here owns logic. Each chip writes the setting the Webcam page
+//  Nothing here owns logic. Each chip writes the working-copy setting Layouts
 //  writes and calls the same `requestShapeApply`; the button calls `start()`.
 //
 import AVFoundation
@@ -398,7 +398,8 @@ struct HomeView: View {
                 aspect: layout.cameraShape.cropsToSquare ? 1 : 16.0 / 9.0,
                 content: cropped ? coordinator.shapePreview.contentRect : nil,
                 onStep: { coordinator.previewPlacementStep($0) },
-                onCommit: { coordinator.commitPreviewPlacement($0, source: .home) })
+                onCommit: { coordinator.commitPreviewPlacement($0, source: .home) },
+                everyoneSees: !coordinator.cameraIsOff, onMyScreen: coordinator.cameraState.iSee)
         }
     }
 
@@ -498,7 +499,7 @@ struct HomeView: View {
                                         : "Widens the window and turns the camera on to show the picture people will see")
     }
 
-    /// The open card starts the same live preview the Webcam page and the
+    /// The open card starts the same live preview Settings -> Layouts and the
     /// Record view use (`startShapePreview`): on Home appearing with the card
     /// open, or on pressing Preview. A camera that cannot start shows its
     /// reason in the card instead.
@@ -549,7 +550,7 @@ struct HomeView: View {
     }
 
     /// Off when Home goes away or a start begins. Only if this view turned it
-    /// on: the Webcam page shares the one preview and owns its own switch.
+    /// on: Settings -> Layouts shares the one preview and holds its own claim on it.
     private func stopLive() {
         guard showLive else { return }
         showLive = false
@@ -755,7 +756,7 @@ struct HomeView: View {
     private var lookPicker: some View {
         HomeTilePanel(
             title: "Look", summary: "How you appear over what you share.", value: coordinator.webcamShape.label,
-            moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openWebcamSettings() }
+            moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openCameraSettings() }
         ) {
             HomeTileChoiceRow(
                 choices: WebcamShape.allCases.map {
@@ -771,7 +772,7 @@ struct HomeView: View {
         }
     }
 
-    /// Share target: the Webcam page's "Behind you", as a panel (HomeScreenPanel):
+    /// Share target: what is shared ("Everyone sees this" in Layouts), as a panel (HomeScreenPanel):
     /// four choice tiles, displays, windows by app, slide-show follow.
     private var shareChip: some View {
         Button { shareOpen.toggle() } label: {
@@ -783,7 +784,7 @@ struct HomeView: View {
             HomeScreenPanel(coordinator: coordinator, displays: displays, windows: windows,
                             gone: shareGone, permissionMissing: problem("screen"), value: shareValue,
                             cameraCount: cameras.count,
-                            more: { shareOpen = false; openWebcamSettings() },
+                            more: { shareOpen = false; openCameraSettings() },
                             close: { shareOpen = false })
         }
         // The panel explains itself, so no hover card (see lookControl).
@@ -797,7 +798,7 @@ struct HomeView: View {
     /// This meeting only (the camera state's live change); the saved default is untouched.
     private func turnCameraOn() { coordinator.turnCameraOnFromHome() }
 
-    /// Camera: the same list and the same rule as the Webcam page's cards.
+    /// Camera: the same list and the same rule as Settings -> Devices' cards.
     /// The tile's icon: no camera connected, else the camera state's own (R17.3).
     private var chipMeaning: VisibilitySymbol {
         cameras.isEmpty && !coordinator.cameraIsOff ? .noCameraDevice : .camera(coordinator.cameraState)
@@ -826,7 +827,7 @@ struct HomeView: View {
         .accessibilityValue(name)
     }
 
-    /// Microphone: system default or one pinned device, as the Webcam page.
+    /// Microphone: system default or one pinned device, as Settings -> Devices.
     /// The level meter appears only while the microphone is already in use
     /// (a live session); Home never opens it on its own.
     private var micChip: some View {
@@ -898,7 +899,7 @@ struct HomeView: View {
         .accessibilityValue(coordinator.layoutChoiceName)
     }
 
-    /// Record: whether recording starts with the meeting (Settings → Webcam's
+    /// Record: whether recording starts with the meeting (Settings → Devices'
     /// "Record automatically with the meeting"). Lit green while it does, so a
     /// recording that starts by itself is never a surprise.
     private var recordControl: some View {
@@ -945,7 +946,7 @@ struct HomeView: View {
                 })
         }
         // The panel explains itself, so no hover card (see lookControl).
-        .help("More: every other setting, webcam, layouts, shortcuts, Zoom, YouTube and more.")
+        .help("More: every other setting, camera, layouts, shortcuts, Zoom, YouTube and more.")
         .accessibilityLabel("More settings")
     }
 
@@ -1404,7 +1405,7 @@ struct HomeView: View {
     }
 
     /// The camera look lives in Layouts now: the camera piece, selected.
-    private func openWebcamSettings() { openSettingsTab(SettingsTabs.cameraLookID) }
+    private func openCameraSettings() { openSettingsTab(SettingsTabs.cameraLookID) }
 
     /// Settings on the named tab (`SettingsTabs`), e.g. "devices".
     private func openSettingsTab(_ tab: String) {

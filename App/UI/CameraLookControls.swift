@@ -15,21 +15,24 @@ struct CameraLookModel {
     var background: Binding<CameraBackground>
     var backgroundImage: Binding<String>
     var removal: Binding<BackgroundRemoval>
+    var mirror: Binding<Bool>
     var chooseImage: () -> Void
 }
 
-/// "Camera look", folded: its one-line summary and "Same in every layout" show closed. Dependent
-/// rows fold away with the shape (the house rule), never greyed.
-struct CameraLookGroup: View {
-    let look: CameraLookModel
-    let shape: WebcamShape
+/// A folded group in the inspector: a chevron, a title, a note and, while closed, a one-line
+/// summary. It opens and closes with `Collapse`, so Reduce Motion makes it instant.
+struct InspectorFold<Content: View>: View {
+    let title: String
+    var note: String?
+    var summary: String?
+    var hint: String
     @Binding var isOpen: Bool
-    @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
+    @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.snappy(duration: 0.25)) { isOpen.toggle() }
+                Collapse.animate { isOpen.toggle() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right")
@@ -37,15 +40,16 @@ struct CameraLookGroup: View {
                         .foregroundStyle(.secondary)
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                         .frame(width: 12)
-                    Text("Camera look")
+                    Text(title)
                         .font(.callout.weight(.semibold))
-                    Text(CameraLookRules.sameInEveryLayout)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let note {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer(minLength: 8)
-                    if !isOpen {
-                        Text(CameraLookRules.summary(shape: shape, backgroundName: look.background.wrappedValue.rawValue,
-                                                     removal: look.removal.wrappedValue, mirror: mirror))
+                    if !isOpen, let summary {
+                        Text(summary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -55,27 +59,44 @@ struct CameraLookGroup: View {
             }
             .buttonStyle(.plain)
             .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
-            .accessibilityHint("The background, removal and mirror are the same in every layout.")
+            .accessibilityHint(hint)
 
             Collapsible(hidden: !isOpen) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Collapsible(hidden: !CameraLookRules.showsBackground(shape: shape)) {
-                        CameraBackgroundControl(mode: look.background.animatedCollapse(), image: look.backgroundImage,
-                                                choose: look.chooseImage)
-                    }
-                    Collapsible(hidden: !CameraLookRules.showsRemoval(shape: shape)) {
-                        GreenroomSegmented("Background", selection: look.removal,
-                                           options: [BackgroundRemoval.automatic, .greenScreen]) { option in
-                            switch option {
-                            case .automatic: Label("Remove automatically", systemImage: "wand.and.stars")
-                            case .greenScreen: Label("Green screen", systemImage: "rectangle.fill")
-                            }
-                        }
-                        .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
-                    }
-                    MirrorMyCameraRow()
+                content().padding(.top, 10)
+            }
+        }
+    }
+}
+
+/// "Camera look", folded: its one-line summary and "Same in every layout" show closed. Dependent
+/// rows fold away with the shape (the house rule), never greyed.
+struct CameraLookGroup: View {
+    let look: CameraLookModel
+    let shape: WebcamShape
+    @Binding var isOpen: Bool
+
+    var body: some View {
+        InspectorFold(title: "Camera look", note: CameraLookRules.sameInEveryLayout,
+                      summary: CameraLookRules.summary(shape: shape, backgroundName: look.background.wrappedValue.rawValue,
+                                                       removal: look.removal.wrappedValue, mirror: look.mirror.wrappedValue),
+                      hint: "The background, removal and mirror are the same in every layout.",
+                      isOpen: $isOpen) {
+            VStack(alignment: .leading, spacing: 10) {
+                Collapsible(hidden: !CameraLookRules.showsBackground(shape: shape)) {
+                    CameraBackgroundControl(mode: look.background.animatedCollapse(), image: look.backgroundImage,
+                                            choose: look.chooseImage)
                 }
-                .padding(.top, 10)
+                Collapsible(hidden: !CameraLookRules.showsRemoval(shape: shape)) {
+                    GreenroomSegmented("Background", selection: look.removal,
+                                       options: [BackgroundRemoval.automatic, .greenScreen]) { option in
+                        switch option {
+                        case .automatic: Label("Remove automatically", systemImage: "wand.and.stars")
+                        case .greenScreen: Label("Green screen", systemImage: "rectangle.fill")
+                        }
+                    }
+                    .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
+                }
+                MirrorMyCameraRow(mirror: look.mirror)
             }
         }
     }
@@ -197,21 +218,29 @@ private struct BackgroundThumb: View {
 
 /// "Mirror my camera": only the presenter's own camera bubble follows it.
 /// The picture in the meeting, the recording and the previews on this page
-/// and on Home (all the composite) are never mirrored. Off (and greyed) while
-/// other apps can record Greenroom's windows: they would capture a reversed picture.
+/// and on Home (all the composite) are never mirrored. It can be changed only
+/// while nobody can record the bubble (other apps would capture a reversed
+/// picture), so while they can the toggle folds away and a note says why.
 struct MirrorMyCameraRow: View {
-    @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
+    @Binding var mirror: Bool
     @AppStorage(PresenceRecorderRules.key) private var visibleToRecorders = true
 
     var body: some View {
+        let enabled = PresenceRecorderRules.mirrorSettingEnabled(visibleToRecorders: visibleToRecorders)
         VStack(alignment: .leading, spacing: 2) {
-            Toggle("Mirror my camera", isOn: $mirror)
-                .disabled(!PresenceRecorderRules.mirrorSettingEnabled(visibleToRecorders: visibleToRecorders))
-            Text(visibleToRecorders
-                 ? PresenceRecorderRules.mirrorDisabledNote
-                 : "Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Collapsible(hidden: !enabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Mirror my camera", isOn: $mirror)
+                    Text("Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Collapsible(hidden: enabled) {
+                Text(PresenceRecorderRules.mirrorDisabledNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

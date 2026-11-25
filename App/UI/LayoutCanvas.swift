@@ -85,6 +85,10 @@ struct LayoutCameraModel {
     var setState: (CameraState) -> Void = { _ in }
     /// The camera look (background, removal, mirror), the same in every layout. Nil: not shown.
     var look: CameraLookModel?
+    /// The live picture in the inspector. Nil: not shown (the off-screen render).
+    var preview: CameraPreviewModel?
+    /// Asks for the camera preview to run or stop (R11.3).
+    var previewRuns: (Bool) -> Void = { _ in }
 
     /// The camera is selected in the editor by this id, in the same `selection`
     /// the pieces use, so selecting one deselects the other. Never a piece's id.
@@ -432,8 +436,8 @@ struct LayoutCanvas: View {
                 nudge: { nudge(piece.id, cols: $0, rows: $1) },
                 grow: { grow(piece.id, cols: $0, rows: $1) },
                 remove: { remove(piece.id) },
-                flipEveryone: { flip(.everyone, piece) },
-                flipMine: { flip(.me, piece) },
+                flipEveryone: LayoutEditorRules.offersEveryoneAction(piece: piece, target: share) ? { flip(.everyone, piece) } : nil,
+                flipMine: LayoutEditorRules.offersMyScreenAction(piece: piece) ? { flip(.me, piece) } : nil,
                 sendAcross: crossing == nil ? nil : { crossing?.send(piece.id) }))
     }
 
@@ -657,6 +661,7 @@ struct LayoutCanvas: View {
                 content: LayoutCameraRules.content(displayAspect: display.aspect),
                 space: display.cameraSpace,
                 onStep: camera.onStep, onCommit: camera.onCommit,
+                everyoneSees: camera.everyoneSees, onMyScreen: !camera.cameraOff,
                 selected: selection == LayoutCameraModel.selectionID,
                 onSelect: { selection = LayoutCameraModel.selectionID; takeKeyboard(); onActivate() },
                 fill: { size in AnyView(CameraStandIn(shape: camera.shape, meaning: .camera(camera.state), off: camera.cameraOff && !previewEveryone,

@@ -864,7 +864,7 @@ final class CoordinatorController: ObservableObject {
         !Visibility.cameraEveryoneSees(state: cameraState, target: Visibility.Target(shareTarget)).isOn
     }
 
-    /// The Webcam page's picture is in use by a session - a meeting, or a
+    /// The preview's picture is in use by a session - a meeting, or a
     /// recording made from Home's Record mode. The Settings preview then
     /// mirrors that session's picture instead of starting one of its own.
     var sceneInUse: Bool { phase.sceneInUse }
@@ -1016,18 +1016,11 @@ final class CoordinatorController: ObservableObject {
     /// survives Start, for that meeting only, and Stop or a layout change drops it.
     private var liveShareChosen = false
 
-    /// The Webcam tab (until P8) and Settings -> Layouts edit the saved layout: write the working
-    /// copy of the camera piece into the active layout. Home, the bar and the meeting never call this.
+    /// Settings -> Layouts (a camera drag) edits the saved layout: write the working copy of the
+    /// camera piece into the active layout. Home, the bar and the meeting never call this.
     func saveCameraToActiveLayout() {
         var next = layoutLibrary
         if next.updateActive(camera: currentLayoutCamera, share: nil) { layoutLibrary = next }
-    }
-
-    /// The same for what's shared. Not while a meeting runs: the picker then changes only that meeting.
-    func saveShareToActiveLayout() {
-        guard !layoutChoiceLocked else { return }
-        var next = layoutLibrary
-        if next.updateActive(camera: nil, share: shareTarget) { layoutLibrary = next }
     }
 
     func adoptLayoutPieces(_ plan: LayoutPieceAdoption.Plan?) {
@@ -1051,6 +1044,8 @@ final class CoordinatorController: ObservableObject {
         }
         for (key, value) in saved { defaults.set(value, forKey: key) }
         refreshCaptureDisplay()
+        // The picture (Home's live preview, the bubble) follows the working copy at once.
+        if plan.refreshesPicture { requestShapeApply(rebuild: plan.share != nil) }
     }
 
     @Published var webcamShape: WebcamShape {
@@ -1081,13 +1076,8 @@ final class CoordinatorController: ObservableObject {
             // touches nothing.
             // The camera and share the layout saves come into the live settings only when
             // the layout itself changes them (a pick, an edit), never from a live change.
-            if layoutChoiceLocked {
-                if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id) {
-                    adoptLayoutPieces(LayoutPieceAdoption.plan(old: running, new: edited).map { LayoutPieceAdoption.Plan(camera: $0.camera, share: nil) })
-                }
-            } else {
-                adoptLayoutPieces(LayoutPieceAdoption.plan(old: oldValue.active, new: layoutLibrary.active))
-            }
+            adoptLayoutPieces(LayoutPieceAdoption.forLibraryEdit(old: oldValue, new: layoutLibrary,
+                                                                 locked: layoutChoiceLocked, running: sessionTemplate))
             if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id), edited != running {
                 sessionTemplate = edited
                 scheduleLiveLayoutApply()
@@ -2875,7 +2865,7 @@ final class CoordinatorController: ObservableObject {
     /// A take is starting or finishing, so the bar's Stop waits.
     @Published private(set) var takeBusy = false
     /// A Record start wants the live picture, whether or not Settings does.
-    /// Held apart from `shapePreviewOn` so closing the Webcam tab does not
+    /// Held apart from `shapePreviewOn` so closing Settings -> Layouts does not
     /// blank the Record view, and the other way round.
     private var studioPreviewOn = false
 
@@ -3293,7 +3283,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The chosen main-pane app's user-facing name, for buttons and logs.
-    // MARK: Live shape preview (Settings -> Webcam)
+    // MARK: Live shape preview (Home, Settings -> Layouts)
     // The shape picker shows the REAL picture - actual screen, actual camera,
     // the look as chosen - from the same compositor a class uses. Idle, the
     // preview runs the compositor with no meeting for as long as the page is
@@ -3314,7 +3304,7 @@ final class CoordinatorController: ObservableObject {
     /// The last real picture shape Home sized its card from. Plain, not
     /// published: it only seeds a recreated window at the right width.
     var lastPictureAspect: CGFloat?
-    /// Who is looking at the preview. Home's card and Settings → Webcam share
+    /// Who is looking at the preview. Home's card and Settings → Layouts share
     /// one picture; it stops only when the last of them leaves, so closing
     /// Settings no longer blanks Home's card (and the other way round).
     /// Each Home carries its own id: SwiftUI can bring a new Home up before
@@ -3322,8 +3312,13 @@ final class CoordinatorController: ObservableObject {
     /// turned off the new one's camera.
     enum PreviewViewer: Hashable, CustomStringConvertible {
         case home(UUID)
+        /// Settings -> Layouts, while the camera piece is selected or Preview: Everyone is on (R11.3).
+        case layoutsCamera
         var description: String {
-            switch self { case .home: return "home" }
+            switch self {
+            case .home: return "home"
+            case .layoutsCamera: return "layouts camera"
+            }
         }
     }
     private var previewViewers: Set<PreviewViewer> = []
@@ -3339,6 +3334,11 @@ final class CoordinatorController: ObservableObject {
     /// the camera alone.
     /// Whether this viewer's claim on the preview is held, for Home's check.
     func isShowingPreview(for viewer: PreviewViewer) -> Bool { previewViewers.contains(viewer) }
+
+    /// The Layouts tab's claim on the picture: held only while someone looks at the camera.
+    func setLayoutsCameraPreview(_ on: Bool) {
+        if on { startShapePreview(for: .layoutsCamera) } else { stopShapePreview(for: .layoutsCamera) }
+    }
 
     func startShapePreview(for viewer: PreviewViewer) {
         let wasOn = shapePreviewOn
@@ -3435,7 +3435,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// Applies the current shape, placement, share and cameras to the picture,
-    /// latest wins. Every control on the Webcam tab calls this; a burst of
+    /// latest wins. Every camera control (Layouts, Home, the bubble) calls this; a burst of
     /// changes (a slider, several clicks) cancels what it supersedes instead
     /// of queuing. Works the same live in a class as in the idle preview.
     /// `rebuild` is kept for the callers that changed what is shared; the

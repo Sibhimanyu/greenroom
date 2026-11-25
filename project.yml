@@ -295,6 +295,7 @@ targets:
       - path: App/Layout/LayoutDisplayCrossing.swift
       - path: App/Layout/LayoutEditorRules.swift
       - path: App/Layout/LayoutEditHistory.swift
+      - path: App/UI/LayoutEditRecorder.swift
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift
       - path: App/Stage/StageLayout.swift

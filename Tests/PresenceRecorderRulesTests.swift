@@ -18,6 +18,22 @@ final class PresenceRecorderRulesTests: XCTestCase {
         XCTAssertEqual(R.WindowKind.allCases.count, 10)
     }
 
+    // R6.4, R6.5: Only me is a mirror for the owner alone. Other apps' recorders (QuickTime, Loom,
+    // a native Zoom share) must never record the live camera bubble, whatever the switch says.
+    func testOnlyMeNeverLetsOtherAppsRecordTheCameraBubble() {
+        XCTAssertEqual(R.sharing(for: .cameraBubble, visibleToRecorders: true, cameraState: .onlyMe), .none)
+        XCTAssertEqual(R.sharing(for: .cameraBubble, visibleToRecorders: false, cameraState: .onlyMe), .none)
+        for state in CameraState.allCases where state != .onlyMe {
+            XCTAssertEqual(R.sharing(for: .cameraBubble, visibleToRecorders: true, cameraState: state), .readOnly, "\(state)")
+        }
+    }
+
+    // R6.4: Only me leaves the other windows (menus, whiteboard) as the switch has them.
+    func testOnlyMeLeavesOtherWindowsToTheSwitch() {
+        XCTAssertEqual(R.sharing(for: .whiteboard, visibleToRecorders: true, cameraState: .onlyMe), .readOnly)
+        XCTAssertEqual(R.sharing(for: .cameraBubbleStrip, visibleToRecorders: true, cameraState: .onlyMe), .readOnly)
+    }
+
     func testDefaultIsOn() {
         XCTAssertTrue(R.visibleToRecorders(stored: nil))
         XCTAssertFalse(R.visibleToRecorders(stored: false))

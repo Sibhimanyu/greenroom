@@ -147,10 +147,117 @@ enum CameraLookRules {
     }
 }
 
-/// Who is changing the camera piece or what is shared. Only the Layouts tab (and the Webcam
-/// tab, gone in P8) write the saved layout; everything else changes the running meeting.
+/// A place the camera can be put with one tap.
+enum PlacementSpot: Hashable {
+    case topLeft, topRight, bottomLeft, bottom, bottomRight
+    var isRight: Bool { self == .topRight || self == .bottomRight }
+    var isBottom: Bool { self == .bottomLeft || self == .bottom || self == .bottomRight }
+    var label: String {
+        switch self {
+        case .topLeft: return "Top left"
+        case .topRight: return "Top right"
+        case .bottomLeft: return "Bottom left"
+        case .bottom: return "Bottom centre"
+        case .bottomRight: return "Bottom right"
+        }
+    }
+    /// Where the dot sits on the little screen, 0...1.
+    var point: CGPoint {
+        switch self {
+        case .topLeft: return CGPoint(x: 0, y: 0)
+        case .topRight: return CGPoint(x: 1, y: 0)
+        case .bottomLeft: return CGPoint(x: 0, y: 1)
+        case .bottom: return CGPoint(x: 0.5, y: 1)
+        case .bottomRight: return CGPoint(x: 1, y: 1)
+        }
+    }
+}
+
+/// The size presets, the corner picker and Reset in the camera piece's inspector (R11): the
+/// Webcam tab's quick controls, now on the layout's saved camera. Pure.
+enum CameraPlacementRules {
+    /// A camera is 16:9 until the shape crops it square.
+    private static let cameraAspect = 16.0 / 9.0
+
+    /// Presenter rebuilds the whole scene rather than placing a source: nothing to size or place.
+    static func isAdjustable(shape: WebcamShape) -> Bool { shape != .presenterLarge }
+
+    /// Small, Medium, Large. A bubble's share of the canvas width; a cutout's share of its height.
+    static func sizePresets(for shape: WebcamShape) -> [Double] {
+        shape == .cutout ? [0.36, 0.5, 0.7] : [0.16, 0.24, 0.34]
+    }
+
+    static func spots(for shape: WebcamShape) -> [PlacementSpot] {
+        shape == .cutout ? [.bottomLeft, .bottom, .bottomRight] : [.topLeft, .topRight, .bottomLeft, .bottomRight]
+    }
+
+    /// The camera put at a spot, with the margins a fresh install uses. `canvasAspect` is the
+    /// canvas's width over height.
+    static func placing(_ camera: LayoutCamera, at spot: PlacementSpot, canvasAspect: Double) -> LayoutCamera {
+        let shipped = LayoutCamera()
+        var next = camera
+        if camera.shape == .cutout {
+            let width = camera.cutoutHeightFraction * cameraAspect / canvasAspect   // a share of the canvas width
+            switch spot {
+            case .bottomLeft: next.cutoutRightInset = 1 - width - shipped.cutoutRightInset
+            case .bottom: next.cutoutRightInset = (1 - width) / 2
+            default: next.cutoutRightInset = shipped.cutoutRightInset
+            }
+            next.cutoutRightInset = max(0, next.cutoutRightInset)
+        } else {
+            let aspect = camera.shape.cropsToSquare ? 1 : cameraAspect
+            let height = camera.widthFraction * canvasAspect / aspect                // a share of the canvas height
+            next.rightInset = spot.isRight ? shipped.rightInset : 1 - camera.widthFraction - shipped.rightInset
+            next.bottomInset = spot.isBottom ? shipped.bottomInset : 1 - height - shipped.bottomInset
+            next.rightInset = max(0, next.rightInset)
+            next.bottomInset = max(0, next.bottomInset)
+        }
+        return next
+    }
+
+    /// The spot the camera is on, or nil when it has been dragged in between.
+    static func currentSpot(of camera: LayoutCamera, canvasAspect: Double) -> PlacementSpot? {
+        spots(for: camera.shape).first { spot in
+            let goal = placing(camera, at: spot, canvasAspect: canvasAspect)
+            return camera.shape == .cutout
+                ? abs(goal.cutoutRightInset - camera.cutoutRightInset) < 0.01
+                : abs(goal.rightInset - camera.rightInset) < 0.01 && abs(goal.bottomInset - camera.bottomInset) < 0.01
+        }
+    }
+
+    /// A preset size. The side it was hugging is kept: a bigger bubble in the left corner stays there.
+    static func sizing(_ camera: LayoutCamera, to size: Double, canvasAspect: Double) -> LayoutCamera {
+        let spot = currentSpot(of: camera, canvasAspect: canvasAspect)
+        var next = camera
+        if camera.shape == .cutout { next.cutoutHeightFraction = size } else { next.widthFraction = size }
+        guard let spot else { return next }
+        return placing(next, at: spot, canvasAspect: canvasAspect)
+    }
+
+    /// Is the size and spot of the shape on screen still where the app shipped it?
+    static func isAtDefault(_ camera: LayoutCamera) -> Bool { reset(camera) == camera }
+
+    /// Back to the shipped size and spot of the shape on screen. The shape is kept; so are the
+    /// numbers of the shapes not on screen.
+    static func reset(_ camera: LayoutCamera) -> LayoutCamera {
+        let shipped = LayoutCamera()
+        var next = camera
+        if camera.shape == .cutout {
+            next.cutoutHeightFraction = shipped.cutoutHeightFraction
+            next.cutoutRightInset = shipped.cutoutRightInset
+        } else {
+            next.widthFraction = shipped.widthFraction
+            next.rightInset = shipped.rightInset
+            next.bottomInset = shipped.bottomInset
+        }
+        return next
+    }
+}
+
+/// Who is committing a camera drag. Only Settings -> Layouts writes the saved layout; Home's
+/// preview (like the bar and the meeting, which never commit through here) changes the running meeting.
 enum LayoutEditSource: Equatable, CaseIterable {
-    case settingsLayouts, home, bar, meeting
+    case settingsLayouts, home
 
     var writesSavedLayout: Bool { self == .settingsLayouts }
 }
@@ -174,6 +281,22 @@ enum LayoutPieceAdoption {
     struct Plan: Equatable {
         var camera: LayoutCamera?
         var share: ShareTarget?
+
+        /// Adopting a camera or a share changes the working copy only; the compositor behind Home's
+        /// live preview and the bubble must be told too, or they keep the old picture until Start.
+        var refreshesPicture: Bool { camera != nil || share != nil }
+    }
+
+    /// The library changed (an edit in Settings -> Layouts, a pick). With no meeting running, the
+    /// active layout's changed pieces flow into the working copy at once; an edit to another layout
+    /// touches nothing. In a meeting only the running layout's camera moves; its share waits for
+    /// Start, Snap Back or Apply now.
+    static func forLibraryEdit(old: LayoutLibrary, new: LayoutLibrary, locked: Bool, running: LayoutTemplate?) -> Plan? {
+        if locked {
+            guard let running, let edited = new.template(id: running.id) else { return nil }
+            return plan(old: running, new: edited).map { Plan(camera: $0.camera, share: nil) }
+        }
+        return plan(old: old.active, new: new.active)
     }
 
     /// Start, Stop and launch: the layout's value applies. Nil with no layout (the globals stand).

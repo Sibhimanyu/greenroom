@@ -118,17 +118,27 @@ struct SettingsView: View {
         .onAppear { coordinator.loadSecretsIfNeeded() }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { note in
             guard let id = note.object as? String else { return }
-            let destination = SettingsTabs.destination(for: id)
-            guard Self.tabOrder.contains(destination.tab) else { return }
-            if destination.selectsCamera { coordinator.layoutsCameraRequested = true }
-            tab = destination.tab
+            show(tabID: id)
         }
         #if DEBUG
-        .onReceive(NotificationCenter.default.publisher(for: .debugTourSettingsTab)) { tab = ($0.object as? String) ?? tab }
+        .onReceive(NotificationCenter.default.publisher(for: .debugTourSettingsTab)) { note in
+            if let id = note.object as? String { show(tabID: id) }
+        }
         #endif
     }
 }
 
+
+extension SettingsView {
+    /// Every deep link (Home's links, the DEBUG tour) goes through `SettingsTabs.destination`, so an
+    /// old id such as "webcam" lands on Layouts with the camera piece selected.
+    fileprivate func show(tabID id: String) {
+        let destination = SettingsTabs.destination(for: id)
+        guard Self.tabOrder.contains(destination.tab) else { return }
+        if destination.selectsCamera { coordinator.layoutsCameraRequested = true }
+        tab = destination.tab
+    }
+}
 
 extension View {
     /// The Settings title bar and tab toolbar are part of the window's frost

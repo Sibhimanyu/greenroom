@@ -47,8 +47,14 @@ enum PresenceRecorderRules {
         var alwaysHidden: Bool { self == .setupGuide }
     }
 
-    static func sharing(for kind: WindowKind, visibleToRecorders: Bool) -> Sharing {
-        kind.alwaysHidden ? .none : sharing(visibleToRecorders: visibleToRecorders)
+    /// `cameraState`: Only me is a mirror for the owner alone (R6.5), so the bubble that draws
+    /// the live camera is never recordable then, whatever the switch says. Defaults to a state
+    /// that leaves the switch in charge.
+    static func sharing(for kind: WindowKind, visibleToRecorders: Bool,
+                        cameraState: CameraState = .everyoneAndMe) -> Sharing {
+        if kind.alwaysHidden { return .none }
+        if kind == .cameraBubble, cameraState == .onlyMe { return .none }
+        return sharing(visibleToRecorders: visibleToRecorders)
     }
 
     /// The mirror the bubble draws. Others would record a reversed picture, so

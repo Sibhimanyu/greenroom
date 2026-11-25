@@ -152,6 +152,35 @@ enum LayoutEditorRules {
             : "The whole display shows the meeting and the people in it. Off, this is an ordinary piece and the people gallery no longer opens on this display."
     }
 
+    // MARK: The live camera picture
+
+    /// R11.3: the camera is opened for the picture only while someone looks at it.
+    static func runsCameraPreview(cameraSelected: Bool, previewEveryone: Bool, tabShown: Bool) -> Bool {
+        tabShown && (cameraSelected || previewEveryone)
+    }
+
+    // MARK: After an undo or redo
+
+    /// The editor's own state: which version is shown, which canvas is active, what is selected.
+    struct EditorState: Equatable {
+        var showsTwo: Bool
+        var activeSlot: LayoutSlot
+        var selection: UUID?
+    }
+
+    /// The editor state made true to the library: an undo or redo can add or remove the
+    /// two-display version or a piece, and the state must not point at what is no longer there.
+    static func reconciled(_ state: EditorState, in template: LayoutTemplate?, cameraID: UUID) -> EditorState {
+        var next = state
+        guard let template else { return EditorState(showsTwo: false, activeSlot: .one, selection: nil) }
+        next.showsTwo = state.showsTwo && template.twoDisplays != nil
+        if !next.showsTwo { next.activeSlot = .one } else if next.activeSlot == .one { next.activeSlot = .main }
+        if let id = state.selection, id != cameraID, !template.placedPieces.contains(where: { $0.piece.id == id }) {
+            next.selection = nil
+        }
+        return next
+    }
+
     // MARK: What VoiceOver says
 
     /// "Chat, 3 of 12 columns, Everyone sees this". One eye says who sees it; a dashed piece also says it starts hidden.
@@ -160,6 +189,26 @@ enum LayoutEditorRules {
             + VisibilitySymbol.everyoneSees(everyone).words
         if !onMyScreen { words += ", " + VisibilitySymbol.startsHidden.words }
         return words
+    }
+
+    /// What dragging the camera does, said from the camera state (never a fixed "moves for everyone").
+    static func cameraMoveNote(everyoneSees: Bool, onMyScreen: Bool) -> String {
+        switch (everyoneSees, onMyScreen) {
+        case (true, true): return "It moves for everyone."
+        case (true, false): return "It moves for everyone, but is hidden on your screen."
+        case (false, true): return "Only you see it, so it does not move for everyone."
+        case (false, false): return "The camera is off, so nobody sees it."
+        }
+    }
+
+    /// VoiceOver's "Show or hide for everyone" and "on my screen": only where the badge is a switch
+    /// under the current share, the same filter as the right-click menu.
+    static func offersEveryoneAction(piece: LayoutPiece, target: Visibility.Target) -> Bool {
+        !Visibility.everyoneSees(piece: piece, target: target).isFixed
+    }
+
+    static func offersMyScreenAction(piece: LayoutPiece) -> Bool {
+        !Visibility.onMyScreen(piece: piece).isFixed
     }
 
     /// "Main display, everyone sees this".

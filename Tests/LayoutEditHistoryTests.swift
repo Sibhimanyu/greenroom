@@ -179,4 +179,40 @@ final class LayoutEditHistoryTests: XCTestCase {
         XCTAssertEqual(undone, old)
     }
 
+    // R9.1: a Size slider drag is one step, not one per tick.
+    func testResizingTheCameraFoldsWhileTheSliderMoves() {
+        let old = library([chat])
+        var a = old
+        a.templates[0].camera = LayoutCamera()
+        a.templates[0].camera?.widthFraction = 0.30
+        var b = a
+        b.templates[0].camera?.widthFraction = 0.31
+        let second = LayoutEditHistory.describe(from: a, to: b, pieceName: named)
+        XCTAssertEqual(second?.name, "Resize Camera")
+        XCTAssertNotNil(second?.coalesceKey)
+        guard let step = second, let key = step.coalesceKey else { return XCTFail("no fold key") }
+        let t0 = Date(timeIntervalSince1970: 1000)
+        XCTAssertTrue(LayoutEditHistory.folds(previous: (key, t0), into: step, at: t0.addingTimeInterval(0.1)))
+    }
+
+    // R9.1: moving the camera is still its own step each time.
+    func testMovingTheCameraDoesNotFold() {
+        let old = library([chat])
+        var moved = old
+        moved.templates[0].camera = LayoutCamera()
+        moved.templates[0].camera?.rightInset = 0.2
+        XCTAssertNil(LayoutEditHistory.describe(from: old, to: moved, pieceName: named)?.coalesceKey)
+    }
+
+    // R9.1: choosing None after the edit is kept by the undo.
+    func testUndoingAnEditKeepsNoneChosenSince() {
+        let old = library([chat])
+        var edited = old
+        edited.templates[0].oneDisplay[0].rect.x = 0.5
+        var now = edited
+        now.activeID = nil   // None picked after the edit
+        let undone = LayoutEditHistory.restoring(old, undoing: edited, onto: now)
+        XCTAssertEqual(undone.templates, old.templates)
+        XCTAssertNil(undone.activeID)
+    }
 }

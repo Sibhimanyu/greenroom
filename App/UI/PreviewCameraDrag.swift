@@ -26,6 +26,9 @@ struct PreviewCameraDragLayer: View {
     var space: LayoutCameraSpace?
     var onStep: (PresenceBox) -> Void
     var onCommit: (PresenceBox) -> Void
+    /// The camera state, as it reads aloud: who the move reaches (`LayoutEditorRules.cameraMoveNote`).
+    var everyoneSees = true
+    var onMyScreen = true
     /// The builder: the camera is the selected thing (outline stays on).
     var selected = false
     /// The builder: a click or the start of a drag selects the camera.
@@ -73,7 +76,7 @@ struct PreviewCameraDragLayer: View {
                     .gesture(move(frame: frame))
                     .simultaneousGesture(TapGesture().onEnded { onSelect?() })
                     .offset(x: rect.minX, y: rect.minY)
-                    .help("Drag to move your camera. It moves for everyone.")
+                    .help("Drag to move your camera. \(moveNote)")
 
                 if active {
                     ForEach(corners, id: \.self) { corner in
@@ -93,10 +96,12 @@ struct PreviewCameraDragLayer: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your camera in the preview")
-        .accessibilityHint("Drag to move it. It moves for everyone.")
+        .accessibilityHint("Drag to move it. \(moveNote)")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : (onSelect == nil ? [] : .isButton))
         .accessibilityAction(.default) { onSelect?() }
     }
+
+    private var moveNote: String { LayoutEditorRules.cameraMoveNote(everyoneSees: everyoneSees, onMyScreen: onMyScreen) }
 
     // MARK: Placement
 

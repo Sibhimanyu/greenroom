@@ -22,6 +22,8 @@ struct LayoutSettingsTab: View {
     @State private var apps: [AppInfo] = []
     @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
     @State private var hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
+    /// "Mirror my camera", one setting for every layout (the camera look).
+    @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
 
     // AXIsProcessTrusted() has no change notification, so poll it while
     // the tab is visible - the warning disappears on its own once the user
@@ -43,7 +45,12 @@ struct LayoutSettingsTab: View {
                                      background: $coordinator.cameraBackground,
                                      backgroundImage: $coordinator.cameraBackgroundImage,
                                      removal: $coordinator.backgroundRemoval,
-                                     chooseImage: { coordinator.chooseCameraBackgroundImage() }))
+                                     mirror: $mirror,
+                                     chooseImage: { coordinator.chooseCameraBackgroundImage() }),
+                                 preview: CameraPreviewModel(feed: coordinator.shapePreview,
+                                                             aspect: coordinator.shapePreviewAspect,
+                                                             seesYou: coordinator.cameraSeesYou || !layout.cameraShape.usesChromaKey),
+                                 previewRuns: { coordinator.setLayoutsCameraPreview($0) })
     }
 
     /// Running: the live target decides what the capture shows. Not running: the layout's own.
@@ -246,18 +253,25 @@ struct LayoutPageContent: View {
             recorder = LayoutEditRecorder(library: library, read: { binding.wrappedValue },
                                           write: { binding.wrappedValue = $0 },
                                           nameOf: { look($0).name })
+            recorder?.didRestore = { reconcileEditor() }
             focus = nil
             if let o = opensOn { selection = o.selection; showsTwo = o.showsTwo; activeSlot = o.slot }
             lookOpen = opensLookGroup
             openCameraIfRequested()
+            syncCameraPreview()
         }
+        .onChange(of: selection) { _, _ in syncCameraPreview() }
+        .onChange(of: previewEveryone) { _, _ in syncCameraPreview() }
         .onChange(of: selectCamera.wrappedValue) { _, _ in openCameraIfRequested() }
         .onChange(of: library.activeID) { _, _ in resetEditorState() }
         .onChange(of: library) { _, new in
             recorder?.undoManager = undoManager
             recorder?.observe(new)
         }
-        .onDisappear { recorder?.forget() }
+        .onDisappear {
+            recorder?.forget()
+            syncCameraPreview(shown: false)
+        }
         .confirmationDialog("Delete \u{201C}\(deleteCandidateName)\u{201D}?",
                             isPresented: Binding(get: { deleteCandidate != nil },
                                                  set: { if !$0 { deleteCandidate = nil } }),
@@ -1072,10 +1086,7 @@ struct LayoutPageContent: View {
     private func selected(in template: LayoutTemplate) -> (slot: LayoutSlot, piece: LayoutPiece)? {
         guard let id = selection else { return nil }
         let slots: [LayoutSlot] = showsTwo ? [.main, .second] : [.one]
-        for slot in slots {
-            if let piece = template.pieces(for: slot).first(where: { $0.id == id }) { return (slot, piece) }
-        }
-        return nil
+        return template.placedPieces.first { $0.piece.id == id && slots.contains($0.slot) }
     }
 
     /// Home's Look / Share "More...", "Adjust webcam..." and the old Webcam deep links: the camera
@@ -1088,7 +1099,7 @@ struct LayoutPageContent: View {
 
     private func update(_ id: UUID, _ change: (inout LayoutPiece) -> Void) {
         guard let i = activeIndex else { return }
-        for slot in [LayoutSlot.one, .main, .second] {
+        for slot in LayoutSlot.allCases {
             var pieces = library.templates[i].pieces(for: slot)
             if let j = pieces.firstIndex(where: { $0.id == id }) {
                 change(&pieces[j])
@@ -1101,7 +1112,7 @@ struct LayoutPageContent: View {
     private func remove(_ id: UUID) {
         guard let i = activeIndex else { return }
         withAnimation(anim) {
-            for slot in [LayoutSlot.one, .main, .second] {
+            for slot in LayoutSlot.allCases {
                 var pieces = library.templates[i].pieces(for: slot)
                 if pieces.contains(where: { $0.id == id }) {
                     pieces.removeAll { $0.id == id }
@@ -1147,55 +1158,72 @@ struct LayoutPageContent: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
     }
 
-    /// The camera overlay's card: whether it shows, and the way to its look.
-    @ViewBuilder
+    /// The camera overlay's card: the live picture, shape, size, who sees it, then its look.
     private func cameraInspector(_ camera: LayoutCameraModel) -> some View {
-        HStack(spacing: 8) {
-            VisibilityGlyph(meaning: .camera(camera.state), size: 15, tinted: false)
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 20)
-                .accessibilityHidden(true)
-            Text("Your camera")
-                .font(.callout.weight(.semibold))
-            Text(cameraReadout(camera))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        HStack(spacing: 24) {
-            Text("Who sees my camera")
-                .font(.callout)
-            GreenroomSegmented("Who sees my camera", selection: Binding(get: { camera.state }, set: { camera.setState($0) }),
-                               options: CameraState.allCases) { Text($0.name) }
-                .segmentHelp { $0.detail }
-            Spacer()
-        }
-        if let i = activeIndex {
-            let piece = Binding<LayoutCamera>(
+        let piece: Binding<LayoutCamera>? = activeIndex.map { i in
+            Binding<LayoutCamera>(
                 get: { library.templates[i].camera ?? LayoutCamera(shape: camera.shape, box: camera.box) },
                 set: { library.templates[i].camera = $0 })
-            HStack(spacing: 12) {
-                Picker("Shape", selection: piece.shape) {
-                    ForEach(WebcamShape.allCases) { Text($0.label).tag($0) }
-                }
-                .fixedSize()
-                .help("The shape of your camera in this layout. The look (background, removal, mirror) is shared by every layout.")
-                if piece.wrappedValue.shape == .cutout {
-                    Slider(value: piece.cutoutHeightFraction, in: PresenceGeometry.cutoutHeights) { Text("Size") }
-                        .frame(maxWidth: 200)
-                } else {
-                    Slider(value: piece.widthFraction, in: PresenceGeometry.widthFractions) { Text("Size") }
-                        .frame(maxWidth: 200)
-                }
-                Spacer()
-            }
         }
-        if let look = camera.look {
-            CameraLookGroup(look: look, shape: camera.shape, isOpen: $lookOpen)
+        return CameraInspector(camera: undoable(camera), piece: piece, canvasAspect: cameraCanvasAspect,
+                               readout: cameraReadout(camera), lookOpen: $lookOpen)
+    }
+
+    /// The display the camera is placed on, as width over height (the whole display, not the usable area).
+    private var cameraCanvasAspect: Double {
+        guard let template = library.active else { return 16.0 / 9.0 }
+        let slot = LayoutSharedDisplay.cameraSlot(
+            template: template, secondConnected: secondSize(template.twoDisplays?.secondUUID ?? "") != nil)
+        let space = space(for: slot, template)
+        let size = space.cameraSpace?.full ?? space.size
+        return Double(size.width / max(size.height, 1))
+    }
+
+    // MARK: Undo for the settings that live outside the library
+
+    /// A setting's write, as one undoable step (the camera state and the camera look, R9.1).
+    private func undoable<T: Equatable>(_ edit: LayoutEditHistory.SettingEdit, current: T,
+                                        set: @escaping (T) -> Void) -> (T) -> Void {
+        { new in
+            guard new != current else { return }
+            set(new)
+            recorder?.undoManager = undoManager
+            recorder?.record(edit, undo: { set(current) }, redo: { set(new) })
         }
-        Text("The spot, size and shape are saved with this layout. Who sees it is where it starts each meeting; the bar and Home change it for one meeting only. Drag the camera on the canvas to move it, drag a corner to resize it.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+    }
+
+    private func undoable(_ camera: LayoutCameraModel) -> LayoutCameraModel {
+        var c = camera
+        c.setState = undoable(.cameraState, current: camera.state, set: camera.setState)
+        c.look = camera.look.map { look in
+            CameraLookModel(
+                background: Binding(get: { look.background.wrappedValue },
+                                    set: undoable(.background, current: look.background.wrappedValue) { look.background.wrappedValue = $0 }),
+                backgroundImage: Binding(get: { look.backgroundImage.wrappedValue },
+                                         set: undoable(.backgroundPicture, current: look.backgroundImage.wrappedValue) { look.backgroundImage.wrappedValue = $0 }),
+                removal: Binding(get: { look.removal.wrappedValue },
+                                 set: undoable(.removal, current: look.removal.wrappedValue) { look.removal.wrappedValue = $0 }),
+                mirror: Binding(get: { look.mirror.wrappedValue },
+                                set: undoable(.mirror, current: look.mirror.wrappedValue) { look.mirror.wrappedValue = $0 }),
+                chooseImage: look.chooseImage)
+        }
+        return c
+    }
+
+    /// An undo or redo wrote the library: the editor's own state follows it.
+    private func reconcileEditor() {
+        let next = LayoutEditorRules.reconciled(
+            .init(showsTwo: showsTwo, activeSlot: activeSlot, selection: selection),
+            in: library.active, cameraID: LayoutCameraModel.selectionID)
+        showsTwo = next.showsTwo
+        activeSlot = next.activeSlot
+        selection = next.selection
+    }
+
+    /// R11.3: the camera preview runs only while the camera piece is selected or in Preview: Everyone.
+    private func syncCameraPreview(shown: Bool = true) {
+        camera?.previewRuns(LayoutEditorRules.runsCameraPreview(
+            cameraSelected: selection == LayoutCameraModel.selectionID, previewEveryone: previewEveryone, tabShown: shown))
     }
 
     private func cameraReadout(_ camera: LayoutCameraModel) -> String {

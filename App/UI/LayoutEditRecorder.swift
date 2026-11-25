@@ -18,6 +18,9 @@ final class LayoutEditRecorder {
     private let write: (LayoutLibrary) -> Void
     private let nameOf: (LayoutPiece) -> String
     weak var undoManager: UndoManager?
+    /// After an undo or redo wrote the library: the page reconciles its own state (the shown
+    /// version, the active canvas, the selection) with it.
+    var didRestore: (() -> Void)?
 
     init(library: LayoutLibrary, read: @escaping () -> LayoutLibrary, write: @escaping (LayoutLibrary) -> Void,
          nameOf: @escaping (LayoutPiece) -> String) {
@@ -40,6 +43,21 @@ final class LayoutEditRecorder {
         register(old, leaving: new, step.name, manager)
     }
 
+    /// A setting outside the library changed (the camera state, the camera look): one undoable step.
+    /// `undo` and `redo` write the old and the new value straight to the setting, not through the page.
+    func record(_ edit: LayoutEditHistory.SettingEdit, undo: @escaping () -> Void, redo: @escaping () -> Void) {
+        guard let manager = undoManager, !manager.isUndoing, !manager.isRedoing else { return }
+        registerSetting(edit.name, undo: undo, redo: redo, manager)
+    }
+
+    private func registerSetting(_ name: String, undo: @escaping () -> Void, redo: @escaping () -> Void, _ manager: UndoManager) {
+        manager.registerUndo(withTarget: self) { me in
+            undo()
+            me.registerSetting(name, undo: redo, redo: undo, manager)
+        }
+        manager.setActionName(name)
+    }
+
     /// Drops this page's steps (the tab went away; they would write to a library no one shows).
     func forget() { undoManager?.removeAllActions(withTarget: self) }
 
@@ -51,6 +69,7 @@ final class LayoutEditRecorder {
             me.seen = restored
             me.last = nil
             me.write(restored)
+            me.didRestore?()
             me.register(current, leaving: restored, name, manager)
         }
         manager.setActionName(name)

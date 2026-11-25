@@ -91,6 +91,7 @@ extension CoordinatorController {
     /// Shows, moves or hides the bubble to match the stage. Idempotent; reads
     /// current values, so call it after a change has landed (see above).
     func refreshPresenceBubble() {
+        RecorderVisibility.cameraState = cameraState   // Only me is never recordable by other apps (R6.5)
         let layout = makeStageConfiguration().normalizedLayout
         let kind = presenceShareKind
         let windowShare = kind == .app || kind == .window
@@ -183,7 +184,7 @@ extension CoordinatorController {
         stage?.updatePlacement(layout)
     }
 
-    /// A drag of the camera in a preview ended. Settings -> Layouts (and the Webcam tab) also write
+    /// A drag of the camera in a preview ended. Settings -> Layouts also writes
     /// the active layout's saved camera; Home's preview changes the running session's working copy
     /// only (R4.3).
     func commitPreviewPlacement(_ box: PresenceBox, source: LayoutEditSource) {

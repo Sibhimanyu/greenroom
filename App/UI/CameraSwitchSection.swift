@@ -2,7 +2,7 @@
 //  CameraSwitchSection.swift
 //  Greenroom
 //
-//  Settings -> Webcam -> Cameras: the two-camera cut.
+//  Settings -> Devices -> Cameras: the two-camera cut.
 //
 import SwiftUI
 

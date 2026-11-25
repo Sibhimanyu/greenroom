@@ -21,6 +21,12 @@ enum RecorderVisibility {
     private static var boxes: [Box] = []
     private static var observer: NSObjectProtocol?
 
+    /// The camera state the bubble is showing now (Only me is never recordable). The coordinator sets it
+    /// whenever the bubble is refreshed.
+    static var cameraState: CameraState = .everyoneAndMe {
+        didSet { if cameraState != oldValue { applyAll() } }
+    }
+
     /// Sets the window's sharingType now and keeps it current.
     static func track(_ window: NSWindow, as kind: PresenceRecorderRules.WindowKind) {
         boxes.removeAll { $0.window == nil || $0.window === window }
@@ -35,8 +41,8 @@ enum RecorderVisibility {
 
     /// The sharingType the rules give a kind right now.
     static func sharingType(for kind: PresenceRecorderRules.WindowKind) -> NSWindow.SharingType {
-        PresenceRecorderRules.sharing(for: kind, visibleToRecorders: PresenceRecorderRules.storedVisibleToRecorders)
-            == .readOnly ? .readOnly : .none
+        PresenceRecorderRules.sharing(for: kind, visibleToRecorders: PresenceRecorderRules.storedVisibleToRecorders,
+                                      cameraState: cameraState) == .readOnly ? .readOnly : .none
     }
 
     private static func apply(_ window: NSWindow, _ kind: PresenceRecorderRules.WindowKind) {

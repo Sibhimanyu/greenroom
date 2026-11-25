@@ -45,9 +45,16 @@ enum ShareVisibleWindows {
     static var filterState: FilterState {
         // Only a whole-display share has an app exclusion (Visibility.hiddenAppIDs says so too).
         let hidden = kind == .display ? hiddenAppIDs : []
-        let pids = hidden.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).map(\.processIdentifier) }
-        let running = hidden.filter { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
-        return FilterState(windowNumbers: effectiveNumbers, hiddenAppIDs: hidden, hiddenPIDs: Set(pids), runningHiddenIDs: running)
+        // One lookup per app: its processes give both the pids and whether it runs at all.
+        var pids = Set<pid_t>()
+        var running = Set<String>()
+        for id in hidden {
+            let processes = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+            guard !processes.isEmpty else { continue }
+            running.insert(id)
+            pids.formUnion(processes.map(\.processIdentifier))
+        }
+        return FilterState(windowNumbers: effectiveNumbers, hiddenAppIDs: hidden, hiddenPIDs: pids, runningHiddenIDs: running)
     }
 
     static func contains(_ number: Int) -> Bool { windowNumbers.contains(number) }

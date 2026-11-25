@@ -94,9 +94,9 @@ different order; this table is the authority.
 | R6 | Four-way camera state everywhere | P2 | built; "Only me" is a mirror (P8, needs a live check) |
 | R7 | Other apps' 📡 and 👁 | P4 | built; existing app pieces migrated to 📡 on once |
 | R8 | Direction A canvas | P5 | built |
-| R9 | Mac editor basics | P6 | built (R9.1 to R9.7) |
+| R9 | Mac editor basics | P6 | built (R9.1 to R9.7); review fixes: one undo step per Size drag, camera state and look undoable, the editor follows an undo, VoiceOver follows the camera state and share |
 | R10 | Devices and General tabs | P7 | built |
-| R11 | Camera look in Layouts; Webcam tab gone | P8 | built (needs a live check) |
+| R11 | Camera look in Layouts; Webcam tab gone | P8 | built; the Webcam tab's live picture, S/M/L sizes, corner and Reset are back in the inspector (needs a live check) |
 | R12 | Six built-in layouts, one always active | P9 | built (needs a live check) |
 | R13 | Restore original and Reset all | P9 | built |
 | R14 | Built-ins on existing installs | P9 | built (key `layoutLibrary.builtInsV2Migrated`) |
@@ -130,6 +130,9 @@ different order; this table is the authority.
 **R4. Each layout owns its camera piece.** (Q2, Q7)
 - R4.1 A layout saves the camera's shape, spot and size (`LayoutTemplate.camera`).
 - R4.2 Two layouts with different cameras each show their own at Start.
+- R4.2a With no meeting running, an edit in Settings to the active layout's camera or share reaches
+  the working copy and the live picture at once (`LayoutPieceAdoption.forLibraryEdit`); an edit to
+  another layout never does.
 - R4.3 A drag on Home, the bubble or in the meeting changes only the running
   meeting, never the saved layout.
 - R4.4 The camera piece is drawn on the shared display's canvas (Second when
@@ -154,7 +157,8 @@ different order; this table is the authority.
   `Visibility.cameraEveryoneSees` is the only place that decides it.
 - R6.5 Only me keeps the camera open for the owner's bubble while the Stage leaves it out
   of everyone's picture (`Visibility.cameraMirrorOnly`, `cameraRuns`; `StageLayout.mirrorsCamera`).
-  Only Off closes the camera. Needs a live check (item 10 below).
+  Only Off closes the camera. Needs a live check (item 10 below). Other apps' recorders never
+  record the bubble in Only me, whatever the recordings switch says (`PresenceRecorderRules`).
 - R6.6 (2026-11-25) One camera button on the bar and the Meeting window toolbar (the second, bubble cell is
   gone). A click toggles the camera for everyone: any "on" state goes Off, and Off returns as the last "on"
   state (Only everyone comes back as Only everyone); with nothing shared a click does not turn it off. A small
@@ -208,12 +212,14 @@ different order; this table is the authority.
 - R10.3 Home's links open the right tab. Every saved key stays the same.
 
 **R11. Camera look in Layouts; Webcam tab gone.** (Q5, Q15)
-- R11.1 Selecting the camera piece shows shape, size, camera state, then
-  "Camera look · every layout" (background, removal mode, mirror).
+- R11.1 Selecting the camera piece shows a header (live thumbnail, ⋯ menu for the corner and
+  Reset size and position), who sees it (camera state), shape and S/M/L size, then
+  "Camera look · every layout" (background, removal mode, mirror), folded. (Owner, 2026-11-25:
+  two rows at rest, no hint paragraph; this replaces "shape, size, camera state".)
 - R11.2 The Webcam tab is gone; every "Adjust webcam…" link opens Layouts with
   the camera piece selected.
 - R11.3 The camera preview runs only in Preview: Everyone or while the camera
-  piece is selected.
+  piece is selected (`LayoutEditorRules.runsCameraPreview`).
 
 **R12. Six built-in layouts, one always active.** (Q3, Q4, Q20, Q21, Q22)
 - R12.1 The six built-ins of Q4 exist, each with its camera and share.
@@ -285,9 +291,9 @@ different order; this table is the authority.
 | P3 Per-layout camera piece and what's shared | R4, R5, R16 | built | 2f1961a (camera follows shared display: c80debb) |
 | P4 Other apps' 📡 and 👁 | R7 | built | f50a6cd |
 | P5 Direction A canvas | R3, R8 | built | 3f6a68c |
-| P6 Basics | R9 | built | |
+| P6 Basics | R9 | built | 6f13f42 (review fixes: p68-review-fixes) |
 | P7 Settings reshuffle | R10 | built | f5d4b97 |
-| P8 Camera look into Layouts | R11 | built | |
+| P8 Camera look into Layouts | R11 | built | 19cf8e0 (review fixes: p68-review-fixes) |
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | p9-builtins |
 | P10 Room + laptop | R15 | planned | |
 | P11 One icon language | R17 | built | |

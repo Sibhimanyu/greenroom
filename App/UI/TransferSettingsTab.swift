@@ -47,9 +47,9 @@ struct TransferSettingsTab: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try coordinator.importSettings(from: Data(contentsOf: url))
+            let report = try coordinator.importSettings(from: Data(contentsOf: url))
             result = .init(text: "Imported from \(url.lastPathComponent)", ok: true,
-                           detail: "You can delete that file now.")
+                           detail: "You can delete that file now.", notes: report.notes)
         } catch {
             result = .init(text: "Import failed", ok: false, detail: error.localizedDescription)
         }
@@ -62,6 +62,8 @@ struct TransferResult: Equatable {
     let ok: Bool
     /// The next step after a success, the reason after a failure.
     let detail: String
+    /// Things the import could not carry over, each shown under the result.
+    var notes: [String] = []
 }
 
 // MARK: - The page
@@ -105,6 +107,9 @@ struct TransferPageContent: View {
                 if let result {
                     StatusBadge(text: result.text, tone: result.ok ? .good : .problem)
                         .help(result.detail)
+                    ForEach(result.notes, id: \.self) { note in
+                        StatusBadge(text: note, tone: .waiting)
+                    }
                 }
             }
         }

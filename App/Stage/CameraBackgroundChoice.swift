@@ -42,4 +42,7 @@ enum CameraBackgroundPreset: String, CaseIterable, Identifiable {
     var url: URL? { Bundle.main.url(forResource: fileName, withExtension: "jpg") }
 
     static let defaultChoice = CameraBackgroundPreset.studio.rawValue
+
+    /// `custom-<stamp>` names the user's own picture (a file on this Mac), not a preset.
+    static func isCustomPicture(_ key: String) -> Bool { key.hasPrefix("custom") }
 }

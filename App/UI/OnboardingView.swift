@@ -803,8 +803,9 @@ struct OnboardingView: View {
         // Never silent: a failed import with no message read as "nothing
         // happened" (Codex design audit #5).
         do {
-            try coordinator.importSettings(from: Data(contentsOf: url))
-            importStatus = "Imported from \(url.lastPathComponent). You can delete that file now."
+            let report = try coordinator.importSettings(from: Data(contentsOf: url))
+            importStatus = (["Imported from \(url.lastPathComponent). You can delete that file now."] + report.notes)
+                .joined(separator: " ")
             importStatusIsError = false
         } catch {
             importStatus = "Import failed: \(error.localizedDescription)"

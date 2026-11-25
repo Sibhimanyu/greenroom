@@ -68,4 +68,97 @@ final class SettingsImportRulesTests: XCTestCase {
         let out = clean(SettingsTransfer())
         XCTAssertEqual(out, SettingsTransfer())
     }
+
+    // MARK: R6, a missing custom picture falls back to Blur
+
+    private func background(_ mode: String?, _ image: String?, custom: Bool) -> (SettingsTransfer, [String]) {
+        var t = SettingsTransfer(); t.cameraBackground = mode; t.cameraBackgroundImage = image
+        var env = SettingsImportEnvironment(); env.customPictureAvailable = custom
+        let result = SettingsImportRules.sanitized(t, in: env)
+        return (result.transfer, result.notes)
+    }
+
+    // R6
+    func testCustomPictureMissingFallsBackToBlur() {
+        let (t, notes) = background("Image", "custom-1760000000", custom: false)
+        XCTAssertEqual(t.cameraBackground, "Blur")
+        XCTAssertNil(t.cameraBackgroundImage, "the missing picture's key is not imported")
+        XCTAssertEqual(notes, [SettingsImportRules.pictureDidNotTravelNote])
+    }
+
+    // R6
+    func testCustomPictureMissingWhileNotInUseNeedsNoNote() {
+        for mode in ["Normal", "Blur"] {
+            let (t, notes) = background(mode, "custom-1760000000", custom: false)
+            XCTAssertEqual(t.cameraBackground, mode)
+            XCTAssertTrue(notes.isEmpty, mode)
+        }
+    }
+
+    // R6
+    func testCustomPicturePresentIsKept() {
+        let (t, notes) = background("Image", "custom-1760000000", custom: true)
+        XCTAssertEqual(t.cameraBackground, "Image")
+        XCTAssertEqual(t.cameraBackgroundImage, "custom-1760000000")
+        XCTAssertTrue(notes.isEmpty)
+    }
+
+    // R6
+    func testPresetPictureNeverFallsBack() {
+        let (t, notes) = background("Image", "sunset", custom: false)
+        XCTAssertEqual(t.cameraBackground, "Image")
+        XCTAssertEqual(t.cameraBackgroundImage, "sunset")
+        XCTAssertTrue(notes.isEmpty)
+    }
+
+    // R5
+    func testUnknownBackgroundNameIsDropped() {
+        let (t, _) = background("Sparkles", "not-a-picture", custom: true)
+        XCTAssertNil(t.cameraBackground)
+        XCTAssertNil(t.cameraBackgroundImage)
+    }
+
+    // MARK: R7, the microphone applies only if it is connected
+
+    private func mic(_ uid: String?, connected: Set<String>) -> String? {
+        var t = SettingsTransfer(); t.micDeviceUID = uid
+        var env = SettingsImportEnvironment(); env.connectedMicrophoneUIDs = connected
+        return SettingsImportRules.sanitized(t, in: env).transfer.micDeviceUID
+    }
+
+    // R7
+    func testMicrophoneAppliedWhenConnected() {
+        XCTAssertEqual(mic("usb-1", connected: ["usb-1", "builtin"]), "usb-1")
+    }
+
+    // R7
+    func testMicrophoneDroppedWhenNotConnected() {
+        XCTAssertNil(mic("usb-1", connected: ["builtin"]))
+    }
+
+    // R7
+    func testSystemInputMicrophoneAlwaysApplies() {
+        XCTAssertEqual(mic("", connected: []), "")
+    }
+
+    // MARK: R5, values the settings themselves would not accept
+
+    // R5
+    func testUnknownMeetingViewIsDropped() {
+        var t = SettingsTransfer()
+        t.meetingWindowView = "carousel"; t.meetingWindowShareLayout = "diagonal"
+        let out = clean(t)
+        XCTAssertNil(out.meetingWindowView)
+        XCTAssertNil(out.meetingWindowShareLayout)
+        t.meetingWindowView = MeetingViewMode.allCases[0].rawValue
+        XCTAssertEqual(clean(t).meetingWindowView, MeetingViewMode.allCases[0].rawValue)
+    }
+
+    // R5
+    func testMeetingWindowSplitIsClamped() {
+        var t = SettingsTransfer(); t.meetingWindowShareSplit = 99
+        XCTAssertEqual(clean(t).meetingWindowShareSplit, MeetingSplit.clamp(99))
+        t.meetingWindowShareSplit = -5
+        XCTAssertEqual(clean(t).meetingWindowShareSplit, MeetingSplit.clamp(-5))
+    }
 }

@@ -11,7 +11,7 @@ extension CoordinatorController {
 
     func exportSettingsData() throws -> Data {
         loadSecretsIfNeeded()
-        let transfer = SettingsTransfer(
+        var transfer = SettingsTransfer(
             sdkClientID: sdkClientID,
             sdkClientSecret: sdkClientSecret,
             s2sAccountID: s2sAccountID,
@@ -51,8 +51,15 @@ extension CoordinatorController {
             cuesUseWhisper: cuesUseWhisper,
             screenroomAgent: Self.jsonString(forKey: ScreenroomAgentSettings.key),
             screenroomRubric: Self.jsonString(forKey: "screenroomDefaultRubric"),
-            screenroomLanguage: ScreenroomTranscriberSettings.load().language
+            screenroomLanguage: ScreenroomTranscriberSettings.load().language,
+            cameraBackground: cameraBackground.rawValue,
+            cameraBackgroundImage: cameraBackgroundImage,
+            className: className,
+            meetingMode: meetingMode.rawValue,
+            micDeviceUID: micDeviceUID
         )
+        // The settings kept only in UserDefaults (the meeting window's choices and so on).
+        SettingsDefaultsBridge().read(into: &transfer)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(transfer)
@@ -85,15 +92,18 @@ extension CoordinatorController {
         environment.cuesReleased = CuesAvailability.isReleased
         if #available(macOS 26.0, *) { environment.whisperAvailable = CuesWhisperTranscriber.isAvailable }
         environment.connectedDisplayUUIDs = Set(DisplayResolver.connectedDisplays().map(\.id))
+        environment.connectedMicrophoneUIDs = Set(LocalDeviceResolver.availableMicrophones().map(\.id))
+        environment.customPictureAvailable = CameraBackgroundLibrary.customFileURL != nil
         return environment
     }
 
-    func importSettings(from data: Data) throws {
+    @discardableResult
+    func importSettings(from data: Data) throws -> SettingsImportReport {
         let decoded = try JSONDecoder().decode(SettingsTransfer.self, from: data)
         let environment = Self.importEnvironment()
         // What import refuses is decided in SettingsImportRules; what is left
         // is assigned below, through the published properties.
-        let transfer = SettingsImportRules.sanitized(decoded, in: environment).transfer
+        let (transfer, notes) = SettingsImportRules.sanitized(decoded, in: environment)
         // One import assigns every field; that is not twenty deliberate changes.
         Analytics.suppressSettingEvents = true
         defer { Analytics.suppressSettingEvents = false }
@@ -147,6 +157,13 @@ extension CoordinatorController {
             settings.language = value
             settings.save()
         }
+        // The camera background: the picture first, so the mode never shows an empty one.
+        if let value = transfer.cameraBackgroundImage { cameraBackgroundImage = value }
+        if let value = transfer.cameraBackground, let mode = CameraBackground(rawValue: value) { cameraBackground = mode }
+        if let value = transfer.className { className = value }
+        if let value = transfer.meetingMode, let mode = MeetingMode(rawValue: value) { meetingMode = mode }
+        if let value = transfer.micDeviceUID { micDeviceUID = value }
+        SettingsDefaultsBridge().apply(transfer)
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
         if let library = transfer.layoutLibrary {
@@ -182,5 +199,6 @@ extension CoordinatorController {
             }
         }
         log("Imported settings.")
+        return SettingsImportReport(notes: notes)
     }
 }

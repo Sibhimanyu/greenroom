@@ -30,7 +30,7 @@ enum CameraBackgroundLibrary {
         return support.appendingPathComponent("Greenroom/CameraBackground", isDirectory: true)
     }
 
-    static func isCustom(_ key: String) -> Bool { key.hasPrefix("custom") }
+    static func isCustom(_ key: String) -> Bool { CameraBackgroundPreset.isCustomPicture(key) }
 
     /// The copied file, whatever its extension.
     static var customFileURL: URL? {

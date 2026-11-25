@@ -1109,6 +1109,7 @@ enum MeetingControlBarController {
                 MainActor.assumeIsolated {
                     guard let window = note.object as? NSWindow,
                           ParticipantGridWindowController.owns(window) else { return }
+                    MeetingSurfaceOwner.syncWindowFacts()
                     reconcile(immediately: false)
                 }
             })
@@ -1117,7 +1118,10 @@ enum MeetingControlBarController {
         // desktop switch changes the answer without the window changing at all.
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { reconcile(immediately: false) }
+            MainActor.assumeIsolated {
+                MeetingSurfaceOwner.syncWindowFacts()
+                reconcile(immediately: false)
+            }
         }
         // A display unplugged, or the Dock or menu bar moved: a spot that is now
         // off screen goes back to the default, one that is merely close to an
@@ -1314,6 +1318,7 @@ enum MeetingControlBarController {
         } else {
             panel?.orderFrontRegardless()
         }
+        MeetingSurfaceOwner.send(.morphFinished)
         // Back to the usual rule, after its usual beat.
         reconcile(immediately: false)
     }

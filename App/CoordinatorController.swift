@@ -716,6 +716,7 @@ final class CoordinatorController: ObservableObject {
         speakerTileQuickHidden = hide
         // The Meeting window and every view go together; the neighbours take the room.
         MeetingViewWindows.setHiddenTogether(hide)
+        MeetingSurfaceOwner.send(hide ? .tileHidden : .tileShown)
         if hide {
             ParticipantGridWindowController.hide()
         } else if meeting != nil {
@@ -1437,6 +1438,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func chatSessionDidEnd() {
+        MeetingSurfaceOwner.reset()
         MeetingControlBarController.close()
         if !sessionArranges { closeMeetingWindow() }
         meetingControls?.stop()
@@ -1646,6 +1648,8 @@ final class CoordinatorController: ObservableObject {
         }
 
         apply(.meetingStartRequested)
+        MeetingSurfaceOwner.coordinator = self
+        MeetingSurfaceOwner.send(.startBegan)
         // This start's number: its task reports back with it, so a late end
         // of an older, cancelled start cannot clear this one.
         let startID = phase.startID
@@ -1769,6 +1773,9 @@ final class CoordinatorController: ObservableObject {
                 let others = !zoomChatClient.meetingRoster().allSatisfy(\.isMyself)
                 let opensWindow = StartChoreography.opensMeetingWindowOnLive(
                     arranged: sessionArranges, othersPresent: others)
+                // The model hears it first: alone with nothing arranged starts as the
+                // bar; anything else starts as the window.
+                MeetingSurfaceOwner.send(!sessionArranges && !others ? .wentLiveAlone : .wentLiveWithOthers)
                 if !sessionArranges {
                     ensureMeetingControls()
                     if opensWindow {
@@ -1786,6 +1793,7 @@ final class CoordinatorController: ObservableObject {
                 if let controls = meetingControls {
                     MeetingControlBarController.install(coordinator: self, model: controls)
                 }
+                MeetingSurfaceOwner.syncWindowFacts()
                 startSmallWhileAlone()
                 bringInExtraCameras()
 
@@ -1892,6 +1900,7 @@ final class CoordinatorController: ObservableObject {
         // without this, its meeting setup raced the teardown below.
         startTask?.cancel()
         cancelRecordingCountdown()
+        MeetingSurfaceOwner.reset()
         // Whoever is waiting on the Zoom SDK is let go now, not when a
         // watchdog fires: End during a stuck Start used to leave the Start
         // button dead for the rest of the join timeout.
@@ -3382,6 +3391,10 @@ final class CoordinatorController: ObservableObject {
     private func placeCustomSurfaces() {
         guard sessionArranges, let template = sessionTemplate else { return }
         if !layoutEngine.hasPlacedSurface(template) { speakerTileQuickHidden = false }
+        // A Meeting in a rectangle that the layout hides (or shows) is the speaker tile's hide.
+        if layoutEngine.placedMeeting(template) != nil {
+            MeetingSurfaceOwner.send(speakerTileQuickHidden ? .tileHidden : .tileShown)
+        }
         layoutEngine.placeMeetingAndChat(template, hidden: speakerTileQuickHidden)
     }
 
@@ -3595,7 +3608,9 @@ final class CoordinatorController: ObservableObject {
         }
         let alreadyOpen = ParticipantGridWindowController.meetingWindowIsOpen
         meetingWindowWanted = true
-        growWhenSomeoneJoins = false // brought up some other way: it stays the teacher's choice
+        // Brought up some other way: it stays the teacher's choice (the model drops its
+        // "started small by itself" mark with the expand).
+        MeetingSurfaceOwner.send(.expand)
         // A deliberate reopen: the room the layout gave the neighbour goes back,
         // before the window is placed, so it is placed as shown.
         giveRoomBackToMeeting()
@@ -3649,6 +3664,7 @@ final class CoordinatorController: ObservableObject {
     func expandMeetingFromBar() {
         guard zoomChatClient.didInit else { return }
         if MeetingControlBarController.morphTarget != nil {
+            MeetingSurfaceOwner.send(.expand)
             if meetingWindowOpen { giveRoomBackToMeeting(); MeetingControlBarController.morph(toward: 1) }
             else { openMeetingWindow() }
             return
@@ -3658,32 +3674,26 @@ final class CoordinatorController: ObservableObject {
         move(from: .bar, to: MeetingCollapse.next(from: .bar, step: .up), step: .up, context: collapseContext)
     }
 
-    /// Set when a meeting started with nobody else in it and went to the bar:
-    /// the first person to join brings the Meeting window up. Any size change
-    /// made by hand clears it, and so does the end of the meeting.
-    private var growWhenSomeoneJoins = false
-
     /// A meeting nobody has joined yet is an empty window over the very thing
-    /// being shared. So it starts as the Control bar, and what is shared
-    /// comes to the front. Only when nothing is arranged: a layout places
-    /// the Meeting where it wants it.
+    /// being shared. So it starts as the Control bar (the model was told it went
+    /// live alone, and only when nothing is arranged: a layout places the Meeting
+    /// where it wants it), and what is shared comes to the front.
     private func startSmallWhileAlone() {
-        growWhenSomeoneJoins = false
-        guard !sessionArranges, zoomChatClient.didInit,
+        guard MeetingSurfaceOwner.model.isWaitingForSomeone, zoomChatClient.didInit,
               MeetingControlBarController.isInstalled,
               zoomChatClient.meetingRoster().allSatisfy(\.isMyself) else { return }
-        if meetingSize == .window { MeetingControlBarController.morph(toward: 0) }
-        growWhenSomeoneJoins = true
         bringRecordedForward()
     }
 
-    /// From the follow loop: the first person in brings the window up.
+    /// From the follow loop: the first person in brings the window up. The model
+    /// holds the "started small by itself" mark; any size change by hand clears it,
+    /// and so does the end of the meeting.
     private func growIfSomeoneJoined() {
-        guard growWhenSomeoneJoins else { return }
-        guard phase.isInMeeting else { growWhenSomeoneJoins = false; return }
+        guard MeetingSurfaceOwner.model.isWaitingForSomeone else { return }
         guard zoomChatClient.meetingRoster().contains(where: { !$0.isMyself }) else { return }
-        growWhenSomeoneJoins = false
-        if meetingSize == .bar { moveMeeting(to: .window) }
+        let from = meetingSize
+        MeetingSurfaceOwner.send(.someoneJoined)
+        if from == .bar { showWindowFromBar() }
     }
 
     /// Goes to a size from wherever the meeting is.
@@ -3712,7 +3722,6 @@ final class CoordinatorController: ObservableObject {
     /// bar's visibility.
     private func move(from: MeetingSize, to wanted: MeetingSize, step: MeetingCollapse.Step,
                       context: MeetingCollapseContext) {
-        growWhenSomeoneJoins = false
         var target = wanted
         // Where the bar cannot be built, the meeting stays as it is.
         if target == .bar, !MeetingControlBarController.isInstalled { target = from }
@@ -3720,17 +3729,24 @@ final class CoordinatorController: ObservableObject {
 
         switch (from, target) {
         case (.window, .bar):
+            MeetingSurfaceOwner.send(.collapse)
             giveRoomToNeighbourIfPlaced(going: .bar, context: context)
             MeetingControlBarController.morph(toward: 0)
         case (.bar, .window):
-            if meetingWindowOpen {
-                giveRoomBackToMeeting()
-                MeetingControlBarController.morph(toward: 1)
-            } else {
-                openMeetingWindow()
-            }
+            MeetingSurfaceOwner.send(.expand)
+            showWindowFromBar()
         default:
             break
+        }
+    }
+
+    /// The window comes back from the bar: by the morph when it is open, else opened.
+    private func showWindowFromBar() {
+        if meetingWindowOpen {
+            giveRoomBackToMeeting()
+            MeetingControlBarController.morph(toward: 1)
+        } else {
+            openMeetingWindow()
         }
     }
 
@@ -3764,6 +3780,7 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.onParticipantCountChanged = nil
         }
         ParticipantGridWindowController.close()
+        MeetingSurfaceOwner.send(.windowClosedByCode)
         MeetingControlBarController.reconcile(immediately: false)
     }
 
@@ -3906,15 +3923,25 @@ final class CoordinatorController: ObservableObject {
         alert.informativeText = prompt.message
         alert.alertStyle = .warning
         Self.addButtons(prompt.choices, to: alert)
+        MeetingSurfaceOwner.send(.closeRequested)
         alert.beginSheetModal(for: window) { [weak self] response in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-                guard prompt.choices.indices.contains(index) else { return }
+                guard prompt.choices.indices.contains(index) else { MeetingSurfaceOwner.send(.closeCancel); return }
                 switch prompt.choices[index] {
-                case .endMeetingForAll, .leaveMeeting: self.stop() // hosting ends it, otherwise leaves
-                case .shrinkToControlBar: self.shrinkMeetingToBar()
-                default: break
+                case .endMeetingForAll:
+                    MeetingSurfaceOwner.send(.closeEnd)
+                    self.stop() // hosting ends it
+                case .leaveMeeting:
+                    MeetingSurfaceOwner.send(.closeLeave)
+                    self.stop() // otherwise leaves
+                case .shrinkToControlBar:
+                    // The shrink reads where the meeting is before it tells the model.
+                    self.shrinkMeetingToBar()
+                    MeetingSurfaceOwner.send(.closeShrink)
+                default:
+                    MeetingSurfaceOwner.send(.closeCancel)
                 }
             }
         }
@@ -3948,6 +3975,7 @@ final class CoordinatorController: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         switch LiveExit.reopenTarget(state) {
         case .meetingWindow:
+            MeetingSurfaceOwner.send(.reopen)
             if ParticipantGridWindowController.meetingWindowIsOpen {
                 ParticipantGridWindowController.show()
                 ParticipantGridWindowController.makeMeetingWindowKey()

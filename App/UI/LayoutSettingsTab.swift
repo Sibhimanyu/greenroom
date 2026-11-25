@@ -1179,12 +1179,11 @@ struct LayoutPageContent: View {
     }
 
     private func cameraReadout(_ camera: LayoutCameraModel) -> String {
-        let name = camera.shape.label
-        guard camera.shape != .presenterLarge, camera.shape != .cutout,
-              let frame = DisplayResolver.mainDisplayScreen()?.frame.size else { return name }
-        let w = Int((camera.box.widthFraction * Double(frame.width)).rounded())
-        let h = Int((Double(w) / LayoutCameraRules.aspect(for: camera.shape)).rounded())
-        return "\(name) \u{00B7} \(w)\u{00D7}\(h)"
+        // The saved piece, like the tiles; the live camera is only the fallback with no active layout.
+        let saved = activeIndex.flatMap { library.templates[$0].camera }
+        return PieceInspectorRules.cameraReadout(
+            shape: saved?.shape ?? camera.shape, widthFraction: saved?.widthFraction ?? camera.box.widthFraction,
+            displayWidth: DisplayResolver.mainDisplayScreen().map { Double($0.frame.size.width) })
     }
 
     /// R35: the same header for every kind: icon, name, one quiet readout, and a menu for what is secondary.

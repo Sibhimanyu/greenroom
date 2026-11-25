@@ -51,7 +51,9 @@ enum SharePopoutRules {
             return live.map(map)
         case .atStart:
             var out: [Section] = [.share]
-            if hasTwoDisplays { out.append(.sharedDisplay) }
+            // The display only matters for Whole screen; a window, app, whiteboard or Just me ignores it.
+            // .app reads back as the whole screen.
+            if hasTwoDisplays && (kind == .display || kind == .app) { out.append(.sharedDisplay) }
             if live.contains(.windows) { out.append(.windows) }
             if live.contains(.follow) { out.append(.follow) }
             return out
@@ -129,6 +131,16 @@ enum PieceInspectorRules {
     enum MenuItem: Hashable { case closesOnStop, opensMinimised, reopenLastTabs, searchSuggestions, remove }
 
     static let maxRowsAtRest = 2
+
+    /// The camera header's one readout: the shape's name and its pixel size on the main display.
+    /// It reads the saved piece's shape (what the tiles show), never the live camera's.
+    static func cameraReadout(shape: WebcamShape, widthFraction: Double, displayWidth: Double?) -> String {
+        let name = shape.label
+        guard shape != .presenterLarge, shape != .cutout, let displayWidth else { return name }
+        let w = Int((widthFraction * displayWidth).rounded())
+        let h = Int((Double(w) / (shape.cropsToSquare ? 1 : 16.0 / 9.0)).rounded())
+        return "\(name) \u{00B7} \(w)\u{00D7}\(h)"
+    }
     static let cameraRows: [Row] = [.whoSees, .shapeAndSize]
 
     static func rows(for kind: LayoutPiece.Kind, slot: LayoutSlot) -> [Row] {

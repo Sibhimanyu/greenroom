@@ -22,6 +22,25 @@ final class SharePopoutRulesTests: XCTestCase {
         XCTAssertFalse(sections(.thisMeeting, displays: 2, two: true).contains(.sharedDisplay))
     }
 
+    // R32.3: the display only matters for Whole screen; a window, app, whiteboard or Just me ignores it.
+    func testSharedDisplayOnlyForWholeScreen() {
+        for kind in [ShareTarget.Kind.window, .whiteboard, .nothing] {
+            XCTAssertFalse(sections(.atStart, kind, two: true).contains(.sharedDisplay), "\(kind)")
+        }
+        XCTAssertTrue(sections(.atStart, .display, two: true).contains(.sharedDisplay))
+        XCTAssertFalse(sections(.atStart, .display, two: false).contains(.sharedDisplay))
+    }
+
+    // R35: the camera header's readout follows the saved piece's shape, not the live camera's.
+    func testCameraReadoutUsesTheSavedShape() {
+        let circle = PieceInspectorRules.cameraReadout(shape: .circle, widthFraction: 0.24, displayWidth: 1512)
+        XCTAssertTrue(circle.hasPrefix(WebcamShape.circle.label), circle)
+        let square = PieceInspectorRules.cameraReadout(shape: .square, widthFraction: 0.24, displayWidth: 1512)
+        XCTAssertTrue(square.hasPrefix(WebcamShape.square.label), square)
+        XCTAssertEqual(PieceInspectorRules.cameraReadout(shape: .cutout, widthFraction: 0.24, displayWidth: 1512), WebcamShape.cutout.label)
+        XCTAssertEqual(PieceInspectorRules.cameraReadout(shape: .circle, widthFraction: 0.24, displayWidth: nil), WebcamShape.circle.label)
+    }
+
     // R32.3
     func testAtStartHasNothingLive() {
         let s = sections(.atStart, .display, displays: 3, two: true, gone: true, perm: true)
@@ -32,7 +51,7 @@ final class SharePopoutRulesTests: XCTestCase {
 
     // R32.3
     func testWindowsAndFollowForOneWindow() {
-        XCTAssertEqual(sections(.atStart, .window, two: true), [.share, .sharedDisplay, .windows, .follow])
+        XCTAssertEqual(sections(.atStart, .window, two: true), [.share, .windows, .follow])
         XCTAssertEqual(sections(.atStart, .display, two: false, browsing: true), [.share, .windows])
         XCTAssertEqual(sections(.thisMeeting, .window), [.share, .windows, .follow])
     }

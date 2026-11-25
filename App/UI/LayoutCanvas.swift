@@ -1217,7 +1217,11 @@ struct LayoutPieceTile: View {
         Text(look.name)
             .font(.system(size: points, weight: .medium))
             .foregroundStyle(primary)
-            .fixedSize()
+            // Never clipped mid-word: if the measured fit is a hair off, the name shrinks to the room.
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: max(room.width, 1))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var caption: String {

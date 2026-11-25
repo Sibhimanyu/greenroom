@@ -118,18 +118,25 @@ final class MeetingBarModelTests: XCTestCase {
         XCTAssertTrue(M.viewsCell(none).help.hasPrefix("Meeting views"))
     }
 
-    func testTheBubbleCellSaysEveryoneStillSeesYou() {
-        let shown = M.bubbleCell(hidden: false)
-        XCTAssertEqual(shown.spoken, "Hide my camera on my screen")
-        XCTAssertTrue(shown.help.contains("Everyone in the meeting still sees you"))
-        XCTAssertFalse(shown.on)
-        let hidden = M.bubbleCell(hidden: true)
-        XCTAssertEqual(hidden.spoken, "Show my camera on my screen")
-        XCTAssertTrue(hidden.on)
-        // Never the eye: that is "Show on my share".
-        XCTAssertFalse(shown.symbol.hasPrefix("eye"))
-        XCTAssertFalse(hidden.symbol.hasPrefix("eye"))
-        XCTAssertNotEqual(shown.symbol, hidden.symbol)
+    func testTheCameraCellNamesTheStateAndIsAMenuOfFour() {
+        for state in CameraState.allCases {
+            let cell = M.cameraStateCell(state)
+            XCTAssertTrue(cell.spoken.contains(state.name))
+            XCTAssertTrue(cell.help.contains(state.name))
+            // Never the eye: that is "Show on my share".
+            XCTAssertFalse(cell.symbol.hasPrefix("eye"))
+        }
+        var picked: [CameraState] = []
+        let menu = M.cameraStateMenu(current: .onlyMe, noCameraAllowed: true) { picked.append($0) }
+        XCTAssertEqual(menu.filter { $0.kind == .item }.map(\.title), ["Everyone and me", "Only everyone", "Only me", "Off"])
+        XCTAssertEqual(menu.filter(\.checked).map(\.title), ["Only me"])
+        menu.filter { $0.kind == .item }[3].action?()
+        XCTAssertEqual(picked, [.off])
+    }
+
+    func testNoCameraStatesAreOffWhileNothingIsShared() {
+        let menu = M.cameraStateMenu(current: .everyoneAndMe, noCameraAllowed: false) { _ in }
+        XCTAssertEqual(menu.filter { $0.kind == .item }.map(\.enabled), [true, true, false, false])
     }
 
     func testSelfViewStartsHiddenAlone() {

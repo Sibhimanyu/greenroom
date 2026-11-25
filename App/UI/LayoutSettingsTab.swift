@@ -31,14 +31,13 @@ struct LayoutSettingsTab: View {
     /// The one presence placement, shared with the floating bubble and Home.
     private var cameraModel: LayoutCameraModel {
         let layout = coordinator.stageLayout
-        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: !coordinator.cameraShownOnMyScreen,
-                                 everyoneSees: !coordinator.cameraIsOff,
+        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: !coordinator.savedCameraState.iSee,
+                                 everyoneSees: !(coordinator.savedCameraState.noCamera && !coordinator.cameraDirectorSettings.enabled
+                                                 && coordinator.shareTarget.kind != .nothing),
                                  onStep: { coordinator.previewPlacementStep($0) },
                                  onCommit: { coordinator.commitPreviewPlacement($0) },
-                                 setShown: { on in
-                                     coordinator.cameraShownOnMyScreen = on
-                                     coordinator.resetPresenceBubbleToLayoutDefault()
-                                 },
+                                 state: coordinator.savedCameraState,
+                                 setState: { coordinator.setSavedCameraState($0) },
                                  adjust: {
                                      NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
                                  })
@@ -1017,8 +1016,11 @@ struct LayoutPageContent: View {
             .help("Opens Settings \u{2192} Webcam: shape, size, background, mirror.")
         }
         HStack(spacing: 24) {
-            Toggle("Show my camera on my screen", isOn: Binding(get: { !camera.cameraOff }, set: { camera.setShown($0) }))
-                .help("Whether your camera shows on your screen. The meeting still sees you.")
+            Text("Who sees my camera")
+                .font(.callout)
+            GreenroomSegmented("Who sees my camera", selection: Binding(get: { camera.state }, set: { camera.setState($0) }),
+                               options: CameraState.allCases) { Text($0.name) }
+                .segmentHelp { $0.detail }
             Spacer()
         }
         if let i = activeIndex {
@@ -1041,7 +1043,7 @@ struct LayoutPageContent: View {
                 Spacer()
             }
         }
-        Text("The spot, size and shape are saved with this layout. The look (background, removal, mirror) is the same for every layout. Drag the camera on the canvas to move it, drag a corner to resize it.")
+        Text("The spot, size and shape are saved with this layout. The look (background, removal, mirror) is the same for every layout. Who sees it is where it starts each meeting; the bar and Home change it for one meeting only. Drag the camera on the canvas to move it, drag a corner to resize it.")
             .font(.callout)
             .foregroundStyle(.secondary)
     }

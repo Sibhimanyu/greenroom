@@ -79,9 +79,10 @@ struct LayoutCameraModel {
     var onStep: (PresenceBox) -> Void
     /// The drag ended: persist once.
     var onCommit: (PresenceBox) -> Void
-    /// Show (true) or hide (false) the camera. It is the camera setting for
-    /// every layout, not a per-layout flag.
-    var setShown: (Bool) -> Void = { _ in }
+    /// The saved camera state, the default at each Start (GLOSSARY.md, "Camera
+    /// state"). One setting for every layout, not a per-layout flag.
+    var state = CameraState.everyoneAndMe
+    var setState: (CameraState) -> Void = { _ in }
     /// Opens Settings \u{2192} Webcam.
     var adjust: () -> Void = {}
 

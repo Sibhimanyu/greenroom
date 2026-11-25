@@ -20,7 +20,6 @@ struct HomeCameraPanel: View {
         var id: String
         var name: String
         var symbol: String
-        var isNone = false
     }
 
     private var settings: CameraDirectorSettings { coordinator.cameraDirectorSettings }
@@ -31,7 +30,6 @@ struct HomeCameraPanel: View {
 
     private var rows: [Row] {
         cameras.map { Row(id: $0.id, name: $0.name, symbol: CameraPanelRules.symbol(name: $0.name, isBuiltIn: $0.isBuiltIn)) }
-            + [Row(id: "none", name: CameraTileRules.offRowTitle(cameraIsOff: coordinator.cameraIsOff), symbol: "video.slash", isNone: true)]
     }
 
     var body: some View {
@@ -45,6 +43,22 @@ struct HomeCameraPanel: View {
             art: DockHintVisual.camera(off: coordinator.cameraIsOff),
             moreTitle: "More camera settings\u{2026}", onMore: more
         ) {
+            // This meeting only: the saved choice is in Settings -> Layouts.
+            HomeTileSection(title: "Who sees my camera") {
+                HomeTileChoiceRow(
+                    choices: CameraState.allCases.map { state in
+                        HomeTileChoice(id: state.raw, title: state.name, symbol: state.symbol,
+                                       selected: state == coordinator.cameraState,
+                                       enabled: !state.noCamera || CameraPanelRules.noCameraEnabled(
+                                           shareIsNothing: coordinator.shareTarget.kind == .nothing))
+                    },
+                    tileWidth: 76,
+                    pick: { coordinator.setLiveCameraState(CameraState.allCases[$0]) })
+                Text(coordinator.cameraState.detail + " Only for this meeting.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HomeTileSection(title: "Cameras") {
                 if cameras.isEmpty {
                     Text("No camera found. Plug one in, or turn the camera off.")
@@ -53,12 +67,9 @@ struct HomeCameraPanel: View {
                 HomeTileList(rows: rows, selected: isSelected, autofocus: true, pick: pickRow) { row, keyed in
                     HomeTileListRow(
                         symbol: row.symbol, title: row.name,
-                        detail: row.isNone ? nil
-                            : CameraPanelRules.position(of: row.id, switchOn: switchOn, order: settings.cameraUIDs)
-                                .map { "\($0)" },
+                        detail: CameraPanelRules.position(of: row.id, switchOn: switchOn, order: settings.cameraUIDs)
+                            .map { "\($0)" },
                         selected: isSelected(row),
-                        disabled: row.isNone && !CameraPanelRules.noCameraEnabled(
-                            shareIsNothing: coordinator.shareTarget.kind == .nothing),
                         keyFocused: keyed) { pickRow(rows.firstIndex { $0.id == row.id } ?? 0) }
                 }
             }
@@ -123,7 +134,6 @@ struct HomeCameraPanel: View {
     }
 
     private func isSelected(_ row: Row) -> Bool {
-        if row.isNone { return coordinator.cameraIsOff }
         return CameraPanelRules.isSelected(uid: row.id, switchOn: settings.enabled, order: settings.cameraUIDs,
                                            single: single, noCamera: coordinator.cameraIsOff)
     }
@@ -132,15 +142,12 @@ struct HomeCameraPanel: View {
         guard rows.indices.contains(index) else { return }
         let row = rows[index]
         var next = coordinator.cameraDirectorSettings
-        if row.isNone {
-            guard CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.kind == .nothing) else { return }
-            next.noCamera = true
-            next.enabled = false
-        } else {
-            next.cameraUIDs = CameraPanelRules.tapped(uid: row.id, switchOn: next.enabled, order: next.cameraUIDs)
-            next.noCamera = false
-        }
+        next.cameraUIDs = CameraPanelRules.tapped(uid: row.id, switchOn: next.enabled, order: next.cameraUIDs)
         coordinator.cameraDirectorSettings = next
+        // Choosing a camera is asking for it: if this meeting has the camera off,
+        // that goes back to what everyone sees. The saved default is not touched.
+        let state = coordinator.cameraState
+        if state.noCamera { coordinator.setLiveCameraState(CameraState(noCamera: false, shownOnMyScreen: state.shownOnMyScreen)) }
         coordinator.previewCamerasChanged()
     }
 
@@ -148,10 +155,11 @@ struct HomeCameraPanel: View {
         var next = coordinator.cameraDirectorSettings
         if on {
             next.cameraUIDs = CameraPanelRules.orderWhenSwitchingOn(order: next.cameraUIDs, single: single)
-            next.noCamera = false
         }
         next.enabled = on
         coordinator.cameraDirectorSettings = next
+        let state = coordinator.cameraState
+        if on, state.noCamera { coordinator.setLiveCameraState(CameraState(noCamera: false, shownOnMyScreen: state.shownOnMyScreen)) }
         coordinator.previewCamerasChanged()
     }
 }

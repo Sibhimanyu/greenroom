@@ -28,8 +28,7 @@ struct MeetingToolbarState {
     /// False when this Mac is not on the meeting's audio at all.
     var hasAudio = true
     var cameraOn = true
-    /// The camera bubble on your own screen is hidden.
-    var bubbleHidden = false
+    var cameraState = CameraState.everyoneAndMe
     /// Host or co-host: Security appears.
     var isHost = false
     var participants = 0
@@ -60,6 +59,7 @@ struct MeetingToolbarState {
 struct MeetingToolbarMenus {
     var audio: () -> [MenuEntry] = { [] }
     var video: () -> [MenuEntry] = { [] }
+    var cameraState: () -> [MenuEntry] = { [] }
     var security: () -> [MenuEntry] = { [] }
     var react: () -> [MenuEntry] = { [] }
     var share: () -> [MenuEntry] = { [] }
@@ -74,7 +74,6 @@ struct MeetingToolbarActions {
     var toggleMute: () -> Void = {}
     var joinAudio: () -> Void = {}
     var toggleVideo: () -> Void = {}
-    var toggleBubble: () -> Void = {}
     var togglePeople: () -> Void = {}
     var toggleChat: () -> Void = {}
     var toggleRecording: () -> Void = {}
@@ -190,12 +189,12 @@ struct MeetingToolbarBar: View {
             // The bar's cell (its symbol, help and spoken label). With the
             // camera off there is no bubble, so the cell keeps its place (the
             // row never changes width) but is empty and out of the accessibility tree.
-            let bubble = MeetingBarModel.bubbleCell(hidden: state.bubbleHidden)
-            cell(symbol: bubble.symbol, caption: state.bubbleHidden ? "Show Bubble" : "Hide Bubble",
-                 on: bubble.on, help: bubble.help, action: actions.toggleBubble)
-                .accessibilityLabel(bubble.spoken)
+            let cam = MeetingBarModel.cameraStateCell(state.cameraState)
+            menuCell(symbol: cam.symbol, caption: state.cameraState.name, on: cam.on,
+                     enabled: state.cameraOn, entries: menus.cameraState)
+                .help(cam.help)
+                .accessibilityLabel(cam.spoken)
                 .opacity(state.cameraOn ? 1 : 0)
-                .allowsHitTesting(state.cameraOn)
                 .accessibilityHidden(!state.cameraOn)
         case .security:
             menuCell(symbol: "checkmark.shield", caption: "Security", enabled: state.inMeeting,
@@ -286,7 +285,8 @@ struct MeetingToolbarBar: View {
             return .item(state.cameraOn ? "Stop Video" : "Start Video", enabled: state.inMeeting, actions.toggleVideo)
         case .bubble:
             guard state.cameraOn else { return nil }
-            return .item(MeetingBarModel.bubbleCell(hidden: state.bubbleHidden).spoken, actions.toggleBubble)
+            return .submenu(MeetingBarModel.cameraStateCell(state.cameraState).spoken.replacingOccurrences(of: ". Menu", with: ""),
+                            menus.cameraState())
         case .security: return .submenu("Security", enabled: state.inMeeting, menus.security())
         case .people:
             return .item(state.waiting > 0 ? "Participants (\(state.waiting) waiting)" : "Participants",

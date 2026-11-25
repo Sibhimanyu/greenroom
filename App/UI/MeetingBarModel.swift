@@ -47,8 +47,8 @@ struct MeetingBarSnapshot: Equatable {
     var inMeeting = true
     var muted = false
     var cameraOn = true
-    /// The floating camera bubble is hidden from your own screen (the class still sees you).
-    var bubbleHidden = false
+    /// Who sees the camera right now (this meeting's state).
+    var cameraState = CameraState.everyoneAndMe
     /// Greenroom's own meeting window exists, so there is a "Meeting" button.
     var videoButtons = true
     var unread = 0
@@ -197,14 +197,25 @@ enum MeetingBarModel {
                  spoken: open ? "Hide notes" : "Show notes", on: open)
     }
 
-    /// Your camera on your own screen: hide it or bring it back. Only your screen:
-    /// the meeting and the recording keep the camera. The symbol is a
-    /// person, never the eye, which belongs to "Show on my share".
-    static func bubbleCell(hidden: Bool) -> IconCell {
-        IconCell(symbol: hidden ? "person.crop.circle.badge.xmark" : "person.crop.circle",
-                 help: hidden ? "Shows your camera on your screen again. Everyone in the meeting sees you either way."
-                              : "Hides your camera from your screen. Everyone in the meeting still sees you.",
-                 spoken: hidden ? "Show my camera on my screen" : "Hide my camera on my screen", on: hidden)
+    /// Who sees your camera: one button for the four camera states, a menu rather than
+    /// a cycle (four steps round is slow and a mis-click would put you in front of
+    /// the meeting without a look). For this meeting only; the saved default is in
+    /// Settings -> Layouts. The symbol is a person, never the eye, which belongs
+    /// to "Show on my share".
+    static func cameraStateCell(_ state: CameraState) -> IconCell {
+        IconCell(symbol: state.symbol,
+                 help: "Who sees your camera: \(state.name). \(state.detail) Click to change it for this meeting.",
+                 spoken: "Camera: \(state.name). Menu", on: state != .everyoneAndMe)
+    }
+
+    /// The four states as a menu. The two that hide you from the meeting are off while
+    /// nothing is shared: the picture would then be an empty backdrop.
+    static func cameraStateMenu(current: CameraState, noCameraAllowed: Bool,
+                                pick: @escaping (CameraState) -> Void) -> [MenuEntry] {
+        [.header("Who sees my camera")] + CameraState.allCases.map { state in
+            .item(state.name, checked: state == current, enabled: noCameraAllowed || !state.noCamera,
+                  note: state.detail) { pick(state) }
+        }
     }
 
     /// Meeting Views: opens the views submenu's entries as a menu of its own.

@@ -193,11 +193,15 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
-    /// Hides or shows the floating camera bubble on your own screen. The class
-    /// and the recording keep seeing the camera.
-    func toggleBubble() {
-        coordinator.presenceBubbleHidden.toggle()
-        refresh()
+    /// The four camera states as a menu, for this meeting only (never the saved default).
+    func cameraStateMenu() -> [MenuEntry] {
+        MeetingBarModel.cameraStateMenu(
+            current: coordinator.cameraState,
+            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.kind == .nothing)
+        ) { [weak self] state in
+            self?.coordinator.setLiveCameraState(state)
+            self?.refresh()
+        }
     }
 
     func joinAudio() {
@@ -506,7 +510,7 @@ struct MeetingToolbarView: View {
         s.muted = model.muted
         s.hasAudio = model.hasAudio
         s.cameraOn = model.cameraOn
-        s.bubbleHidden = coordinator.presenceBubbleHidden
+        s.cameraState = coordinator.cameraState
         s.isHost = model.isHost
         s.participants = model.participantCount
         s.waiting = model.waitingCount
@@ -536,7 +540,6 @@ struct MeetingToolbarView: View {
         a.toggleMute = model.toggleMute
         a.joinAudio = model.joinAudio
         a.toggleVideo = model.toggleCamera
-        a.toggleBubble = model.toggleBubble
         a.togglePeople = model.togglePeople
         a.toggleChat = model.toggleChat
         a.toggleRecording = { coordinator.toggleRecording() }
@@ -565,12 +568,10 @@ struct MeetingToolbarView: View {
                                pickSpeaker: { model.selectSpeaker(id: $0.id, name: $0.name) })
         }
         m.video = { () -> [MenuEntry] in
-            let hidden = model.coordinator.presenceBubbleHidden
-            var bubble: (hidden: Bool, toggle: () -> Void)?
-            if model.cameraOn { bubble = (hidden: hidden, toggle: { model.toggleBubble() }) }
-            return MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
-                                      bubble: bubble, pick: { model.selectCamera($0) })
+            MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
+                               pick: { model.selectCamera($0) })
         }
+        m.cameraState = { model.cameraStateMenu() }
         m.security = {
             var a = SecurityMenuActions()
             a.setLocked = model.setLocked
@@ -902,7 +903,7 @@ private struct MeetingControlBarView: View {
         s.inMeeting = model.inMeeting
         s.muted = model.muted
         s.cameraOn = model.cameraOn
-        s.bubbleHidden = coordinator.presenceBubbleHidden
+        s.cameraState = coordinator.cameraState
         s.videoButtons = model.videoButtons
         s.unread = model.unread
         s.participants = model.participantCount
@@ -933,7 +934,7 @@ private struct MeetingControlBarView: View {
         var a = MeetingBarActions()
         a.toggleMute = model.toggleMute
         a.toggleCamera = model.toggleCamera
-        a.toggleBubble = model.toggleBubble
+        a.cameraStateMenu = { model.cameraStateMenu() }
         a.meeting = model.toggleMeetingWindow
         a.toggleChat = model.toggleChat
         a.people = model.showPeople

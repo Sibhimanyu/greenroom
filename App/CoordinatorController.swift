@@ -346,6 +346,7 @@ final class CoordinatorController: ObservableObject {
         didSet {
             guard cameraDirectorSettings != oldValue else { return }
             cameraDirectorSettings.save(defaults)
+            syncSavedCameraState()
             Analytics.setting("camera_director", on: cameraDirectorSettings.isUsable)
             // Applied live: a teacher who turns it on mid-class should not
             // have to end the session to get it.
@@ -669,7 +670,51 @@ final class CoordinatorController: ObservableObject {
     /// puts the camera bubble on this screen. The meeting, recordings and the
     /// share follow `cameraIsOff` (the Webcam page), never this. Global.
     @Published var cameraShownOnMyScreen: Bool {
-        didSet { defaults.set(cameraShownOnMyScreen, forKey: "cameraShownOnMyScreen") }
+        didSet {
+            defaults.set(cameraShownOnMyScreen, forKey: "cameraShownOnMyScreen")
+            syncSavedCameraState()
+        }
+    }
+    /// The camera state (GLOSSARY.md): the saved default, which is `noCamera` and
+    /// `cameraShownOnMyScreen` read as one word, plus the running meeting's own change
+    /// from the bar or Home. A live change never writes the default; Start and Snap
+    /// Back drop it (`resetPresenceBubbleToLayoutDefault`).
+    @Published private(set) var cameraSession = CameraStateSession(saved: .everyoneAndMe)
+    var cameraState: CameraState { cameraSession.current }
+    var savedCameraState: CameraState {
+        CameraState(noCamera: cameraDirectorSettings.noCamera, shownOnMyScreen: cameraShownOnMyScreen)
+    }
+    private func syncSavedCameraState() {
+        let saved = savedCameraState
+        if cameraSession.saved != saved { cameraSession.setSaved(saved) }
+    }
+    /// Settings -> Layouts: the saved default for each Start. Writes the two old keys
+    /// in step, so a downgrade and every other reader still agree.
+    func setSavedCameraState(_ state: CameraState) {
+        var next = cameraDirectorSettings
+        next.noCamera = state.noCamera
+        cameraDirectorSettings = next
+        cameraShownOnMyScreen = state.shownOnMyScreen
+        if cameraSession.live == nil { applyCameraStateLive() }
+    }
+    /// The bar and Home: this meeting only. The saved default stays as it was.
+    func setLiveCameraState(_ state: CameraState) {
+        cameraSession.setLive(state)
+        applyCameraStateLive()
+    }
+    /// Puts the current state on the stage and the bubble: whether everyone sees
+    /// the camera (`cameraIsOff`) and whether it shows on this screen.
+    private func applyCameraStateLive() {
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
+        if stage != nil, sceneInUse || isRunning {
+            if !cameraIsOff {
+                stageCameraUIDs = sceneCameraUIDs(limit: sessionCameraUIDs(cameraDirectorSettings).count > 1 ? nil : 1)
+            }
+            stage?.update(makeStageConfiguration())
+        } else {
+            previewCamerasChanged()
+        }
+        refreshPresenceBubble()
     }
     @Published var hideSelfView: Bool {
         didSet {
@@ -807,7 +852,7 @@ final class CoordinatorController: ObservableObject {
     /// backdrop - the page refuses that pair, and this is the backstop for a
     /// pair that arrived anyway (an imported settings file, say).
     var cameraIsOff: Bool {
-        cameraDirectorSettings.noCamera && !cameraDirectorSettings.enabled
+        cameraState.noCamera && !cameraDirectorSettings.enabled
             && shareTarget.kind != .nothing
     }
 
@@ -1357,6 +1402,7 @@ final class CoordinatorController: ObservableObject {
         let shownOnMyScreen = (defaults.object(forKey: "cameraShownOnMyScreen") as? Bool) ?? true
         cameraShownOnMyScreen = shownOnMyScreen
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: shownOnMyScreen)   // init: no method calls yet
+        cameraSession = CameraStateSession(saved: CameraState(noCamera: CameraDirectorSettings.load().noCamera, shownOnMyScreen: shownOnMyScreen))
         speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.
@@ -1544,13 +1590,21 @@ final class CoordinatorController: ObservableObject {
     /// The camera bubble goes back to what the layout says: hidden when the layout's
     /// "Show my camera" is off, shown otherwise.
     func resetPresenceBubbleToLayoutDefault() {
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
+        let hadLiveChange = cameraSession.live != nil
+        cameraSession.resetToDefault()
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
+        // A live "Off" or "Only me" put the picture back to the default along with it.
+        if hadLiveChange, stage != nil { applyCameraStateLive() }
     }
 
     /// Home's camera and Just me controls: camera on again (not "No camera"), then re-preview.
     /// Same write as Settings > Webcam's camera cards.
     func turnCameraOnFromHome() {
         cameraDirectorSettings.noCamera = false
+        // A live "Off" or "Only me" from the bar would still hide the camera from everyone.
+        if let live = cameraSession.live, live.noCamera {
+            cameraSession.setLive(CameraState(noCamera: false, shownOnMyScreen: live.shownOnMyScreen))
+        }
         previewCamerasChanged()
     }
     var presenceTimer: Timer?

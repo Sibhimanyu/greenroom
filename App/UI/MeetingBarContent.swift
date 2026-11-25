@@ -182,8 +182,8 @@ struct BarIconButton: View {
 struct MeetingBarActions {
     var toggleMute: () -> Void = {}
     var toggleCamera: () -> Void = {}
-    /// Hide or show the floating camera bubble on your own screen.
-    var toggleBubble: () -> Void = {}
+    /// The four camera states, built when the menu opens (this meeting only).
+    var cameraStateMenu: () -> [MenuEntry] = { [] }
     var meeting: () -> Void = {}
     var toggleChat: () -> Void = {}
     /// The people count: opens the Participants list in a small window beside the bar.
@@ -336,9 +336,9 @@ struct MeetingBarContent: View {
     /// camera on, so with the camera off its cell stays (the bar never changes
     /// width) but is empty and out of the accessibility tree.
     private var bubbleButton: some View {
-        let cell = MeetingBarModel.bubbleCell(hidden: s.bubbleHidden)
-        return BarIconButton(symbol: cell.symbol, on: cell.on, help: cell.help, spoken: cell.spoken,
-                             action: a.toggleBubble)
+        let cell = MeetingBarModel.cameraStateCell(s.cameraState)
+        return BarIconButton(symbol: cell.symbol, on: cell.on, help: cell.help, spoken: cell.spoken, action: {})
+            .overlay { if s.cameraOn { MenuPopUpOverlay(label: cell.spoken, entries: a.cameraStateMenu) } }
             .opacity(s.cameraOn ? 1 : 0)
             .allowsHitTesting(s.cameraOn)
             .accessibilityHidden(!s.cameraOn)

@@ -83,13 +83,13 @@ final class SharePopoutRulesTests: XCTestCase {
         XCTAssertEqual(SharePopoutRules.readBack(s).kind, .window)
     }
 
-    // R32.5
+    // R32.5: at start a row is an app, chosen by its bundle id alone, whatever window title the share kept.
     func testAtStartAnAppRowIsChosenByItsBundleID() {
-        var s = ShareTarget(); s.kind = .window; s.appBundleID = "a.b"
-        XCTAssertTrue(SharePopoutRules.isChosen(bundleID: "a.b", title: "", in: s))
-        XCTAssertFalse(SharePopoutRules.isChosen(bundleID: "c.d", title: "", in: s))
+        var s = ShareTarget(); s.kind = .window; s.appBundleID = "a.b"; s.windowTitle = "Old tab title"
+        XCTAssertTrue(SharePopoutRules.isChosen(.atStart, bundleID: "a.b", title: "", in: s))
+        XCTAssertFalse(SharePopoutRules.isChosen(.atStart, bundleID: "c.d", title: "", in: s))
         s.kind = .display
-        XCTAssertFalse(SharePopoutRules.isChosen(bundleID: "a.b", title: "", in: s))
+        XCTAssertFalse(SharePopoutRules.isChosen(.atStart, bundleID: "a.b", title: "", in: s))
         XCTAssertFalse(SharePopoutRules.groupsByApp(.atStart))
         XCTAssertTrue(SharePopoutRules.groupsByApp(.thisMeeting))
     }
@@ -214,6 +214,25 @@ final class ShareHintRulesTests: XCTestCase {
         XCTAssertEqual(ShareHintRules.footerNote(room: nil, hint: "H", secondDisplay: "S"), .hint("H"))
         XCTAssertEqual(ShareHintRules.footerNote(room: nil, hint: nil, secondDisplay: "S"), .secondDisplay("S"))
         XCTAssertNil(ShareHintRules.footerNote(room: nil, hint: nil, secondDisplay: nil))
+    }
+
+    // R32.5: in the live meeting two windows of one app are told apart by their titles.
+    func testThisMeetingAWindowRowIsChosenByBundleIDAndTitle() {
+        var s = ShareTarget(); s.kind = .window; s.appBundleID = "a.b"; s.windowTitle = "Notes"
+        XCTAssertTrue(SharePopoutRules.isChosen(.thisMeeting, bundleID: "a.b", title: "Notes", in: s))
+        XCTAssertFalse(SharePopoutRules.isChosen(.thisMeeting, bundleID: "a.b", title: "Slides", in: s))
+    }
+
+    // R36.2, R15.2: the room note stands on its own; a layout that places no window still shows it.
+    func testTheRoomNoteShowsEvenWhenTheLayoutPlacesNoWindows() {
+        XCTAssertEqual(ShareHintRules.footer(hasRow: false, room: "R", hint: "H", secondDisplay: nil),
+                       ShareHintRules.Footer(note: .room("R"), showsOutline: false))
+        XCTAssertNil(ShareHintRules.footer(hasRow: false, room: nil, hint: "H", secondDisplay: nil),
+                     "without a row and without a room note there is no footer")
+        XCTAssertEqual(ShareHintRules.footer(hasRow: true, room: nil, hint: "H", secondDisplay: "S"),
+                       ShareHintRules.Footer(note: .hint("H"), showsOutline: true))
+        XCTAssertEqual(ShareHintRules.footer(hasRow: true, room: nil, hint: nil, secondDisplay: nil),
+                       ShareHintRules.Footer(note: nil, showsOutline: true))
     }
 
     // R36.3

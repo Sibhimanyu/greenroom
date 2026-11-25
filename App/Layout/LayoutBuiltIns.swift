@@ -122,6 +122,16 @@ extension LayoutLibrary {
         return copy.id
     }
 
+    /// The dashed strip (R29.3): adds a second arrangement to the active layout. Leave my windows alone
+    /// cannot take pieces, so it is forked first, like +. Returns the layout that now has the second.
+    @discardableResult
+    mutating func addSecondDisplayToActive() -> UUID? {
+        if active?.starter == Self.leaveAlone { forkLeaveAlone() }
+        guard let i = templates.firstIndex(where: { $0.id == activeID }) else { return nil }
+        templates[i].addSecondDisplay()
+        return templates[i].id
+    }
+
     // MARK: Existing installs (Q8)
 
     static let builtInsV2MigratedKey = "layoutLibrary.builtInsV2Migrated"
@@ -142,7 +152,7 @@ extension LayoutLibrary {
             && (t.camera == nil || t.camera == LayoutCamera())
             && t.twoDisplays == nil && t.oneDisplay.count == old.count
             && zip(t.oneDisplay, old).allSatisfy {
-                $0.kind == $1.0 && $0.rect == $1.1 && (!eyesAreFinal || $0.showsToEveryone)
+                $0.kind == $1.0 && $0.rect.isClose(to: $1.1) && (!eyesAreFinal || $0.showsToEveryone)
             }
     }
 
@@ -221,7 +231,7 @@ extension LayoutTemplate {
     var isAsShipped: Bool {
         guard let s = LayoutLibrary.shipped(starter) else { return false }
         func same(_ a: [LayoutPiece], _ b: [LayoutPiece]) -> Bool {
-            a.count == b.count && zip(a, b).allSatisfy { $0.kind == $1.kind && $0.rect == $1.rect && $0.showsToEveryone == $1.showsToEveryone }
+            a.count == b.count && zip(a, b).allSatisfy { $0.kind == $1.kind && $0.rect.isClose(to: $1.rect) && $0.showsToEveryone == $1.showsToEveryone }
         }
         guard name == s.name, camera == s.camera, share == s.share, same(oneDisplay, s.oneDisplay) else { return false }
         switch (twoDisplays, s.twoDisplays) {

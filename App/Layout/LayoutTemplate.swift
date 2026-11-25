@@ -31,6 +31,13 @@ struct UnitRect: Codable, Equatable, Hashable {
 
     static let full = UnitRect(x: 0, y: 0, w: 1, h: 1)
 
+    /// Equal but for floating-point noise (`5 * (1.0 / 12)` is not `5.0 / 12`): what "unedited" detectors
+    /// compare with, never `==`.
+    func isClose(to other: UnitRect, tolerance: Double = 1e-9) -> Bool {
+        abs(x - other.x) <= tolerance && abs(y - other.y) <= tolerance
+            && abs(w - other.w) <= tolerance && abs(h - other.h) <= tolerance
+    }
+
     var maxX: Double { x + w }
     var maxY: Double { y + h }
     var midX: Double { x + w / 2 }
@@ -441,8 +448,8 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     }
 
     /// Every piece of the layout, both arrangements: Meeting and Chat are single windows, so their
-    /// limits count across both. (`slot` is kept for the call sites that ask "where I am adding".)
-    func piecesInVersion(of slot: LayoutSlot) -> [LayoutPiece] {
+    /// limits count across both.
+    var allPieces: [LayoutPiece] {
         pieces(for: .main) + pieces(for: .second)
     }
 
@@ -460,7 +467,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     func canAdd(_ kind: LayoutPiece.Kind, to slot: LayoutSlot) -> Bool {
         // Leave my windows alone stays clean: + copies it into "My layout" first (LayoutLibrary.forkLeaveAlone).
         guard movesWindows else { return false }
-        let existing = piecesInVersion(of: slot)
+        let existing = allPieces
         let views = Set(existing.compactMap { $0.kind.view })
         let hasMeeting = existing.contains { $0.kind.isMeeting }
         switch kind {
@@ -717,7 +724,7 @@ extension LayoutLibrary {
     /// Same pieces in the same order: kind, rectangle and eye (ids are ignored).
     static func sameArrangement(_ a: [LayoutPiece], _ b: [LayoutPiece]) -> Bool {
         a.count == b.count && zip(a, b).allSatisfy {
-            $0.kind == $1.kind && $0.rect == $1.rect && $0.showsToEveryone == $1.showsToEveryone
+            $0.kind == $1.kind && $0.rect.isClose(to: $1.rect) && $0.showsToEveryone == $1.showsToEveryone
         }
     }
 

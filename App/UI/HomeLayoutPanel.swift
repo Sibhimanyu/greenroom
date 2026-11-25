@@ -44,7 +44,7 @@ struct HomeLayoutPanel: View {
             title: "Layout", summary: "Where Start puts the meeting, the chat and your apps.",
             value: LayoutPanelRules.headerValue(name: coordinator.layoutChoiceName),
             note: LayoutPanelRules.twoDisplayNote(
-                hasTwoDisplays: active?.twoDisplays != nil,
+                hasTwoDisplays: active?.usesSecondDisplay ?? false,
                 secondConnected: active?.twoDisplays.map { LayoutScreenPreview.secondScreen(uuid: $0.secondUUID) != nil } ?? false
             ).map { (symbol: VisibilitySymbol.twoDisplays.name, text: $0) },
             art: DockHintVisual.layout(active?.oneDisplay) { [coordinator] piece in
@@ -101,7 +101,7 @@ struct HomeLayoutPanel: View {
                         .greenroomTile(role: .choice(selected: isSelected(choice)), radius: 10)
                         .overlay { HomeTileKeyRing(show: keyed && index == offset, radius: 10) }
                         .disabled(locked)
-                        .help(choice.template.twoDisplays != nil ? "\(choice.name). \(LayoutPanelRules.twoDisplayBadgeHelp)" : choice.name)
+                        .help(choice.template.usesSecondDisplay ? "\(choice.name). \(LayoutPanelRules.twoDisplayBadgeHelp)" : choice.name)
                         .accessibilityLabel(choice.name)
                         .accessibilityAddTraits(isSelected(choice) ? .isSelected : [])
                 }
@@ -134,7 +134,7 @@ struct HomeLayoutPanel: View {
         .padding(.horizontal, 6).padding(.vertical, 6)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
-            if choice.template.twoDisplays != nil {
+            if choice.template.usesSecondDisplay {
                 Image(systemName: VisibilitySymbol.twoDisplays.name)
                     .font(.system(size: 9)).foregroundStyle(.secondary)
                     .padding(4)

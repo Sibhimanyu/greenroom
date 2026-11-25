@@ -94,6 +94,9 @@ extension LayoutTemplate {
         }
     }
 
+    /// The second arrangement has pieces: the layout does something on a second display.
+    var usesSecondDisplay: Bool { !(twoDisplays?.second.isEmpty ?? true) }
+
     // MARK: Everyone sees
 
     /// A Room screen on the second display shows what everyone sees, so that display

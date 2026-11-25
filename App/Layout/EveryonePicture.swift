@@ -20,7 +20,7 @@ struct EveryonePicture: Equatable {
 
     /// `displaySize` is the shared display in points; a piece's unit rect is a fraction of it.
     static func make(share: Visibility.Target, pieces: [LayoutPiece], displaySize: CGSize, camera: Camera?) -> EveryonePicture {
-        let presenter = camera?.shape.isPresenterStyle ?? false
+        let presenter = StageFrame.usesPresenterPanel(showsCamera: camera?.everyoneSees ?? false, shape: camera?.shape ?? .circle)
         let kind: StageFrame.ShareKind
         switch share {
         case .wholeScreen: kind = .wholeScreen
@@ -59,13 +59,14 @@ struct EveryonePicture: Equatable {
             }
         }
         if let camera, camera.everyoneSees {
-            // With nothing shared a bubble shape gives way to the full frame (`StageLayout.cameraShape`).
-            let shape = kind == .justMe && !camera.shape.usesChromaKey ? WebcamShape.square : camera.shape
+            // With nothing shared a bubble shape gives way to the full frame; StageFrame owns that fallback.
+            let hasContent = kind != .justMe
+            let shape = StageFrame.cameraShape(camera.shape, showsContent: hasContent)
             var box = camera.box
-            box.isCutout = shape == .cutout && kind != .justMe
+            box.isCutout = shape == .cutout && hasContent
             let aspect = shape.cropsToSquare ? 1 : 16.0 / 9.0
-            picture.camera = kind == .justMe && !shape.usesChromaKey
-                ? StageFrame.fit(aspect: aspect, in: CGRect(origin: .zero, size: StageFrame.output))
+            picture.camera = StageFrame.cameraFillsFrame(shape: shape, showsContent: hasContent)
+                ? StageFrame.fullFrameCameraRect(aspect: aspect)
                 : StageFrame.cameraRect(box: box, shape: shape, aspect: aspect, content: picture.content)
         }
         return picture

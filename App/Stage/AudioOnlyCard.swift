@@ -29,7 +29,7 @@ enum AudioOnlyCard {
 
         // `--ink` #101828 (the Stage's own backdrop), so the card is the same
         // ground the camera and the screen sit on.
-        NSColor(srgbRed: 16.0 / 255, green: 24.0 / 255, blue: 40.0 / 255, alpha: 1).setFill()
+        NSColor(srgbRed: StageFrame.ink.red, green: StageFrame.ink.green, blue: StageFrame.ink.blue, alpha: 1).setFill()
         NSRect(origin: .zero, size: size).fill()
 
         let unit = size.height / 1080

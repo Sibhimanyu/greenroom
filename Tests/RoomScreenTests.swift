@@ -73,12 +73,18 @@ final class RoomScreenTests: XCTestCase {
     // MARK: Palette
 
     func testPaletteReasons() {
-        XCTAssertNil(RoomScreenRules.blockReason(slot: .second, existing: []))
-        XCTAssertEqual(RoomScreenRules.blockReason(slot: .second, existing: [room]), "Already in this layout")
-        let one = RoomScreenRules.blockReason(slot: .main, existing: [])
+        XCTAssertNil(RoomScreenRules.blockReason(slot: .second, existing: [], hasSecondDisplay: true))
+        XCTAssertEqual(RoomScreenRules.blockReason(slot: .second, existing: [room], hasSecondDisplay: true), "Already in this layout")
+        let one = RoomScreenRules.blockReason(slot: .main, existing: [], hasSecondDisplay: false)
         XCTAssertTrue(one?.contains("second display") == true)
         XCTAssertTrue(one?.contains("extended, not mirrored") == true)
-        XCTAssertNotNil(RoomScreenRules.blockReason(slot: .main, existing: []))
+        XCTAssertNotNil(RoomScreenRules.blockReason(slot: .main, existing: [], hasSecondDisplay: false))
+    }
+
+    // R31.4: with a second display the reason is where the Room screen goes, not "add a second display".
+    func testMainWithASecondDisplayTellsWhereTheRoomScreenGoes() {
+        XCTAssertEqual(RoomScreenRules.blockReason(slot: .main, existing: [], hasSecondDisplay: true),
+                       "The Room screen goes on the second display")
     }
 
     // MARK: Placement

@@ -196,6 +196,10 @@ struct LayoutCanvas: View {
     /// The dashed strip beside the main canvas that adds a second display (R29.3): as tall as the
     /// canvas, at its right edge. Only the main canvas has one, and only without a second display.
     var trailingStrip: AnyView?
+    /// This layout has a second display: the editor's canvases are two (`crossing` is its drag between them).
+    private var hasSecondDisplay: Bool { crossing != nil }
+    /// A lone canvas is the display everyone sees; with two, only the one marked shared.
+    private var showsSharedPicture: Bool { isShared || !hasSecondDisplay }
     /// Drag between the two displays; nil on a one-display layout.
     var crossing: LayoutCrossing?
     /// A piece from the other display is over this canvas right now.
@@ -291,7 +295,7 @@ struct LayoutCanvas: View {
     private var bezel: some View {
         // Preview: Everyone on the shared canvas is the meeting's own 16:9 picture (R37).
         Group {
-            if previewEveryone && (isShared || crossing == nil) {
+            if previewEveryone && showsSharedPicture {
                 LayoutEveryonePicture(
                     picture: EveryonePicture.make(
                         share: share, pieces: pieces, displaySize: display.size,
@@ -398,7 +402,7 @@ struct LayoutCanvas: View {
             }
             .coordinateSpace(name: Self.space)
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(LayoutEditorRules.spokenCanvas(name: display.name, isShared: isShared || crossing == nil))
+            .accessibilityLabel(LayoutEditorRules.spokenCanvas(name: display.name, isShared: showsSharedPicture))
             #if DEBUG
             .onChange(of: previewEveryone) { _, on in
                 if on { ShareVisibleWindows.crossCheck(pieces: pieces) }
@@ -606,13 +610,18 @@ struct LayoutCanvas: View {
         !previewEveryone && CanvasShareRules.fades(piece: piece, target: share)
     }
 
+    /// The smallest piece (points) that has room for the "Shared" / "Not shared" tag.
+    private static let shareTagMinWidth: CGFloat = 100
+    private static let shareTagMinHeight: CGFloat = 40
+
     /// R34: with a share that is not the whole screen, the shared window says "Shared" and the others say
     /// "Not shared" while the pointer is on them. My screen only; the icons are VisibilitySymbol's.
     @ViewBuilder
     private func shareMark(_ piece: LayoutPiece, canvas: CGSize) -> some View {
         let mark = CanvasShareRules.mark(piece: piece, target: share)
         let box = frame(of: liveRect(piece), canvas: canvas)
-        if let meaning = CanvasShareRules.icon(mark), box.width >= 100, box.height >= 40,
+        if let meaning = CanvasShareRules.icon(mark),
+           box.width >= Self.shareTagMinWidth, box.height >= Self.shareTagMinHeight,
            mark == .shared || (hoverID == piece.id && drag == nil) {
             let words = mark == .shared ? CanvasShareRules.sharedWords : CanvasShareRules.notSharedWords
             HStack(spacing: 4) {

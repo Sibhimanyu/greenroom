@@ -10,6 +10,10 @@ import CoreGraphics
 enum StageFrame {
     enum ShareKind: Equatable { case wholeScreen, window, whiteboard, justMe }
 
+    /// DESIGN.md `--ink` #101828, the Stage's backdrop. The one place the number is written in Swift: the
+    /// renderer, the Audio only card and the Layouts preview all read it from here.
+    static let ink = (red: 16.0 / 255, green: 24.0 / 255, blue: 40.0 / 255)
+
     /// The compositor's output (1920x1080).
     static let output = CGSize(width: 1920, height: 1080)
 
@@ -30,6 +34,27 @@ enum StageFrame {
             box = CGRect(x: m, y: m, width: output.width - 2 * m, height: output.height - 2 * m)
         }
         return fit(aspect: sourceAspect, in: box)
+    }
+
+    /// R37.3: whether content is drawn as the Presenter panel. The one decision, for the renderer and the preview.
+    static func usesPresenterPanel(showsCamera: Bool, shape: WebcamShape) -> Bool {
+        showsCamera && shape.isPresenterStyle
+    }
+
+    /// With nothing shared the camera is the picture, so a bubble shape gives way to the full frame;
+    /// Cutout and Presenter keep their removal.
+    static func cameraShape(_ shape: WebcamShape, showsContent: Bool) -> WebcamShape {
+        showsContent || shape.usesChromaKey ? shape : .square
+    }
+
+    /// Whether the camera fills the output (nothing shared, no removal look).
+    static func cameraFillsFrame(shape: WebcamShape, showsContent: Bool) -> Bool {
+        !showsContent && !shape.usesChromaKey
+    }
+
+    /// The full-frame camera: its picture aspect-fitted in the whole output.
+    static func fullFrameCameraRect(aspect: CGFloat, output: CGSize = StageFrame.output) -> CGRect {
+        fit(aspect: aspect, in: CGRect(origin: .zero, size: output))
     }
 
     /// The largest rect of `aspect` that fits `box`, centred in it.

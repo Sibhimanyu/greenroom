@@ -82,7 +82,6 @@ final class OneArrangementModelTests: XCTestCase {
         var t = withSecond(main: [browser, chat], second: [meeting])
         t.setMeetingStartsHidden(true)
         XCTAssertEqual(t.meetingStartsHidden, true)
-        XCTAssertTrue(t.hasFillsDisplayMeeting)
         t.replaceApp("com.example.browser", with: "com.example.new")
         XCTAssertEqual(t.firstAppBundleID, "com.example.new")
     }
@@ -152,6 +151,42 @@ final class OneArrangementModelTests: XCTestCase {
 
     // MARK: R29, R30
 
+    // R32.2: editing the saved layout mid-meeting must not move the shared display; only Apply now does.
+    func testARunningMeetingKeepsItsSharedDisplayWhenTheSavedLayoutIsEdited() {
+        var running = LayoutTemplate(name: "x", oneDisplay: [], camera: LayoutCamera(), share: ShareTarget())
+        running.addSecondDisplay()
+        var edited = running
+        edited.twoDisplays?.sharedSlot = .second
+        edited.setPieces([LayoutPiece(kind: .chat, rect: .full)], for: .main)
+        let adopted = running.adoptingEdit(edited)
+        XCTAssertEqual(adopted.effectiveSharedSlot, .main, "the live shared display waits for Apply now")
+        XCTAssertEqual(adopted.oneDisplay.count, 1, "the edit to the pieces still reaches the running meeting")
+        XCTAssertEqual(edited.twoDisplays?.sharedSlot, .second, "the saved layout keeps the pick")
+    }
+
+    // R29.3: the strip also shows on Leave my windows alone; clicking it forks (like +) and adds the second there.
+    func testTheStripOnLeaveMyWindowsAloneForksThenAddsTheSecond() throws {
+        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
+        lib.activeID = lib.leaveAloneID
+        let before = lib.templates.count
+        let id = try XCTUnwrap(lib.addSecondDisplayToActive())
+        XCTAssertEqual(lib.templates.count, before + 1)
+        XCTAssertEqual(lib.activeID, id)
+        XCTAssertNotNil(lib.template(id: id)?.twoDisplays)
+        XCTAssertNil(lib.template(id: id)?.starter)
+        XCTAssertNil(lib.templates.first { $0.starter == LayoutLibrary.leaveAlone }?.twoDisplays, "the built-in stays clean")
+    }
+
+    func testTheStripOnAnyOtherLayoutAddsTheSecondInPlace() throws {
+        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
+        let teach = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.teachFromBrowser })
+        lib.activeID = teach.id
+        let before = lib.templates.count
+        XCTAssertEqual(lib.addSecondDisplayToActive(), teach.id)
+        XCTAssertEqual(lib.templates.count, before)
+        XCTAssertNotNil(lib.template(id: teach.id)?.twoDisplays)
+    }
+
     // R29.3
     func testTheDashedStripShowsOnlyWithoutASecondDisplay() {
         XCTAssertTrue(LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: false))
@@ -159,17 +194,10 @@ final class OneArrangementModelTests: XCTestCase {
         XCTAssertEqual(LayoutEditorRules.addSecondTooltip, "Add a second display")
     }
 
-    // R29.2
-    func testTheMainCanvasFillsThePanelBesideTheStripWithNoBandLeft() {
-        let w = LayoutEditorRules.canvasWidths(panelWidth: 700, gap: 6, stripWidth: 28, mainAspect: 16.0 / 10, secondAspect: nil)
-        XCTAssertEqual(w.main + 6 + 28, 700, accuracy: 0.001)
-        XCTAssertNil(w.second)
-    }
-
     // R29.4
     func testWithASecondBothCanvasesShareTheWidthAtOneHeight() throws {
-        let w = LayoutEditorRules.canvasWidths(panelWidth: 700, gap: 12, stripWidth: 28, mainAspect: 16.0 / 10, secondAspect: 16.0 / 9)
-        let second = try XCTUnwrap(w.second)
+        let w = LayoutEditorRules.canvasWidths(panelWidth: 700, gap: 12, mainAspect: 16.0 / 10, secondAspect: 16.0 / 9)
+        let second = w.second
         XCTAssertEqual(w.main + 12 + second, 700, accuracy: 0.001)
         XCTAssertEqual(w.main / (16.0 / 10), second / (16.0 / 9), accuracy: 0.001, "same height")
         XCTAssertGreaterThan(w.main, 100)
@@ -178,9 +206,9 @@ final class OneArrangementModelTests: XCTestCase {
 
     // R29.4: the bezel's own padding is not part of the picture, so the pictures, not the frames, share one height.
     func testWithASecondTheDrawnDisplaysShareOneHeightAfterThePadding() throws {
-        let w = LayoutEditorRules.canvasWidths(panelWidth: 700, gap: 12, stripWidth: 28, mainAspect: 16.0 / 10, secondAspect: 16.0 / 9,
+        let w = LayoutEditorRules.canvasWidths(panelWidth: 700, gap: 12, mainAspect: 16.0 / 10, secondAspect: 16.0 / 9,
                                                inset: 8)
-        let second = try XCTUnwrap(w.second)
+        let second = w.second
         XCTAssertEqual(w.main + 12 + second, 700, accuracy: 0.001)
         XCTAssertEqual((w.main - 16) / (16.0 / 10), (second - 16) / (16.0 / 9), accuracy: 0.001)
     }

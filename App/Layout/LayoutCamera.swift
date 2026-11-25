@@ -286,6 +286,17 @@ extension LayoutLibrary {
 /// When the layout's camera and share are put into the live settings. The live settings
 /// (Home, the bar, a drag in the meeting) are a working copy: they change the running meeting
 /// and are never written back to the layout. They are replaced only at these moments.
+extension LayoutTemplate {
+    /// R32.2: the layout a running meeting becomes when its saved layout is edited.
+    /// The pieces, camera and share follow the edit; the shared display stays as the meeting started it until
+    /// "Apply now" (which takes the whole saved layout).
+    func adoptingEdit(_ edited: LayoutTemplate) -> LayoutTemplate {
+        var adopted = edited
+        if adopted.twoDisplays != nil { adopted.twoDisplays?.sharedSlot = twoDisplays?.sharedSlot ?? .main }
+        return adopted
+    }
+}
+
 enum LayoutPieceAdoption {
     struct Plan: Equatable {
         var camera: LayoutCamera?

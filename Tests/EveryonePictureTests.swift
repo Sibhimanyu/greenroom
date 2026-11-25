@@ -84,6 +84,46 @@ final class EveryonePictureTests: XCTestCase {
         XCTAssertFalse(me.whiteboardCard)
     }
 
+    // R37.3, R37.7: the Presenter panel needs the camera drawn; with it hidden from everyone the content is not a panel.
+    func testPresenterWithTheCameraHiddenFromEveryoneIsNotAPanel() {
+        var hiddenPresenter = EveryonePicture.Camera(box: PresenceBox(), shape: .presenterLarge)
+        hiddenPresenter.everyoneSees = false
+        let pic = EveryonePicture.make(share: .wholeScreen, pieces: [], displaySize: display, camera: hiddenPresenter)
+        rectsEqual(pic.content, CGRect(x: 36.35, y: 0, width: 1847.3, height: 1080), 0.1)
+        XCTAssertNil(pic.camera)
+        XCTAssertFalse(StageFrame.usesPresenterPanel(showsCamera: false, shape: .presenterLarge))
+        XCTAssertTrue(StageFrame.usesPresenterPanel(showsCamera: true, shape: .presenterLarge))
+        XCTAssertFalse(StageFrame.usesPresenterPanel(showsCamera: true, shape: .circle))
+    }
+
+    func testRendererAndPreviewAgreeWhenThePresenterCameraIsHidden() {
+        let renderer = StageRenderer(canvas: StageFrame.output)
+        var scene = StageScene()
+        scene.layout.shape = .presenterLarge
+        scene.layout.showsCamera = false
+        scene.contentIsWholeDisplay = true
+        _ = renderer.compose(scene: scene, screen: CIImage(color: .gray).cropped(to: CGRect(origin: .zero, size: display)),
+                             cameras: [:])
+        var cam = EveryonePicture.Camera(box: PresenceBox(), shape: .presenterLarge)
+        cam.everyoneSees = false
+        let pic = EveryonePicture.make(share: .wholeScreen, pieces: [], displaySize: display, camera: cam)
+        rectsEqual(pic.content, renderer.lastContentRect, 0.6)
+    }
+
+    // R37: StageFrame owns the Just me fallback: with nothing shared the camera is the square full frame.
+    func testJustMeFallbackIsSquareAndFullFrameUnlessItNeedsARemovalLook() {
+        XCTAssertEqual(StageFrame.cameraShape(.circle, showsContent: false), .square)
+        XCTAssertEqual(StageFrame.cameraShape(.roundedRectangle, showsContent: false), .square)
+        XCTAssertEqual(StageFrame.cameraShape(.circle, showsContent: true), .circle)
+        XCTAssertEqual(StageFrame.cameraShape(.cutout, showsContent: false), .cutout)
+        XCTAssertEqual(StageFrame.cameraShape(.presenterLarge, showsContent: false), .presenterLarge)
+        XCTAssertTrue(StageFrame.cameraFillsFrame(shape: .circle, showsContent: false))
+        XCTAssertFalse(StageFrame.cameraFillsFrame(shape: .cutout, showsContent: false))
+        XCTAssertFalse(StageFrame.cameraFillsFrame(shape: .circle, showsContent: true))
+        rectsEqual(StageFrame.fullFrameCameraRect(aspect: 1), CGRect(x: 420, y: 0, width: 1080, height: 1080), 0.01)
+        rectsEqual(StageFrame.fullFrameCameraRect(aspect: 16.0 / 9), CGRect(x: 0, y: 0, width: 1920, height: 1080), 0.01)
+    }
+
     func testCameraHiddenFromEveryoneIsNotDrawn() {
         var cam = circle; cam.everyoneSees = false
         XCTAssertNil(EveryonePicture.make(share: .wholeScreen, pieces: [], displaySize: display, camera: cam).camera)

@@ -22,10 +22,8 @@ struct StageLayout: Equatable {
     var mirrorsCamera = false
 
     /// With nothing shared the camera IS the picture, so bubble shapes give
-    /// way to the full frame; Cutout and Presenter keep their removal.
-    var cameraShape: WebcamShape {
-        showsContent || shape.usesChromaKey ? shape : .square
-    }
+    /// way to the full frame; Cutout and Presenter keep their removal (`StageFrame.cameraShape`).
+    var cameraShape: WebcamShape { StageFrame.cameraShape(shape, showsContent: showsContent) }
 
     /// The camera must be open: drawn for everyone, or mirrored for the owner.
     var opensCamera: Bool { showsCamera || mirrorsCamera }

@@ -121,7 +121,12 @@ different order; this table is the authority.
 | R34 | Canvas honesty: Shared tag and Not shared hint on My screen | P13 | built |
 | R35 | Every piece inspector: header, at most two rows, no hint paragraphs | P13 | built |
 | R36 | Home says when the share is not the whole screen; the Screen tile uses the pop-out's short names | P13 | built |
-| R37 | Preview: Everyone draws the meeting's real picture | P14 | built (needs a live look) |
+| R37 | Preview: Everyone draws the meeting's real picture | P14 | built; rects tested against the renderer (needs a live look) |
+| R38 | Bug list: the solid backdrop follows light / dark | bug list | built |
+
+**R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
+- R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
+  whenever its appearance changes, so a light/dark switch never leaves white text on a white sheet.
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -393,11 +398,13 @@ different order; this table is the authority.
 **R29. Editor canvases.**
 - R29.1 There is no One display / Two displays toggle. The main canvas always shows.
 - R29.2 With no second arrangement, the main canvas fills the panel's width and its height follows the
-  display's aspect, so no empty band is left on its right (`LayoutEditorRules.canvasWidths`).
+  display's aspect, so no empty band is left on its right (the view; `canvasWidths` is for two canvases only).
 - R29.3 Also then, a thin vertical dashed strip, 28pt wide and as tall as the canvas, sits at the main
   canvas's right edge with a + and the tooltip "Add a second display"
   (`LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay:)`, true only without a second).
-  Clicking it adds an empty second arrangement.
+  Clicking it adds an empty second arrangement. It shows on every layout, Leave my windows alone included:
+  that one cannot take pieces, so the strip, like +, first makes "My layout" from it and adds the second there
+  (`LayoutLibrary.addSecondDisplayToActive`).
 - R29.4 With a second arrangement the strip is gone and the two canvases sit side by side, both fully
   visible; the main canvas shrinks so both fit the panel width (`canvasWidths` sums to the width minus
   the gap, each follows its own display's aspect).
@@ -426,8 +433,11 @@ different order; this table is the authority.
 - R32.1 Home's Share pop-out is one shared view (`SharePopout`) with a `context`: `.thisMeeting` (Home, live) or
   `.atStart` (Layouts, saved with the layout). Both are built in `HomeTileMetrics` (width, padding, tile gap).
 - R32.2 The header says which: "Screen · this meeting" or "Screen · at start" (`SharePopoutRules.title`).
+  At start only saves to the layout: while a meeting runs, an edit made there (the share, the shared display)
+  changes the live meeting only through Apply now (`LayoutTemplate.adoptingEdit` keeps the running shared display).
 - R32.3 Sections (`SharePopoutRules.sections`): the share tiles always; with a second display and `.atStart`, the
-  Main / Second shared-display choice straight after them; the windows list for One window or while browsing; the
+  Main / Second shared-display choice straight after them, only while Whole screen is the share (the shared
+  display is what a whole-screen share captures); the windows list for One window or while browsing; the
   slide-show switch for One window. `.atStart` never lists the capture displays or the "isn't open" and
   permission notes (nothing is live); `.thisMeeting` never lists the shared-display choice.
 - R32.4 Tiles map to a saved share (`SharePopoutRules.applying`): Whole screen, Whiteboard and Just me set the
@@ -435,7 +445,9 @@ different order; this table is the authority.
   (`picking`) sets kind, app, name and title, and keeps "Follow the slide show". A saved One app reads back as the
   whole screen (`readBack`).
 - R32.5 At start the window list is the apps (a saved share names an app, not a window): each row is an app with
-  no title, chosen when its bundle id is the saved one (`isChosen`), with no app heading above it.
+  no title, chosen when its bundle id is the saved one (`isChosen(.atStart, ...)`, whatever window title the
+  share kept), with no app heading above it. Live (`.thisMeeting`) a window row is also told apart by its
+  title, since two windows of one app are separate choices.
 - R32.6 In Layouts "Everyone sees this" opens this pop-out as a popover, replacing the text menu
   (`LayoutEditorRules.sharedMenu` is gone). Home uses it as before.
 - R32.7 Every control in it is one undo step in Layouts (it writes the layout's share and shared display), has a
@@ -472,7 +484,10 @@ different order; this table is the authority.
 - R35.5 The camera's who-sees choice is a 4-icon segmented control using `VisibilitySymbol.camera(state)`, each with a
   tooltip (the state's name and detail) and a VoiceOver label (the state's name). The "Camera look" fold opens from the
   same row as it, as a quiet button, so there are still two rows.
-- R35.6 Every change is one undo step; folds use `Collapse`; DESIGN.md tokens only.
+- R35.6 Every change to the layout is one undo step; folds use `Collapse`; DESIGN.md tokens only. The two
+  Greenroom Browser rows in the ⋯ menu ("Reopen last tabs", "Search suggestions") are global browser
+  settings, not layout settings: they apply in every layout, are not part of the layout's undo (switching
+  them back is the undo), and say so in their tooltip. They stay in this menu (R35.3).
 
 **R36. Home: a quiet hint when the share is not the whole screen.** (owner, 2026-11-25)
 - R36.1 While the live share is Just me, Whiteboard or One window, the Layout tile is unchanged (the layout still
@@ -492,15 +507,18 @@ whose `bounds` is that rect, so the camera never leaves the drawn content.
   display (aspect 1.71) is drawn 1847.3 x 1080, centred.
 - R37.2 One window or app: a 4.5% margin of the output height on every side, the window alone fitted in what
   is left. Owner's case: a 1134x884 browser is drawn about 1260.7 x 982.8 at (329.6, 48.6).
-- R37.3 Presenter look (the camera's shape is Presenter, with content): the content is a panel 78% of the
+- R37.3 Presenter look (the camera's shape is Presenter, the camera drawn for everyone, and content): the
+  decision is `StageFrame.usesPresenterPanel`, read by the renderer and the preview alike; the content is a panel 78% of the
   output, 2.5% of the width from the right, centred vertically, the source fitted inside it.
-- R37.4 Just me: no content rect (nil); the camera is the picture.
+- R37.4 Just me: no content rect (nil); the camera is the picture, a square full frame unless the look needs
+  removal (`StageFrame.cameraShape`, `cameraFillsFrame`, `fullFrameCameraRect`: the one place for this fallback).
 - R37.5 The camera rect is `PresenceGeometry.cameraRect` with `bounds` the content rect. Owner's case with the
   default circle: about x 1129 to 1590, y 554 to 1015, inside the browser.
 - R37.6 Preview: Everyone is a 16:9 picture of the output scaled to the canvas width: the #101828 backdrop;
   Whole screen draws the pieces the meeting sees (R3) at their place in the content rect; One window draws
   only the chosen window's piece, filling the content rect; Whiteboard draws a white card and no pieces;
   Just me draws neither; the camera (when everyone sees it) at its rect from R37.5. It is read-only.
+- R37.8 Implemented by 58fd53b (the preview and `StageFrame`), with fdebb5a's follow-ups.
 - R37.7 For every share kind the preview's content and camera rects equal the renderer's (a test composes a
   real frame and compares `lastContentRect` and the camera's coverage with the preview's numbers).
 
@@ -536,9 +554,9 @@ whose `bounds` is that rect, so the camera never leaves the drawn content.
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | f4222d7 |
 | P10 Room + laptop | R15 | built (Room + laptop; Home's "Connect the room display" note) | |
 | P11 One icon language | R17 | built | 71a76b5 |
-| P12 One arrangement per display (ADR 0002) | R25 to R31 | built | (this commit) |
-| P13 Refined share and inspectors | R32 to R36 | built (rules tested; rendered off screen, not driven live) | (this commit) |
-| P14 Preview: Everyone is the real picture | R37 | built | (this commit) |
+| P12 One arrangement per display (ADR 0002) | R25 to R31 | built | 3aa720a (review fixes: this commit) |
+| P13 Refined share and inspectors | R32 to R36 | built (rules tested; rendered off screen, not driven live) | cb8fdd5 (review fixes: this commit) |
+| P14 Preview: Everyone is the real picture | R37 | built | 58fd53b, fdebb5a (review fixes: this commit) |
 
 ## Known gaps
 

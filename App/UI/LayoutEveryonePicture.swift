@@ -14,8 +14,8 @@ struct LayoutEveryonePicture: View {
     let look: (LayoutPiece) -> LayoutPieceLook
     let camera: LayoutCameraModel?
 
-    /// `--ink` #101828, the compositor's backdrop.
-    static let backdrop = Color(red: 16.0 / 255, green: 24.0 / 255, blue: 40.0 / 255)
+    /// `--ink` (`StageFrame.ink`), the compositor's backdrop.
+    static let backdrop = Color(red: StageFrame.ink.red, green: StageFrame.ink.green, blue: StageFrame.ink.blue)
 
     var body: some View {
         GeometryReader { geo in
@@ -37,7 +37,7 @@ struct LayoutEveryonePicture: View {
                     }
                 }
                 if let rect = picture.camera, let camera {
-                    CameraStandIn(shape: picture.content == nil && !camera.shape.usesChromaKey ? .square : camera.shape, meaning: .camera(camera.state), off: false,
+                    CameraStandIn(shape: StageFrame.cameraShape(camera.shape, showsContent: picture.content != nil), meaning: .camera(camera.state), off: false,
                                   size: CGSize(width: rect.width * k, height: rect.height * k))
                         .frame(width: rect.width * k, height: rect.height * k)
                         .offset(x: rect.minX * k, y: rect.minY * k)

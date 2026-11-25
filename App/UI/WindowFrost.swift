@@ -40,10 +40,8 @@ enum WindowFrost {
         frost.blendingMode = .behindWindow
         frost.state = .active
         frost.autoresizingMask = [.width, .height]
-        let sheet = NSView(frame: frame.bounds)
+        let sheet = SolidSheet(frame: frame.bounds, color: solid)
         sheet.identifier = solidID
-        sheet.wantsLayer = true
-        sheet.layer?.backgroundColor = solid.cgColor
         sheet.layer?.opacity = backdrop == .solid ? 1 : 0
         sheet.autoresizingMask = [.width, .height]
         frame.addSubview(frost, positioned: .below, relativeTo: window.contentView)

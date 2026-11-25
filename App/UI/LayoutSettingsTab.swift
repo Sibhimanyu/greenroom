@@ -642,7 +642,7 @@ struct LayoutPageContent: View {
             if let two = template.twoDisplays {
                 let secondSpace = secondSpace(two)
                 let widths = LayoutEditorRules.canvasWidths(
-                    panelWidth: panelWidth > 0 ? panelWidth : 640, gap: Self.canvasGap, stripWidth: 0,
+                    panelWidth: panelWidth > 0 ? panelWidth : 640, gap: Self.canvasGap,
                     mainAspect: mainSpace.aspect, secondAspect: secondSpace.aspect, inset: LayoutCanvas.bezelInset)
                 HStack(alignment: .top, spacing: Self.canvasGap) {
                     canvas(.main, space: mainSpace, template: template)
@@ -665,13 +665,16 @@ struct LayoutPageContent: View {
 
     /// R29.3: the thin dashed strip at the main canvas's right edge that adds a second display.
     private func addSecondStrip(_ template: LayoutTemplate) -> AnyView? {
-        guard LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: template.twoDisplays != nil),
-              template.movesWindows else { return nil }
+        guard LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: template.twoDisplays != nil) else { return nil }
         return AnyView(AddSecondStrip(width: LayoutEditorRules.stripWidth) {
             withAnimation(anim) {
-                if let i = activeIndex { library.templates[i].addSecondDisplay() }
-                activeSlot = .main
-                selection = nil
+                // Leave my windows alone cannot take pieces: like +, the strip makes "My layout" and adds there.
+                let forked = !template.movesWindows
+                if library.addSecondDisplayToActive() != nil {
+                    if forked { resetEditorState(); say("Made a new layout") }
+                    activeSlot = .main
+                    selection = nil
+                }
             }
         })
     }
@@ -913,7 +916,7 @@ struct LayoutPageContent: View {
     }
 
     private func addPanel(slot: LayoutSlot, template: LayoutTemplate, note: String? = nil) -> LayoutAddPanel {
-        let version = template.piecesInVersion(of: slot)
+        let version = template.allPieces
         return LayoutAddPanel(
             apps: apps,
             reason: { blockReason($0, template: template, slot: slot) },
@@ -929,7 +932,7 @@ struct LayoutPageContent: View {
     /// Why a piece cannot be added right now, or nil when it can. Spoken in the
     /// Add panel's tooltips and caption, and the notice a click would give.
     private func blockReason(_ kind: LayoutPiece.Kind, template: LayoutTemplate, slot: LayoutSlot) -> String? {
-        let version = template.piecesInVersion(of: slot)
+        let version = template.allPieces
         if case .view = kind, !MeetingViewPieces.enabled { return "Views are turned off on this Mac" }
         if template.canAdd(kind, to: slot) { return nil }
         let views = Set(version.compactMap { $0.kind.view })
@@ -947,7 +950,7 @@ struct LayoutPageContent: View {
         case .chat: return "Already in this layout"
         case .roomScreen:
             if slot == .second, let why = template.roomScreenBlockReason { return why }
-            return RoomScreenRules.blockReason(slot: slot, existing: version.map(\.kind))
+            return RoomScreenRules.blockReason(slot: slot, existing: version.map(\.kind), hasSecondDisplay: template.twoDisplays != nil)
         case let .app(app):
             if version.contains(where: { $0.kind.app?.bundleID == app.bundleID }) { return "Already in this layout" }
             return "A layout holds at most \(LayoutTemplate.maxApps) apps."
@@ -958,7 +961,7 @@ struct LayoutPageContent: View {
     /// layout is selected instead of added twice.
     private func add(_ kind: LayoutPiece.Kind, slot: LayoutSlot, template: LayoutTemplate) {
         guard template.canAdd(kind, to: slot), blockReason(kind, template: template, slot: slot) == nil else {
-            if let existing = template.piecesInVersion(of: slot).first(where: { sameKind($0.kind, kind) }) {
+            if let existing = template.allPieces.first(where: { sameKind($0.kind, kind) }) {
                 withAnimation(anim) { selection = existing.id }
             } else {
                 say(blockReason(kind, template: template, slot: slot) ?? "That cannot be added here.")
@@ -1213,6 +1216,10 @@ struct LayoutPageContent: View {
             menu: { pieceMenu(piece) })
     }
 
+    /// R35.6: these two belong to the Greenroom Browser everywhere, not to this layout, so they are not part of
+    /// the layout's undo; flipping the switch back is the undo.
+    private static let browserSettingHelp = "Applies to the Greenroom Browser in every layout. Not part of Undo."
+
     /// The \u{22EF} menu: what is secondary (R35.3). Remove is last.
     @ViewBuilder
     private func pieceMenu(_ piece: LayoutPiece) -> some View {
@@ -1227,8 +1234,10 @@ struct LayoutPageContent: View {
                 Toggle("Opens minimised", isOn: appFlag(piece, \.opensMinimised))
             case .reopenLastTabs:
                 Toggle("Reopen last tabs", isOn: $browserRestoresTabs)
+                    .help(Self.browserSettingHelp)
             case .searchSuggestions:
                 Toggle("Search suggestions", isOn: $browserSearchSuggestions)
+                    .help(Self.browserSettingHelp)
             case .remove:
                 if items.count > 1 { Divider() }
                 Button(role: .destructive) { remove(piece.id) } label: { Label("Remove", systemImage: "trash") }
@@ -1246,7 +1255,7 @@ struct LayoutPageContent: View {
         let isBrowser = AppCatalog.isBrowser(app.bundleID)
         let installed = LayoutIcons.isInstalled(app.bundleID)
         let name = look(piece).name
-        let taken = Set(template.piecesInVersion(of: slot).compactMap { $0.kind.app?.bundleID }).subtracting([app.bundleID])
+        let taken = Set(template.allPieces.compactMap { $0.kind.app?.bundleID }).subtracting([app.bundleID])
         // Row 1: which app, and for a browser its website.
         HStack(alignment: .firstTextBaseline, spacing: 16) {
             Picker("App", selection: Binding(

@@ -191,8 +191,19 @@ final class ScreenLayoutPanelRulesTests: XCTestCase {
         XCTAssertEqual(LayoutPanelRules.headerValue(name: "None"), "No layout")
         XCTAssertEqual(LayoutPanelRules.headerValue(name: "Two apps"), "Two apps")
         XCTAssertNil(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: false, secondConnected: true))
-        XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: false), "Two displays when connected")
+        XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: false), "Uses your second display when connected")
         XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: true), "Using two displays")
+    }
+
+    // The Home Layout tile's badge says what the layout does, not that a version exists.
+    func testTheSecondDisplayBadgeNeedsPiecesOnTheSecond() {
+        var t = LayoutTemplate(name: "x", oneDisplay: [], camera: LayoutCamera(), share: ShareTarget())
+        XCTAssertFalse(t.usesSecondDisplay)
+        t.addSecondDisplay()
+        XCTAssertFalse(t.usesSecondDisplay, "an empty second arrangement does nothing")
+        t.setPieces([LayoutPiece(kind: .roomScreen, rect: .full)], for: .second)
+        XCTAssertTrue(t.usesSecondDisplay)
+        XCTAssertEqual(LayoutPanelRules.twoDisplayBadgeHelp, "Uses your second display when connected")
     }
 
     func testCameraTileStates() {

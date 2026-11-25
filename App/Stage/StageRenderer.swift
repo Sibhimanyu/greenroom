@@ -91,9 +91,9 @@ final class StageRenderer {
 
     // MARK: Compose
 
-    /// `--ink` #101828, the backdrop colour.
+    /// `--ink`, the backdrop colour (`StageFrame.ink`).
     private var backdrop: CIImage {
-        CIImage(color: CIColor(red: 16.0 / 255, green: 24.0 / 255, blue: 40.0 / 255,
+        CIImage(color: CIColor(red: StageFrame.ink.red, green: StageFrame.ink.green, blue: StageFrame.ink.blue,
                                colorSpace: sRGB)!)
             .cropped(to: CGRect(origin: .zero, size: canvas))
     }
@@ -105,7 +105,7 @@ final class StageRenderer {
 
         // Content: above the backdrop, below every camera.
         if layout.showsContent, let screen {
-            let presenter = layout.showsCamera && layout.shape.isPresenterStyle
+            let presenter = StageFrame.usesPresenterPanel(showsCamera: layout.showsCamera, shape: layout.shape)
             let source = normalized(screen).extent
             let rect = StageFrame.contentRect(shareKind: scene.contentIsWholeDisplay ? .wholeScreen : .window,
                                               sourceAspect: source.width / max(source.height, 1),

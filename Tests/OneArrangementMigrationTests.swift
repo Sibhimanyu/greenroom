@@ -129,6 +129,19 @@ final class OneArrangementMigrationTests: XCTestCase {
         XCTAssertEqual(lib.templates[0].pieces(for: .main).count, 1)
     }
 
+    // ADR 0002: the active layout stays active, whether it is kept with a copy beside it or replaced in place.
+    func testTheActiveLayoutSurvivesTheMigration() throws {
+        let mine = both("Class", one: [browser, speaker, chat], second: [meeting])
+        let withCopy = load(install([(mine, oldMain: [browser, chat])], active: mine.id))
+        XCTAssertEqual(withCopy.templates.count, 2, "a copy was made")
+        XCTAssertEqual(withCopy.activeID, mine.id)
+        XCTAssertEqual(withCopy.active?.name, "Class")
+
+        let raj = oldShippedRaj()
+        let replaced = load(install([(raj.template, oldMain: raj.oldMain)], active: raj.template.id))
+        XCTAssertEqual(replaced.activeID, raj.template.id)
+    }
+
     // R27.1: an existing install where the main differs, with the built-ins around it.
     func testAnExistingInstallWhereTheMainDiffersLosesNothing() throws {
         let raj = oldShippedRaj()
@@ -154,12 +167,13 @@ final class OneArrangementMigrationTests: XCTestCase {
         XCTAssertFalse(lib.templates.contains { $0.name.contains("old two-display") })
     }
 
-    /// Raj San Mode as the build before this one shipped it.
+    /// Raj San Mode as the build before this one shipped it: the literal values its builder wrote
+    /// (5.0 / 12 for the speaker's height and Chat's top), not the detector's own arithmetic.
     private func oldShippedRaj() -> (template: LayoutTemplate, oldMain: [LayoutPiece]) {
         let third = 1.0 / 12
         let b = LayoutPiece(kind: .app(AppPiece(bundleID: LayoutLibrary.builtInBrowserBundleID)), rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1))
-        let s = LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third))
-        let c = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third))
+        let s = LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5.0 / 12))
+        let c = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 5.0 / 12, w: 3 * third, h: 1 - 5.0 / 12))
         var t = LayoutTemplate(name: "Raj San Mode", starter: LayoutLibrary.rajMode, oneDisplay: [b, s, c],
                                camera: LayoutCamera(), share: ShareTarget())
         t.addSecondDisplay()

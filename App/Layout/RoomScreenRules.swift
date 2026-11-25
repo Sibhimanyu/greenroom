@@ -27,11 +27,15 @@ enum RoomScreenRules {
     }
 
     /// Why the Add panel's tile is disabled, or nil when it can be added. `slot` is
-    /// where the editor is adding now.
-    static func blockReason(slot: LayoutSlot, existing: [LayoutPiece.Kind]) -> String? {
+    /// where the editor is adding now; `hasSecondDisplay` is whether the layout has a second arrangement.
+    static func blockReason(slot: LayoutSlot, existing: [LayoutPiece.Kind], hasSecondDisplay: Bool) -> String? {
         if canAdd(to: slot, existing: existing) { return nil }
         if existing.contains(where: { $0.isRoomScreen }) { return "Already in this layout" }
-        if slot == .main { return "Needs a second display, set as extended, not mirrored. Add a second display first." }
+        if slot == .main {
+            return hasSecondDisplay
+                ? "The Room screen goes on the second display"
+                : "Needs a second display, set as extended, not mirrored. Add a second display first."
+        }
         return "Put it on the second display: on the main display it would show itself."
     }
 

@@ -448,7 +448,7 @@ enum LayoutResolver {
     /// and hide logic the starters relied on. Anything else is returned as is.
     /// The saved template is never changed; the engine applies this when it resolves.
     static func substitutingMeetingForActiveSpeaker(_ template: LayoutTemplate, viewsCanOpen: Bool,
-                                                    secondConnected: Bool = true) -> LayoutTemplate {
+                                                    secondConnected: Bool) -> LayoutTemplate {
         guard !viewsCanOpen else { return template }
         func hasMeeting(_ pieces: [LayoutPiece]) -> Bool { pieces.contains { $0.kind.isMeeting } }
         // The placed arrangements are one version: a full-display Meeting on the second display counts for
@@ -651,14 +651,4 @@ extension LayoutTemplate {
             twoDisplays = two
         }
     }
-
-    /// A Meeting piece that fills a whole display: the participants form.
-    var hasFillsDisplayMeeting: Bool {
-        (twoDisplays?.second ?? []).contains {
-            if case .meeting(true, _) = $0.kind { return true } else { return false }
-        } || oneDisplay.contains {
-            if case .meeting(true, _) = $0.kind { return true } else { return false }
-        }
-    }
-
 }

@@ -311,6 +311,7 @@ targets:
       - path: App/UI/WindowFrameRules.swift
       - path: App/UI/PlayerControlRules.swift
       - path: App/UI/PopoverPlacement.swift
+      - path: App/UI/SolidSheet.swift
       - path: App/Screenroom/ScreenroomRunRules.swift
       - path: App/Screenroom/AnalysisUsage.swift
       - path: App/Audio/WhisperLoops.swift

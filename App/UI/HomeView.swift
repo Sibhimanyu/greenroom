@@ -332,15 +332,18 @@ struct HomeView: View {
     /// Under the picture, never over it: the second-display note, and the
     /// same Show on screen the Layouts page and the Layout tile use.
     @ViewBuilder private var previewFooter: some View {
-        if let row = previewRow, let template = coordinator.layoutLibrary.active {
+        let template = coordinator.layoutLibrary.active
+        let room = template.flatMap {
+            RoomDisplayNote.note(for: $0, connectedDisplays: displays.count, isMirrored: DisplayResolver.hasMirroredDisplay())
+        }
+        // R36.2: one note at a time: the room display, then the share hint, then the second display. The room
+        // note stands on its own, so a layout that places no window still says its Room screen has no display.
+        if let template, let footer = ShareHintRules.footer(
+            hasRow: previewRow != nil, room: room?.text,
+            hint: ShareHintRules.hint(kind: coordinator.shareTarget.kind, appName: shareAppName),
+            secondDisplay: previewRow?.note) {
             HStack(spacing: 8) {
-                let room = RoomDisplayNote.note(for: template, connectedDisplays: displays.count,
-                                                isMirrored: DisplayResolver.hasMirroredDisplay())
-                // R36.2: one note at a time: the room display, then the share hint, then the second display.
-                switch ShareHintRules.footerNote(
-                    room: room?.text,
-                    hint: ShareHintRules.hint(kind: coordinator.shareTarget.kind, appName: shareAppName),
-                    secondDisplay: row.note) {
+                switch footer.note {
                 case .room:
                     // R15.2: calm, amber small text; Start is never blocked.
                     if let room {
@@ -362,17 +365,19 @@ struct HomeView: View {
                     EmptyView()
                 }
                 Spacer(minLength: 0)
-                Button {
-                    LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
-                                                   canMoveApps: AppWindowManager.hasAccessibilityPermission)
-                } label: {
-                    Label(VisibilitySymbol.showOnScreen.words, systemImage: VisibilitySymbol.showOnScreen.name)
-                        .font(.system(size: 11, weight: .medium))
-                        .labelStyle(.iconOnly)
+                if footer.showsOutline {
+                    Button {
+                        LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
+                                                       canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                    } label: {
+                        Label(VisibilitySymbol.showOnScreen.words, systemImage: VisibilitySymbol.showOnScreen.name)
+                            .font(.system(size: 11, weight: .medium))
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Show on screen: outline where each window of this layout will go")
+                    .accessibilityLabel(VisibilitySymbol.showOnScreen.words)
                 }
-                .buttonStyle(.borderless)
-                .help("Show on screen: outline where each window of this layout will go")
-                .accessibilityLabel(VisibilitySymbol.showOnScreen.words)
             }
             .frame(height: Self.footerHeight)
         } else {

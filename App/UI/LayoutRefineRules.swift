@@ -88,8 +88,10 @@ enum SharePopoutRules {
         return out
     }
 
-    static func isChosen(bundleID: String, title: String, in share: ShareTarget) -> Bool {
-        share.kind == .window && share.appBundleID == bundleID && share.windowTitle == title
+    static func isChosen(_ context: SharePopoutContext, bundleID: String, title: String, in share: ShareTarget) -> Bool {
+        guard share.kind == .window, share.appBundleID == bundleID else { return false }
+        // At start a row is an app (a saved share names an app, R32.5); live, two windows of one app differ by title.
+        return context == .atStart || share.windowTitle == title
     }
 
     /// Live windows come under their app's heading; at start the rows are the apps themselves.
@@ -207,6 +209,18 @@ enum ShareHintRules {
         if let hint { return .hint(hint) }
         if let secondDisplay { return .secondDisplay(secondDisplay) }
         return nil
+    }
+
+    /// What the Home preview footer shows (R36.2).
+    struct Footer: Equatable { var note: FooterNote?; var showsOutline: Bool }
+
+    /// The preview footer. The room note stands on its own: a layout that places no window (an empty main
+    /// and a Room screen on a display that is missing) still says so. The hint, the second-display note and
+    /// Show on screen need a row (a layout that places windows).
+    static func footer(hasRow: Bool, room: String?, hint: String?, secondDisplay: String?) -> Footer? {
+        guard hasRow || room != nil else { return nil }
+        let note = hasRow ? footerNote(room: room, hint: hint, secondDisplay: secondDisplay) : room.map(FooterNote.room)
+        return Footer(note: note, showsOutline: hasRow)
     }
 
     static func tileLabel(kind: ShareTarget.Kind, appName: String) -> String {

@@ -137,8 +137,11 @@ struct SharePopout: View {
     private func tap(_ tile: ScreenPanelRules.Tile) {
         guard ScreenPanelRules.tileEnabled(tile, camera: cameraState) else { return }
         if tile == .window { Collapse.animate { browsing = true }; return }
-        Collapse.animate { browsing = false }
-        pickTile(tile)
+        // The rows that depend on the pick (shared display, windows, slide shows) fold with the same animation.
+        Collapse.animate {
+            browsing = false
+            pickTile(tile)
+        }
     }
 
     private func sharedDisplayRows(_ slot: Binding<LayoutSlot>) -> some View {
@@ -184,7 +187,7 @@ struct SharePopout: View {
     }
 
     private func chosen(_ window: SharePopoutWindow) -> Bool {
-        SharePopoutRules.isChosen(bundleID: window.bundleID, title: window.title, in: share)
+        SharePopoutRules.isChosen(context, bundleID: window.bundleID, title: window.title, in: share)
     }
 
     private func choose(_ window: SharePopoutWindow) {

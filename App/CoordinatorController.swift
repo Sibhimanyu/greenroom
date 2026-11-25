@@ -1078,9 +1078,13 @@ final class CoordinatorController: ObservableObject {
             // the layout itself changes them (a pick, an edit), never from a live change.
             adoptLayoutPieces(LayoutPieceAdoption.forLibraryEdit(old: oldValue, new: layoutLibrary,
                                                                  locked: layoutChoiceLocked, running: sessionTemplate))
-            if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id), edited != running {
-                sessionTemplate = edited
-                scheduleLiveLayoutApply()
+            // R32.2: the shared display is not live-edited; only Apply now changes it (`adoptingEdit`).
+            if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id) {
+                let adopted = running.adoptingEdit(edited)
+                if adopted != running {
+                    sessionTemplate = adopted
+                    scheduleLiveLayoutApply()
+                }
             }
             refreshCaptureDisplay()
         }

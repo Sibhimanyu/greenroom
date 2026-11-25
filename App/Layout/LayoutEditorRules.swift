@@ -59,18 +59,14 @@ enum LayoutEditorRules {
     /// R30.2: an empty second display goes without asking.
     static func removeSecondNeedsConfirmation(secondPieceCount: Int) -> Bool { secondPieceCount > 0 }
 
-    struct CanvasWidths: Equatable { var main: CGFloat; var second: CGFloat? }
+    struct CanvasWidths: Equatable { var main: CGFloat; var second: CGFloat }
 
-    /// R29.2, R29.4: how the panel's width is shared. `*Aspect` is width over height of that display.
-    /// With no second (`secondAspect` nil) the main canvas takes everything the strip and its gap leave, so
-    /// no band is left on the right. With a second both canvases get the same height, so the two widths
-    /// plus the gap fill the panel exactly and each keeps its own display's shape. `inset` is the padding
-    /// around each drawn display.
-    static func canvasWidths(panelWidth: CGFloat, gap: CGFloat, stripWidth: CGFloat,
-                             mainAspect: CGFloat, secondAspect: CGFloat?, inset: CGFloat = 0) -> CanvasWidths {
-        guard let secondAspect else {
-            return CanvasWidths(main: max(panelWidth - gap - stripWidth, 0), second: nil)
-        }
+    /// R29.4: how the panel's width is shared by two canvases (a layout with a second arrangement; one canvas
+    /// simply fills the panel). `*Aspect` is width over height of that display. Both canvases get the same
+    /// height, so the two widths plus the gap fill the panel exactly and each keeps its own display's shape.
+    /// `inset` is the padding around each drawn display.
+    static func canvasWidths(panelWidth: CGFloat, gap: CGFloat, mainAspect: CGFloat, secondAspect: CGFloat,
+                             inset: CGFloat = 0) -> CanvasWidths {
         // `inset` is the padding on each side of the drawn display (the bezel): the pictures, not the
         // frames around them, get one height.
         let a1 = max(mainAspect, 0.1), a2 = max(secondAspect, 0.1)

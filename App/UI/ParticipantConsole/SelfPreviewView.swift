@@ -31,6 +31,12 @@ final class SelfPreviewView: NSView {
     let videoHost = NSView()
     private let caption = NSTextField(labelWithString: "You")
     private let meter = LevelMeterView()
+    /// Top left, quiet: the camera state's icon while the camera is out of everyone's picture
+    /// (Off, Only me). The tile itself keeps showing what everyone sees (SelfViewRules).
+    private let markBadge = NSView()
+    private let markIcon = NSImageView()
+    private let markCorner = NSImageView()
+    private var mark: SelfViewRules.Mark?
     private lazy var muteButton = ClosureButton { [weak self] in self?.actions.toggleMute() }
     private lazy var videoButton = ClosureButton { [weak self] in self?.actions.toggleVideo() }
     private var hovering = false
@@ -59,6 +65,18 @@ final class SelfPreviewView: NSView {
 
         addSubview(meter)
 
+        markBadge.wantsLayer = true
+        markBadge.layer?.backgroundColor = MeetingTheme.capsuleNS.cgColor
+        markBadge.layer?.cornerRadius = 9
+        markIcon.contentTintColor = .white
+        markCorner.contentTintColor = .white
+        markBadge.addSubview(markIcon)
+        markBadge.addSubview(markCorner)
+        markBadge.setAccessibilityElement(true)
+        markBadge.setAccessibilityRole(.image)
+        markBadge.isHidden = true
+        addSubview(markBadge)
+
         for (button, symbol, label) in [(muteButton, "mic.slash.fill", "Mute me"),
                                         (videoButton, VisibilitySymbol.cameraOff.name, "Stop my video")] {
             button.isBordered = false
@@ -80,22 +98,47 @@ final class SelfPreviewView: NSView {
 
     /// Titles and tints follow the live state, so the glyph says what pressing
     /// it will do rather than what is currently true.
-    func apply(muted: Bool, videoOn: Bool, level: Double) {
+    func apply(muted: Bool, camera: CameraState, mark: SelfViewRules.Mark?, level: Double) {
+        applyMark(mark)
+        let videoOn = camera != .off
         muteButton.image = NSImage(systemSymbolName: muted ? "mic.slash.fill" : "mic.fill",
                                    accessibilityDescription: muted ? "Unmute me" : "Mute me")?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         muteButton.contentTintColor = muted ? .systemRed : .white
         muteButton.toolTip = muted ? "Unmute me" : "Mute me"
-        videoButton.image = NSImage(systemSymbolName: (videoOn ? VisibilitySymbol.cameraOn : VisibilitySymbol.cameraOff).name,
-                                    accessibilityDescription: videoOn ? "Stop my video" : "Start my video")?
+        // The camera button's own icon and words (R6.6, R17.3): a click turns the camera off, or back
+        // to the last on state.
+        let cell = MeetingBarModel.cameraStateCell(camera)
+        videoButton.image = NSImage(systemSymbolName: cell.symbol, accessibilityDescription: cell.spoken)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         videoButton.contentTintColor = videoOn ? .white : .systemRed
-        videoButton.toolTip = videoOn ? "Stop my video" : "Start my video"
+        videoButton.toolTip = cell.help
+        videoButton.setAccessibilityLabel(cell.spoken)
         meter.level = level
         // Muted is the state worth seeing without hovering: a teacher talking
         // to a muted room is the failure this whole panel exists to prevent.
         muteButton.isHidden = !(hovering || muted)
-        videoButton.isHidden = !(hovering || !videoOn)
+        // The camera's state is the corner mark; the button itself waits for the hover, so Off
+        // does not show two struck cameras.
+        videoButton.isHidden = !hovering
+    }
+
+    private func applyMark(_ next: SelfViewRules.Mark?) {
+        guard next != mark else { return }
+        mark = next
+        markBadge.isHidden = next == nil
+        guard let next else { return }
+        let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        markIcon.image = NSImage(systemSymbolName: next.symbol.name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        markCorner.image = next.symbol.badge.flatMap {
+            NSImage(systemSymbolName: $0, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 7, weight: .bold))
+        }
+        markCorner.isHidden = markCorner.image == nil
+        markBadge.toolTip = next.label
+        markBadge.setAccessibilityLabel(next.label)
+        needsLayout = true
     }
 
     /// The meter alone, fed at the mic monitor's rate between the one-second
@@ -122,13 +165,18 @@ final class SelfPreviewView: NSView {
         // A thin level strip along the very bottom: present enough to read at a
         // glance, quiet enough not to compete with a student's face beside it.
         meter.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 3)
+        // Top left, clear of the "You" caption (bottom left) and the two buttons (top right).
+        let badgeWidth: CGFloat = markCorner.isHidden ? 22 : 28
+        markBadge.frame = NSRect(x: 6, y: bounds.height - 18 - 6, width: badgeWidth, height: 18)
+        markIcon.frame = NSRect(x: 4, y: 2, width: 14, height: 14)
+        markCorner.frame = NSRect(x: 17, y: 2, width: 9, height: 9)
         let side: CGFloat = 24
         muteButton.frame = NSRect(x: bounds.width - side * 2 - 12, y: bounds.height - side - 8,
                                   width: side, height: side)
         videoButton.frame = NSRect(x: bounds.width - side - 8, y: bounds.height - side - 8,
                                    width: side, height: side)
         muteButton.isHidden = !(hovering || muteButton.contentTintColor == .systemRed)
-        videoButton.isHidden = !(hovering || videoButton.contentTintColor == .systemRed)
+        videoButton.isHidden = !hovering
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

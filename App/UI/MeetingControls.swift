@@ -187,12 +187,6 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
-    func toggleCamera() {
-        let client = coordinator.zoomChatClient
-        _ = client.setMyVideo(on: !client.myVideoIsOn)
-        refresh()
-    }
-
     /// The camera button's click: Off <-> the last on state, which lives with the live camera state
     /// so Home's tile follows the same rule. Never touches the saved default.
     func toggleCameraState() {

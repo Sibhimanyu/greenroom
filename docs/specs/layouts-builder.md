@@ -220,6 +220,18 @@ different order; this table is the authority.
   (fed to `PresenceVisibility` as `hiddenByPresenter`), for every share kind (Whole screen, A window,
   Whiteboard, Just my camera). The share kind decides only where it sits: a whiteboard or Just my camera
   uses the visible frame of the whiteboard's display, else the main display.
+- R6.8 (2026-11-26) Every control that turns the owner's camera on or off goes through the camera state: the bar and
+  toolbar button, Home, the camera shortcut (its toast names the state: "Camera: Off") and the "You" tile's hover button.
+  Zoom's own video mute for the owner (`setMyVideo`) is not called anywhere (a source scan fails on it). Home's camera
+  chip names the state when the camera is out of the picture ("Only me", not "Off"). The owner's own People row is
+  struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps the
+  live camera state (the state is not part of a layout); Start, Snap Back and the end drop it (R6.3).
+  `Tests/CameraMatrixTests.swift` holds the whole matrix.
+- R6.9 (owner, 2026-11-26, option (a)) The Meeting window's "You" tile shows Zoom's render of the owner's own video,
+  which is the Stage: what everyone sees. In Off and Only me the Stage leaves the camera out, so the tile shows the
+  shared picture alone, with a small corner mark (top left): the camera state's icon (`VisibilitySymbol.camera`) and its
+  name as tooltip and VoiceOver label. Everyone & me and Only the meeting get no mark. A "Camera off" placeholder is
+  prepared (`SelfViewContent.placeholder`, `SelfViewRules.showsPlaceholderWhenCameraIsOut`), not shown.
 - The Devices tab holds devices only: it has no "No camera" card.
 
 **R7. Other apps' 📡 and 👁.** (Q25, Q26)

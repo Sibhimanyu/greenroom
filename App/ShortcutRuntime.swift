@@ -133,8 +133,9 @@ final class ShortcutRuntime {
                 ToastController.show(controls.muted ? "Microphone muted" : "Microphone on", kind: .success)
             case .toggleCamera:
                 guard let controls = c.meetingControls, controls.inMeeting else { return }
-                controls.toggleCamera()
-                ToastController.show(controls.cameraOn ? "Camera on" : "Camera off", kind: .success)
+                // The same click as the camera button: the camera state, never Zoom's own video mute.
+                controls.toggleCameraState()
+                ToastController.show(MeetingBarModel.cameraShortcutToast(c.cameraState), kind: .success)
             case .toggleChat:
                 guard let controls = c.meetingControls, controls.inMeeting else { return }
                 controls.toggleChat()

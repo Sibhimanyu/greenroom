@@ -866,6 +866,17 @@ final class CoordinatorController: ObservableObject {
         !Visibility.cameraEveryoneSees(state: cameraState, target: Visibility.Target(shareTarget)).isOn
     }
 
+    /// The owner's own row in People and the view windows (SelfViewRules): struck when the camera is
+    /// out of the meeting's picture, or Zoom sends no video at all.
+    func ownCameraOff(zoomVideoOn: Bool) -> Bool {
+        SelfViewRules.ownRowCameraOff(cameraInPicture: !cameraIsOff, zoomVideoOn: zoomVideoOn)
+    }
+
+    /// The "You" tile's corner mark: the state's icon and name while the camera is out of the picture.
+    var selfViewMark: SelfViewRules.Mark? {
+        SelfViewRules.mark(state: cameraState, cameraInPicture: !cameraIsOff)
+    }
+
     /// The preview's picture is in use by a session - a meeting, or a
     /// recording made from Home's Record mode. The Settings preview then
     /// mirrors that session's picture instead of starting one of its own.
@@ -1137,7 +1148,7 @@ final class CoordinatorController: ObservableObject {
               let template = layoutLibrary.template(id: id) else { return }
         sessionTemplate = template
         speakerTileQuickHidden = layoutEngine.startsHidden(template)
-        resetPresenceBubbleToLayoutDefault()
+        resetPresenceBubbleToLayoutDefault(at: .layoutSwitch)
         refreshCaptureDisplay()
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
         reapplyLayout(userInitiated: false, openApps: true, trigger: .switchedLayout)
@@ -1617,11 +1628,11 @@ final class CoordinatorController: ObservableObject {
     /// the stage is torn down (the meeting or recording ends).
     @Published var presenceBubbleHidden = false
 
-    /// The camera bubble goes back to what the layout says: hidden when the layout's
-    /// "Show my camera" is off, shown otherwise.
-    func resetPresenceBubbleToLayoutDefault() {
-        let hadLiveChange = cameraSession.live != nil
-        cameraSession.resetToDefault()
+    /// The camera state goes back to the saved default at Start, Snap Back and the end of the picture
+    /// (R6.3). A layout switch mid-meeting keeps it: the camera state is not part of a layout
+    /// (`CameraStateSession.dropsLiveChange`).
+    func resetPresenceBubbleToLayoutDefault(at moment: CameraStateSession.Moment) {
+        let hadLiveChange = cameraSession.reset(at: moment)
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
         // A live "Off" or "Only me" put the picture back to the default along with it.
         if hadLiveChange, stage != nil { applyCameraStateLive() }
@@ -1730,7 +1741,7 @@ final class CoordinatorController: ObservableObject {
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
         self.stage = nil
-        resetPresenceBubbleToLayoutDefault()
+        resetPresenceBubbleToLayoutDefault(at: .end)
         presenceFeedInstalled = false
         stageObservers.removeAll()
         stageCameraUIDs = nil
@@ -1840,7 +1851,7 @@ final class CoordinatorController: ObservableObject {
         // At Start the layout's camera and What's shared apply; no layout keeps the globals.
         adoptLayoutPieces(LayoutPieceAdoption.atStart(sessionTemplate, keepingLiveShare: liveShareChosen))
         // R6.3: the camera state a live change set before Start is dropped; the saved default stands.
-        resetPresenceBubbleToLayoutDefault()
+        resetPresenceBubbleToLayoutDefault(at: .start)
         // Leave my windows alone places the camera only: it arranges nothing, as None did.
         sessionArranges = sessionTemplate?.movesWindows ?? false
         if !sessionArranges { LayoutShareChoice.reset() }
@@ -3282,7 +3293,7 @@ final class CoordinatorController: ObservableObject {
         recorder?.disarmClipBuffer()
         recorder = nil
         lastCameraLive = nil
-        resetPresenceBubbleToLayoutDefault()
+        resetPresenceBubbleToLayoutDefault(at: .end)
         stopStage()
     }
 
@@ -4332,7 +4343,7 @@ final class CoordinatorController: ObservableObject {
             // Back to the layout's own starting state: hidden if the Meeting
             // starts hidden, shown otherwise.
             speakerTileQuickHidden = layoutEngine.startsHidden(template)
-            resetPresenceBubbleToLayoutDefault()
+            resetPresenceBubbleToLayoutDefault(at: .snapBack)
             // R5.3: the layout's own share returns.
             adoptLayoutPieces(LayoutPieceAdoption.atSnapBack(template))
         } else if !layoutEngine.hasPlacedSurface(template) {

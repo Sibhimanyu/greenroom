@@ -855,7 +855,8 @@ struct HomeView: View {
         let warn = problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff)
         return Button { cameraOpen.toggle() } label: {
             dockLabel(symbol: chipMeaning.name, symbolBadge: chipMeaning.badge,
-                      value: coordinator.cameraIsOff ? "Off" : Self.shortDeviceName(name),
+                      value: CameraTileRules.chipValue(state: coordinator.cameraState, cameraInPicture: !coordinator.cameraIsOff,
+                                                       deviceName: Self.shortDeviceName(name)),
                       warn: warn)
         }
         .buttonStyle(DockButtonStyle())
@@ -867,10 +868,11 @@ struct HomeView: View {
         }
         // The panel explains itself, so no hover card (see lookControl).
         .help(cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
-              : coordinator.cameraIsOff ? "Camera: off, everyone sees only what you share."
+              : coordinator.cameraIsOff ? "Camera: \(coordinator.cameraState.name). \(coordinator.cameraState.detail)"
               : "Camera: \(name). Which camera you appear on.")
         .accessibilityLabel("Camera")
-        .accessibilityValue(name)
+        .accessibilityValue(CameraTileRules.chipValue(state: coordinator.cameraState, cameraInPicture: !coordinator.cameraIsOff,
+                                                      deviceName: name))
     }
 
     /// Microphone: system default or one pinned device, as Settings -> Devices.

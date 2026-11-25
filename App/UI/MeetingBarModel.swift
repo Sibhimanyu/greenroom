@@ -219,6 +219,9 @@ enum MeetingBarModel {
         CameraStateSession.clickTarget(current: current, lastOn: lastOn, noCameraAllowed: noCameraAllowed)
     }
 
+    /// The camera shortcut's toast: the state it left the camera in, in the four words.
+    static func cameraShortcutToast(_ state: CameraState) -> String { "Camera: \(state.name)" }
+
     /// The four states as a menu. The two that hide you from the meeting are off while
     /// nothing is shared: the picture would then be an empty backdrop.
     static func cameraStateMenu(current: CameraState, noCameraAllowed: Bool,

@@ -146,6 +146,12 @@ enum CameraTileRules {
         state == .noDevice ? VisibilitySymbol.noCameraDevice.badge : nil
     }
 
+    /// Home's camera chip value: the camera's name while it is in the meeting's picture, else the
+    /// state's own name (Only me is not "Off").
+    static func chipValue(state: CameraState, cameraInPicture: Bool, deviceName: String) -> String {
+        cameraInPicture ? deviceName : state.name
+    }
+
     /// A tap turns the camera on only from the off-by-setting state.
     static func tapTurnsCameraOn(_ state: State) -> Bool { state == .offBySetting }
 

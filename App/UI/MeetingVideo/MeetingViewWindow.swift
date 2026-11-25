@@ -725,7 +725,7 @@ enum MeetingViewWindows {
             let me = roster.first(where: \.isMyself).map { entry -> MeetingParticipantRow in
                 var r = row(entry)
                 r.muted = client.iAmMuted
-                r.cameraOff = !client.myVideoIsOn
+                r.cameraOff = CoordinatorController.shared?.ownCameraOff(zoomVideoOn: client.myVideoIsOn) ?? !client.myVideoIsOn
                 return r
             }
             s.peopleEveryone = (me.map { [$0] } ?? []) + roster.filter { !$0.isMyself && !handSet.contains($0.id) }.map(row)

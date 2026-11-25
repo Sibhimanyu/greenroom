@@ -54,7 +54,7 @@ stage_layouts() {
     App/UI/SettingsKit.swift App/UI/PreviewCameraDrag.swift App/UI/PreviewFrameRules.swift
     App/UI/Segmented.swift App/UI/GreenroomPopover.swift App/UI/Tiles.swift App/UI/Fields.swift App/UI/TileAppearance.swift
     App/UI/Glass.swift App/UI/PopoverPlacement.swift App/UI/SegmentedMath.swift App/UI/WebcamShapePreview.swift
-    App/UI/CameraLookControls.swift App/UI/CameraInspector.swift App/UI/CameraShapeTiles.swift App/UI/SharePopout.swift
+    App/UI/CameraLookControls.swift App/UI/CameraInspector.swift App/UI/RoomScreenInspector.swift App/UI/CameraShapeTiles.swift App/UI/SharePopout.swift
     App/UI/HomeTilePanels.swift App/UI/HomeTilePanelRules.swift App/UI/HomeCalmRules.swift App/UI/DockHint.swift
     App/UI/MeetingBarContent.swift App/UI/MeetingBarModel.swift App/UI/MeetingMenuSpec.swift
     App/ShareVisibilityRules.swift App/MeetingCollapseRules.swift App/ShortcutStore.swift App/ShortcutModel.swift App/LiveExitRules.swift

@@ -42,7 +42,8 @@ Greenroom's own meeting UI (Zoom runs in custom-UI mode, the only mode: the SDK 
 | ParticipantConsole/LiveQueueLayout.swift | Fixed-width (320) section arithmetic | `LiveQueueLayout.width/Section` |
 | ParticipantConsole/LiveQueueView.swift | Exception panel: waiting, hands, Cues (fixed pool of views) | `LiveQueueView`, `.Actions` |
 | ParticipantConsole/ParticipantInspectorView.swift | Drawer for the one selected student | `ParticipantInspectorView` |
-| ParticipantConsole/SelfPreviewView.swift | 240pt self-view overlay with mute/stop video | `SelfPreviewView` |
+| ParticipantConsole/SelfPreviewView.swift | 240pt self-view overlay ("You"): Zoom's render of the owner's own video, which is the Stage (what everyone sees); a corner mark with the camera state's icon in Off and Only me; mute and the camera button (the camera state, never Zoom's video mute) | `SelfPreviewView` |
+| SelfViewRules.swift | Pure: the "You" tile's mark, what it draws (what everyone sees; a "Camera off" placeholder is one switch away), the owner's own People row | `SelfViewRules` |
 | ParticipantConsole/MeetingPeopleView.swift | Participants panel (dark): search, waiting, raised hands, everyone | `MeetingParticipantsPanel` (SwiftUI), `MeetingPeopleView` (NSView host), `MeetingParticipantRow`, `MeetingWaitingRow`, `MeetingParticipantsActions` |
 
 ## How it fits
@@ -72,7 +73,7 @@ Greenroom's own meeting UI (Zoom runs in custom-UI mode, the only mode: the SDK 
 - Change Hands up list ordering/UI -> `HandsUpPanel`, `HandsUpContent`; Tests/HandsUpOrderingTests.
 - Change the Cues container at the top of the People panel -> `LiveQueueLayout` (sizes), `LiveQueueView`, `ParticipantConsoleState`, `RootView.layoutSidePanel/placeQueue`.
 - Change per-student actions in the inspector -> `RootView.rebuildContextBar` + `ParticipantInspectorView` (arranges buttons only; actions defined in RootView `perform/confirm`).
-- Change self-view overlay -> `SelfPreviewView`, `RootView.layoutEverything` (`selfPreview` frame).
+- Change self-view overlay -> `SelfPreviewView`, `RootView.layoutEverything` (`selfPreview` frame). What it shows per camera state -> `SelfViewRules` (`showsPlaceholderWhenCameraIsOut` switches to the placeholder); render it with `scripts/render/self-view.sh`.
 - Change side-panel behaviour (chat vs people) -> `MeetingControlsModel.toggleChat/togglePeople/showPeople` + `RootView.sidePanelChanged/layoutSidePanel`.
 - Change which surface shows / when the Bar appears -> `App/Meeting/MeetingSurface.swift` (rule + Tests/MeetingSurfaceTests.swift, spec docs/specs/meeting-surface.md), then who sends which event (see "How it fits"). Never show or hide the Bar by hand: send an event.
 - Change shrink-to-bar behaviour -> `ControlPanel.miniaturize` -> `ParticipantGridWindowController.shrinkInsteadOfMinimize`, `MeetingControlsModel.collapseMeeting/expandToMeetingWindow`, `MeetingControlBarController.morph`.

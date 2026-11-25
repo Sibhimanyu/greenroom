@@ -71,7 +71,7 @@ final class SourceScanTests: XCTestCase {
 
     /// Rects come out of floating-point arithmetic, so `==` on them is a trap.
     /// Use `isClose(to:)` (UnitRect), `LayoutGeometry.same` or
-    /// `LayoutGeometry.differs(_:from:)` (CGRect). Only `==` is scanned, where
+    /// `LayoutResolver.differs(_:from:)` (CGRect). Only `==` is scanned, where
     /// an operand's name ends in rect or frame; `!=` guards that skip a no-op
     /// write are exact on purpose and are not flagged.
     func testNoExactRectEqualityInLayout() throws {
@@ -87,6 +87,16 @@ final class SourceScanTests: XCTestCase {
                       "DRIFT: a window a hair off a screen's frame is treated as stranded; compare with a tolerance"),
         ]
         try check(under: "App/Layout", rule: rule, allowed: knownDrift, what: "exact == on rects; use a tolerance helper") { $0.codeLines }
+    }
+
+    // MARK: Rule 5: the owner's video changes only through the camera state
+
+    /// One camera button (R6.6): every control that turns the owner's camera on or off goes through
+    /// the camera state (`CoordinatorController.setLiveCameraState`). Zoom's own video mute for the
+    /// owner (`setMyVideo`) left the state saying one thing and the meeting seeing another.
+    func testOwnVideoIsNeverMutedBehindTheCameraState() throws {
+        let rule = try NSRegularExpression(pattern: #"\.setMyVideo\("#)
+        try check(under: "App", rule: rule, allowed: [], what: "Zoom's own video mute; use the camera state") { $0.codeLines }
     }
 
     // MARK: The lexer, tested on its own

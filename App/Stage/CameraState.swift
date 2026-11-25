@@ -131,4 +131,24 @@ struct CameraStateSession: Equatable {
         live = nil
         lastOn = Self.onState(of: saved)
     }
+
+    /// The moments that may put the camera back to the saved default.
+    enum Moment: Equatable {
+        /// Start, Snap Back and the end of the picture: the live change goes (R6.3).
+        case start, snapBack, end
+        /// Another layout applied mid-meeting. The camera state is not part of a layout, so a live
+        /// Off stays Off: switching must never put the camera back in front of everyone.
+        case layoutSwitch
+    }
+
+    static func dropsLiveChange(at moment: Moment) -> Bool { moment != .layoutSwitch }
+
+    /// Whether the live change was dropped.
+    @discardableResult
+    mutating func reset(at moment: Moment) -> Bool {
+        guard Self.dropsLiveChange(at: moment) else { return false }
+        let had = live != nil
+        resetToDefault()
+        return had
+    }
 }

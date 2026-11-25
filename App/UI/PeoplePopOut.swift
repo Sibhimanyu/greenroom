@@ -82,7 +82,7 @@ enum PeoplePopOutController {
                 cameraOff: !entry.videoOn, selected: false)
             if entry.isMyself {
                 entryRow.muted = client.iAmMuted
-                entryRow.cameraOff = !client.myVideoIsOn
+                entryRow.cameraOff = CoordinatorController.shared?.ownCameraOff(zoomVideoOn: client.myVideoIsOn) ?? !client.myVideoIsOn
             }
             return entryRow
         }

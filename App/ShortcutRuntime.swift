@@ -105,7 +105,7 @@ final class ShortcutRuntime {
             case .startClass:
                 c.start() // guards itself when busy/live
             case .endSession:
-                guard c.isRunning || c.sceneInUse else { return }
+                guard c.phase.isCameraBusy else { return }
                 c.confirmAndStop() // destructive - always confirms
             case .toggleRecording:
                 // Idle (nothing live, nothing starting) starts a recording through

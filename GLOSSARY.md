@@ -34,3 +34,6 @@ every change to a question is a change to a flag, and the coordinator is its
 
 - `isInMeeting`: `isRunning || stageLive`. True while a Record session is
   starting too (`isRunning`), false for a Record session between takes.
+- `sceneInUse`: `stageLive || recordOnlyActive`, the picture is built (either kind).
+- `isCameraBusy`: `sceneInUse || isRunning`, also written `stageLive ||
+  recordOnlyActive || isRunning`. Nothing may take the camera or stage while true.

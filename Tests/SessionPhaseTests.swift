@@ -239,4 +239,12 @@ final class SessionPhaseTests: XCTestCase {
             XCTAssertEqual(p.isInMeeting, p.isRunning || p.stageLive, "\(p.session) \(p.take)")
         }
     }
+
+    func testCameraBusyMatchesBothOldSpellings() {
+        for p in reachableStates() {
+            XCTAssertEqual(p.sceneInUse, p.stageLive || p.recordOnlyActive)
+            XCTAssertEqual(p.isCameraBusy, p.sceneInUse || p.isRunning, "\(p.session)")
+            XCTAssertEqual(p.isCameraBusy, p.stageLive || p.recordOnlyActive || p.isRunning, "\(p.session)")
+        }
+    }
 }

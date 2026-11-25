@@ -98,7 +98,7 @@ extension CoordinatorController {
         let shared = stage != nil ? capturedFrameInCocoa(wholeDisplay: !windowShare) : nil
         let content = stage?.lastContentRect
         let inputs = PresenceVisibility.Inputs(
-            live: stage != nil && (stageLive || recordOnlyActive || isRunning),
+            live: stage != nil && phase.isCameraBusy,
             layoutPlaceable: layout.isPresencePlaceable,
             // Zoom video off (the meeting's camera control): an empty frame
             // would float on the screen. Greenroom's own "no camera" is in

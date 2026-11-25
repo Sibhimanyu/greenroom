@@ -454,7 +454,7 @@ final class CoordinatorController: ObservableObject {
     /// runs while a session owns the picture; a session starts and stops the
     /// director itself.
     private func syncIdleDirector(restart: Bool) {
-        guard !sceneInUse, !isRunning else { return }
+        guard !phase.isCameraBusy else { return }
         let uids = sessionCameraUIDs(cameraDirectorSettings)
         guard let stage, previewAttached, uids.count > 1 else {
             if cameraDirector.isRunning {
@@ -842,7 +842,7 @@ final class CoordinatorController: ObservableObject {
     /// The Webcam page's picture is in use by a session - a meeting, or a
     /// recording made from Home's Record mode. The Settings preview then
     /// mirrors that session's picture instead of starting one of its own.
-    var sceneInUse: Bool { stageLive || recordOnlyActive }
+    var sceneInUse: Bool { phase.sceneInUse }
 
     /// Automatic (no green screen) or a real green screen, for Cutout and
     /// Presenter. Takes effect when the cameras are next opened: at Start, or
@@ -947,7 +947,7 @@ final class CoordinatorController: ObservableObject {
             }
             return
         }
-        guard !sceneInUse, !isRunning, shapePreviewOn else { return }
+        guard !phase.isCameraBusy, shapePreviewOn else { return }
         requestShapeApply()
     }
 
@@ -1567,7 +1567,7 @@ final class CoordinatorController: ObservableObject {
                            // switching is on (the director cuts between them),
                            // otherwise the one.
                            cameraUIDs: stageCameraUIDs
-                               ?? sceneCameraUIDs(limit: sceneInUse || isRunning ? 1 : nil),
+                               ?? sceneCameraUIDs(limit: phase.isCameraBusy ? 1 : nil),
                            captureSystemAudio: recordSystemAudio)
     }
 
@@ -2301,7 +2301,7 @@ final class CoordinatorController: ObservableObject {
     /// Drawing needs a picture to draw on: a session or the Record view is up
     /// and something is shared (a screen, or the whiteboard).
     var canDraw: Bool {
-        stage != nil && (sceneInUse || isRunning) && shareTarget.kind != .nothing
+        stage != nil && phase.isCameraBusy && shareTarget.kind != .nothing
     }
 
     private func wireDrawing() {
@@ -3183,7 +3183,7 @@ final class CoordinatorController: ObservableObject {
 
     private func attachPreview() {
         guard shapePreviewOn || studioPreviewOn, !previewAttached else { return }
-        if !sceneInUse, !isRunning {
+        if !phase.isCameraBusy {
             guard let stage = ensureStage() else { return }
             stage.start(makeStageConfiguration())
         }
@@ -3209,7 +3209,7 @@ final class CoordinatorController: ObservableObject {
     /// `evenIfRunning`: Home has waited seconds with no frame from a stage
     /// that says it is running, so restart it anyway.
     func revivePreviewIfStalled(evenIfRunning: Bool = false) {
-        guard shapePreviewOn || studioPreviewOn, !sceneInUse, !isRunning else { return }
+        guard shapePreviewOn || studioPreviewOn, !phase.isCameraBusy else { return }
         if let stage, stage.status.isRunning, previewAttached,
            shapePreviewAspect != nil || !evenIfRunning { return }
         StageScreenSource.log("Preview had no picture; starting it again.")
@@ -3244,7 +3244,7 @@ final class CoordinatorController: ObservableObject {
             StageScreenSource.log("Preview closed (\(viewer)); still shown elsewhere.")
             return
         }
-        StageScreenSource.log("Preview closed (\(viewer))\(!sceneInUse && !isRunning ? "; the picture stops with it" : "").")
+        StageScreenSource.log("Preview closed (\(viewer))\(!phase.isCameraBusy ? "; the picture stops with it" : "").")
         shapePreviewApply?.cancel()
         // The Record view is still watching the same picture: one compositor
         // serves both, and the last to leave turns the light off.
@@ -3253,7 +3253,7 @@ final class CoordinatorController: ObservableObject {
         previewAttached = false
         // The preview opened the camera; a session that is not running has
         // no use for it, and the camera light should go off.
-        if !sceneInUse, !isRunning { stopStage() }
+        if !phase.isCameraBusy { stopStage() }
         publishPreviewFrame(nil)
     }
 
@@ -3289,7 +3289,7 @@ final class CoordinatorController: ObservableObject {
 
     /// Hands the compositor the settings as they are now.
     func applyShapeForPreview() {
-        guard let stage, stage.status.isRunning || sceneInUse || isRunning || shapePreviewOn else { return }
+        guard let stage, stage.status.isRunning || phase.isCameraBusy || shapePreviewOn else { return }
         stage.update(makeStageConfiguration())
     }
 

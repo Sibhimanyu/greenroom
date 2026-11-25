@@ -244,4 +244,11 @@ struct SessionPhase: Equatable {
     /// is also true while a Record session is starting, so this is true then too,
     /// and false for a Record session between takes.
     var isInMeeting: Bool { isRunning || stageLive }
+
+    /// The picture is built for a meeting or a Record session.
+    var sceneInUse: Bool { stageLive || recordOnlyActive }
+
+    /// The camera / stage is taken: a picture is up (either kind) or a start
+    /// task is running.
+    var isCameraBusy: Bool { sceneInUse || isRunning }
 }

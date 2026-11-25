@@ -14,9 +14,11 @@
 //     already leaves out every Greenroom window not marked "Everyone sees this".
 //     At 60 fps, queue depth 3, sized to the room display's pixels, cursor on.
 //
-//  Speed: no CIImage, no CGImage, no main-thread hop. Each IOSurface-backed
-//  CVPixelBuffer is wrapped in a CMSampleBuffer (DisplayImmediately) and handed to an
-//  AVSampleBufferDisplayLayer, which the GPU shows straight from the surface.
+//  Speed: no CIImage, no CGImage, no copy. The newest IOSurface-backed
+//  CVPixelBuffer's surface becomes a plain CALayer's contents, once per main-queue
+//  turn (`RoomFrameFeeder`); the GPU shows it straight from the surface. Not an
+//  AVSampleBufferDisplayLayer: its image queue froze on the room display (2026-11-26).
+//  Health goes to os_log (category RoomScreen) every 5 s while open.
 //
 //  Out of Greenroom's own share and recordings: the display capture excludes the
 //  whole of Greenroom. Other apps' captures may see it (default sharingType). No chrome, no glass:
@@ -24,104 +26,28 @@
 //  .screenSaver level (above the menu bar); the picture is aspect fit on black.
 //
 import AppKit
-import AVFoundation
 import CoreMedia
 import CoreVideo
 import os
 
 // MARK: - Feeding the layer
 
-/// Turns pixel buffers into display-immediately sample buffers for one layer.
-/// Called from the compositor's render queue or the capture queue; the layer's
-/// renderer is thread-safe, so nothing hops to the main thread.
-final class RoomFrameFeeder: StageFrameSink {
-    private let renderer: AVSampleBufferVideoRenderer
-    private let lock = NSLock()
-    private var format: CMVideoFormatDescription?   // under lock
-    #if DEBUG
-    private let stats = DeliveryStats()
-    /// The latest capture frame's own host-clock stamp (capture queue only).
-    var captureStamp = CMTime.invalid
-    #endif
-
-    init(layer: AVSampleBufferDisplayLayer) {
-        renderer = layer.sampleBufferRenderer
-    }
-
+/// The feeder itself lives in RoomFrameFeeder.swift (testable on its own).
+extension RoomFrameFeeder: StageFrameSink {
     func stageDidRender(_ frame: CVPixelBuffer, at time: CMTime) { show(frame, stampedAt: time) }
-
-    func show(_ pixels: CVPixelBuffer, stampedAt time: CMTime) {
-        #if DEBUG
-        stats.record(frameTime: time)
-        #endif
-        lock.lock()
-        if let current = format, CMVideoFormatDescriptionMatchesImageBuffer(current, imageBuffer: pixels) {
-            // keep it
-        } else {
-            var made: CMVideoFormatDescription?
-            CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixels, formatDescriptionOut: &made)
-            format = made
-        }
-        let description = format
-        lock.unlock()
-        guard let description else { return }
-
-        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid)
-        var sample: CMSampleBuffer?
-        let status = CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: nil, imageBuffer: pixels, formatDescription: description,
-            sampleTiming: &timing, sampleBufferOut: &sample)
-        guard status == noErr, let sample else { return }
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true),
-           CFArrayGetCount(attachments) > 0 {
-            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-            CFDictionarySetValue(dict,
-                                 Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-        }
-        if renderer.status == .failed { renderer.flush() }
-        renderer.enqueue(sample)
-    }
 }
-
-#if DEBUG
-/// DEBUG only: the average time from a frame's own stamp to the moment it was
-/// handed to the layer, logged every 300 frames with os_log.
-private final class DeliveryStats {
-    private let lock = NSLock()
-    private var total = 0.0
-    private var count = 0
-    private static let log = Logger(subsystem: "com.sibhimanyu.greenroom", category: "RoomScreen")
-
-    func record(frameTime: CMTime) {
-        guard frameTime.isValid else { return }
-        let delay = CMTimeGetSeconds(CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), frameTime)) * 1000
-        lock.lock()
-        total += delay; count += 1
-        let report = count >= 300
-        let average = total / Double(max(count, 1))
-        let n = count
-        if report { total = 0; count = 0 }
-        lock.unlock()
-        if report {
-            Self.log.debug("Room screen: average delivery \(average, format: .fixed(precision: 2)) ms over \(n) frames")
-        }
-    }
-}
-
-#endif
 
 // MARK: - The view
 
 final class RoomScreenView: NSView {
-    let displayLayer = AVSampleBufferDisplayLayer()
+    let displayLayer = CALayer()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         layer = CALayer()
         layer?.backgroundColor = NSColor.black.cgColor
-        displayLayer.videoGravity = .resizeAspect
+        displayLayer.contentsGravity = .resizeAspect
         displayLayer.backgroundColor = NSColor.black.cgColor
         displayLayer.frame = bounds
         displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
@@ -140,6 +66,9 @@ enum RoomScreen {
     private static var roomScreenID = ""
     private static var hidden = false
     private static var observer: NSObjectProtocol?
+    private static var occlusionObserver: NSObjectProtocol?
+    private static var healthTimer: Timer?
+    private static let healthLog = Logger(subsystem: "com.sibhimanyu.greenroom", category: "RoomScreen")
 
     /// The compositor while one runs; set by the coordinator after Start's
     /// `stage.start` and cleared when the stage is torn down.
@@ -196,6 +125,10 @@ enum RoomScreen {
         stopSources()
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = nil
+        healthTimer?.invalidate()
+        healthTimer = nil
         guard let panel = window else { return }
         window = nil
         feeder = nil
@@ -222,10 +155,35 @@ enum RoomScreen {
         // Greenroom's own capture excludes the whole app, so it never films itself.
         let view = RoomScreenView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
         panel.contentView = view
-        feeder = RoomFrameFeeder(layer: view.displayLayer)
+        let made = RoomFrameFeeder(layer: view.displayLayer)
+        feeder = made
         window = panel
         log("opened.")
+        watchHealth(panel, made)
         return panel
+    }
+
+    /// So the next freeze is diagnosable: the window server hiding the window, and
+    /// every 5 s the frames handed in vs put on the layer
+    /// (`log stream --predicate 'category == "RoomScreen"'`).
+    private static func watchHealth(_ panel: NSWindow, _ feeder: RoomFrameFeeder) {
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: panel, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                let visible = panel.occlusionState.contains(.visible)
+                log(visible ? "the window server shows it again." : "the window server reports it hidden (occluded).")
+            }
+        }
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak feeder] _ in
+            MainActor.assumeIsolated {
+                guard let feeder, let window else { return }
+                let (received, applied) = feeder.takeCounts()
+                let visible = window.occlusionState.contains(.visible)
+                let screen = window.screen?.localizedName ?? "none"
+                healthLog.notice("Room screen: \(received) frames in, \(applied) shown in 5 s; visible \(visible); on \(screen, privacy: .public)")
+                if received > 0, applied == 0 { log("frames arrive but none reached the layer in 5 s.") }
+            }
+        }
     }
 
     /// The room display going away closes the window quietly.

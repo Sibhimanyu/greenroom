@@ -534,9 +534,8 @@ final class CoordinatorController: ObservableObject {
     }
 
     // MARK: Meeting SDK chat (separate window, second participant - see
-    // Vendor/ZoomSDK/README.md). Both the Client ID and Secret are stored
-    // in plain UserDefaults via SecretStore (Greenroom does not use the
-    // Keychain); the secret is loaded lazily.
+    // Vendor/ZoomSDK/README.md). The Client ID is in UserDefaults, the
+    // Secret in the Keychain via SecretStore; the secret is loaded lazily.
 
     @Published var sdkClientID: String {
         didSet { defaults.set(sdkClientID, forKey: "zoomSDKClientID") }
@@ -550,10 +549,9 @@ final class CoordinatorController: ObservableObject {
     private var secretsLoaded = false
     private var isRestoringSecret = false
 
-    /// Loads both Zoom secrets on first use rather than at launch, so the
-    /// stored values are only touched when a Zoom feature is actually
-    /// used. (Storage is plain UserDefaults via SecretStore - see that
-    /// file; no Keychain, so no password prompt was ever involved.)
+    /// Copies the secrets into the published properties on first use.
+    /// SecretStore reads the Keychain once per launch and serves from
+    /// memory after that (see that file).
     func loadSecretsIfNeeded() {
         guard !secretsLoaded else { return }
         secretsLoaded = true
@@ -824,9 +822,9 @@ final class CoordinatorController: ObservableObject {
     // MARK: Start-a-meeting (Server-to-Server OAuth app - a SECOND
     // Marketplace app, separate from the Meeting SDK one above; see
     // Vendor/README.md, including why a one-app OAuth consolidation was
-    // built and then abandoned). Account ID, Client ID and Secret are all
-    // stored in plain UserDefaults via SecretStore (no Keychain), the
-    // secret loaded lazily like the SDK secret.
+    // built and then abandoned). Account ID and Client ID are in
+    // UserDefaults, the Secret in the Keychain via SecretStore, loaded
+    // lazily like the SDK secret.
 
     @Published var s2sAccountID: String {
         didSet { defaults.set(s2sAccountID, forKey: "zoomS2SAccountID") }

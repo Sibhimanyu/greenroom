@@ -113,6 +113,58 @@ final class SourceScanTests: XCTestCase {
         XCTAssertEqual(hits.count, 1, "one Stop video call site, found: \(hits)")
     }
 
+    // MARK: Rule 6: secrets never go into UserDefaults
+
+    /// Secrets live in the Keychain (SecretStore, owner 2026-11-26). Only the
+    /// one-time migration in SecretStore.swift still names the old
+    /// "secret_" slots, to read and delete them. Flags any UserDefaults write
+    /// (`set`, `setValue`, `@AppStorage`) whose line names a key that looks like
+    /// a secret, and any "secret_" string, anywhere else in App/.
+    func testSecretsAreNeverWrittenToUserDefaults() throws {
+        for (path, lexed) in try sources(under: "App") where path != "App/Zoom/SecretStore.swift" {
+            let lines = lexed.source.components(separatedBy: "\n")
+            for line in try Self.secretDefaultsWrites(lexed) {
+                let raw = lines[line - 1].trimmingCharacters(in: .whitespaces)
+                // The settings catalog names the old slots, to classify them.
+                if path == "App/Settings/SettingsCatalog.swift" && raw.hasPrefix(#"excluded("secret_*""#) { continue }
+                fail("\(path):\(line): a secret written to UserDefaults; use SecretStore: \(raw)", path: path, line: line)
+            }
+        }
+    }
+
+    /// The scan itself catches the old SecretStore and the usual spellings.
+    func testSecretScanCatchesDefaultsWrites() throws {
+        let src = """
+        defaults.set(value, forKey: "secret_\\(key)")
+        UserDefaults.standard.set(token, forKey: "youtubeRefreshToken")
+        defaults.set(x, forKey: Self.clientSecretKey)
+        @AppStorage("zoomClientSecret") var s = ""
+        defaults.set(name, forKey: "userDisplayName")
+        SecretStore.set(refresh, forKey: "youtubeRefreshToken")
+        // defaults.set(v, forKey: "secret_x") in a comment
+        """
+        XCTAssertEqual(try Self.secretDefaultsWrites(Lexed(src)), [1, 2, 3, 4])
+    }
+
+    /// Lines that write a secret-looking key into UserDefaults, or name a
+    /// "secret_" slot at all.
+    static func secretDefaultsWrites(_ lexed: Lexed) throws -> [Int] {
+        let secretName = try NSRegularExpression(pattern: #"secret_|refreshtoken|clientsecret"#, options: [.caseInsensitive])
+        let defaultsWrite = try NSRegularExpression(
+            pattern: #"(?:\bdefaults|UserDefaults\.standard|\bstandard|\bud)\s*\??\.\s*set(?:Value)?\(|@AppStorage\("#)
+        let literals = Dictionary(grouping: lexed.literals, by: \.line)
+        let range = { (s: String) in NSRange(s.startIndex..., in: s) }
+        var out: [Int] = []
+        for (line, code) in lexed.codeLines {
+            let text = (literals[line] ?? []).map(\.text).joined(separator: " ")
+            let both = code + " " + text
+            let writes = defaultsWrite.firstMatch(in: code, range: range(code)) != nil
+                && secretName.firstMatch(in: both, range: range(both)) != nil
+            if writes || text.range(of: "secret_", options: .caseInsensitive) != nil { out.append(line) }
+        }
+        return out
+    }
+
     // MARK: The lexer, tested on its own
 
     func testLexerSeparatesCodeCommentsAndStrings() {

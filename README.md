@@ -125,13 +125,12 @@ anytime from the **?** button in the main window. The short version:
    (with no agent) the written feedback — runs on your Mac.
    See the [how-it-works page](https://sibhimanyu.github.io/greenroom/how-it-works.html#Analyse).
 
-   **Credential storage note:** the Sign in with Zoom refresh token is the
-   one secret kept in the macOS Keychain (this device only). Pasted Zoom
-   app credentials and the YouTube client secret and token are kept in
-   Greenroom's local preferences (`UserDefaults`) in **plain text** — not
-   encrypted (see `App/Zoom/SecretStore.swift`). They never leave your Mac
-   except to Zoom or Google itself; the risk is purely local (someone with
-   access to your user account could read them).
+   **Credential storage note:** every secret (the pasted Zoom app secrets,
+   your own Google app's secret, and the Zoom and YouTube sign-in refresh
+   tokens) is stored in your Mac's Keychain, this device only (see
+   `App/Zoom/SecretStore.swift`). They are never sent anywhere except to
+   Zoom or Google. A settings export file carries the pasted secrets in
+   plain text, after a warning.
    See the [how-it-works / safety page](https://sibhimanyu.github.io/greenroom/how-it-works.html).
 
 ---
@@ -300,7 +299,7 @@ Client ID / Secret, press **Connect Google account…** (browser sign-in,
 PKCE + loopback redirect), done. Scope is `youtube.force-ssl` (upload and
 edit own videos; used for uploads and the Sessions window's Rename and
 Delete from YouTube); the
-refresh token lives in `SecretStore` (plain preferences, like the pasted Zoom credentials) and is
+refresh token lives in `SecretStore` (the Keychain, like the pasted Zoom credentials) and is
 revoked at Google on **Disconnect**. The Sessions window (formerly
 Recordings) keeps each class's YouTube links in its folder's
 `session.json`, lets you rename a class (display name; the dated folder
@@ -471,10 +470,10 @@ Non-obvious build/runtime notes, learned the hard way:
 
 - **Signing identity must stay stable** across rebuilds (hence the team ID
   in `project.yml`): ad-hoc signing gave every build a fresh identity, so
-  Gatekeeper treats each rebuild as a different app. (Pasted credentials are
-  kept in plain `UserDefaults` via `App/Zoom/SecretStore.swift`; only the
-  Sign in with Zoom refresh token is a Keychain item, set to the
-  after-first-unlock class so there is no prompt.)
+  Gatekeeper treats each rebuild as a different app, and the Keychain would
+  ask for its password on every launch. All secrets are one Keychain item
+  via `App/Zoom/SecretStore.swift`, which the app that wrote it reads
+  silently as long as every build carries the same certificate.
 - **The Zoom SDK's real API names differ from its docs** in several places
   (`ZoomSDK.shared()` not `.sharedSDK()`, chat on
   `ZoomSDKMeetingChatController`, mute flags `isNoVideo`/`isNoAudio`, …)

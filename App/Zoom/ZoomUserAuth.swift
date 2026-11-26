@@ -8,7 +8,7 @@
 //  ends meetings and fetches the host key (ZAK), the same calls the
 //  Server-to-Server client makes, but as the person.
 //
-//  Tokens: the refresh token lives in the Keychain (ZoomKeychain). The access token stays
+//  Tokens: the refresh token lives in the Keychain (SecretStore). The access token stays
 //  in memory with its expiry and is renewed a minute early. Zoom rotates the
 //  refresh token on each use, so the new one replaces the old.
 //
@@ -58,7 +58,7 @@ final class ZoomUserAuth: ObservableObject {
     /// The stored sign-in was made with a different public client than the current one.
     @Published private(set) var needsRenewal = false
 
-    private static let refreshKey = "zoomUserRefreshToken"   // Keychain account; also the old SecretStore key
+    private static let refreshKey = "zoomUserRefreshToken"   // SecretStore key
     private static let profileKey = "zoomUserProfile"
     private static let scopesKey = "zoomUserGrantedScopes"
     private static let clientIDKey = "zoomUserClientID"
@@ -69,12 +69,9 @@ final class ZoomUserAuth: ObservableObject {
     private let defaults = UserDefaults.standard
 
     init() {
-        // One-time move out of the plain-preferences slot an earlier build used.
-        if let old = SecretStore.get(Self.refreshKey), !old.isEmpty {
-            if (ZoomKeychain.get(Self.refreshKey) ?? "").isEmpty { ZoomKeychain.set(old, account: Self.refreshKey) }
-            SecretStore.set("", forKey: Self.refreshKey)
-        }
-        let hasRefresh = !(ZoomKeychain.get(Self.refreshKey) ?? "").isEmpty
+        // Earlier builds kept this token in its own Keychain item, and before
+        // that in UserDefaults; SecretStore's one-time migration moves both.
+        let hasRefresh = !(SecretStore.get(Self.refreshKey) ?? "").isEmpty
         phase = hasRefresh ? .signedIn : .signedOut
         if hasRefresh, let data = defaults.data(forKey: Self.profileKey) {
             profile = try? JSONDecoder().decode(ZoomUserProfile.self, from: data)
@@ -127,7 +124,7 @@ final class ZoomUserAuth: ObservableObject {
         _ = try await accessToken()
     }
     private var refreshToken: String? {
-        let value = ZoomKeychain.get(Self.refreshKey) ?? ""
+        let value = SecretStore.get(Self.refreshKey) ?? ""
         return value.isEmpty ? nil : value
     }
 
@@ -198,7 +195,7 @@ final class ZoomUserAuth: ObservableObject {
             guard let refresh = set.refreshToken else { throw ZoomUserAuthError.badResponse }
             tokens = set
             profile = try await loadProfile()
-            ZoomKeychain.set(refresh, account: Self.refreshKey)
+            SecretStore.set(refresh, forKey: Self.refreshKey)
             if let scope = set.scope { defaults.set(scope, forKey: Self.scopesKey) }
             else { defaults.removeObject(forKey: Self.scopesKey) }
             defaults.set(ZoomOAuth.publicClientID, forKey: Self.clientIDKey)
@@ -215,7 +212,7 @@ final class ZoomUserAuth: ObservableObject {
     }
 
     private func clearLocal() {
-        ZoomKeychain.delete(Self.refreshKey)
+        SecretStore.remove(Self.refreshKey)
         defaults.removeObject(forKey: Self.profileKey)
         defaults.removeObject(forKey: Self.scopesKey)
         defaults.removeObject(forKey: Self.clientIDKey)
@@ -254,7 +251,7 @@ final class ZoomUserAuth: ObservableObject {
         defer { refreshTask = nil }
         do {
             let set = try await task.value
-            ZoomKeychain.set(ZoomTokenRules.refreshToStore(old: old, response: set), account: Self.refreshKey)
+            SecretStore.set(ZoomTokenRules.refreshToStore(old: old, response: set), forKey: Self.refreshKey)
             tokens = set
             storeScopes(from: set)
             return set

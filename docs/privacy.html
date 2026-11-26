@@ -289,6 +289,7 @@
   <tbody>
     <tr><td>Your Zoom profile</td><td>On your Mac only. Your Zoom name, email, user ID and account ID, kept in Greenroom's app settings after you sign in.</td><td>To show who is signed in and to ask Zoom for your own meetings.</td></tr>
     <tr><td>Zoom sign-in tokens</td><td>The refresh token is kept in the macOS Keychain on your Mac, readable only on this Mac and only after its first unlock. The short-lived access token is held in memory only.</td><td>So you do not have to sign in every time.</td></tr>
+    <tr><td>Keys and tokens you add</td><td>The Zoom app secrets you paste, your own Google app's secret and the YouTube sign-in token are stored in your Mac's Keychain, set to this Mac only. They are never sent anywhere except to Zoom or Google, to sign in. If you export your settings to a file, the pasted secrets go into that file as plain text, and Greenroom warns you first.</td><td>So the features you set up keep working.</td></tr>
     <tr><td>Meeting IDs and links</td><td>Used while a meeting runs. A local status log on your Mac can include them. They are not sent to analytics.</td><td>To start, join and control your meetings.</td></tr>
     <tr><td>Recordings, transcripts, notes, stills, clips</td><td>A folder per session in <span class="mono">~/Documents/Greenroom</span> on your Mac.</td><td>So you can review, edit and analyse a class later.</td></tr>
     <tr><td>Meeting audio, video, chat</td><td>Zoom's servers, through Zoom's own Meeting SDK that runs inside Greenroom. Same as using Zoom directly.</td><td>It is the meeting.</td></tr>
@@ -365,7 +366,7 @@
 </ul>
 
 <h2>Security</h2>
-<p>Network calls use HTTPS. The signing service talks to Zoom over HTTPS and holds its secret as a hosting secret, not in the code. Updates are signed and checked against a key inside the app. Your Zoom sign-in token is stored in the macOS Keychain. Other local data, including the YouTube token if you connect one, sits in the app's settings on your Mac and is not encrypted by Greenroom, so keep your Mac account protected (FileVault and a login password). The signing service accepts TLS 1.2 and 1.3.</p>
+<p>Network calls use HTTPS. The signing service talks to Zoom over HTTPS and holds its secret as a hosting secret, not in the code. Updates are signed and checked against a key inside the app. Your keys and sign-in tokens (Zoom and YouTube) are stored in your Mac's Keychain and are never sent anywhere except to Zoom or Google. Other local data sits in the app's settings and session folders on your Mac and is not encrypted by Greenroom, so keep your Mac account protected (FileVault and a login password). The signing service accepts TLS 1.2 and 1.3.</p>
 <p>Found a security problem? Write to sibhi.gv@gmail.com or use the Report button.</p>
 
 <h2>Children and schools</h2>

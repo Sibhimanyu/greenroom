@@ -216,7 +216,8 @@ enum SettingsCatalog {
         excluded("account.mock.signedIn", .unset, "Debug account mock."),
         excluded("GreenroomRawVideoSpike", .bool(false), "A debug switch."),
         excluded("debug.*", .unset, "DEBUG-build switches; a Release build never reads or writes them."),
-        excluded("secret_*", .unset, "Keychain items are named at run time; the secrets that travel are listed above."),
+        excluded("secret_*", .unset, "Where secrets were kept before the Keychain; SecretStore's one-time migration moves and deletes them."),
+        excluded("secretsInKeychainMigrated", .unset, "One-time migration marker on this Mac."),
     ]
 
     /// Transfer fields no setting stands behind any more: decoded so an old file

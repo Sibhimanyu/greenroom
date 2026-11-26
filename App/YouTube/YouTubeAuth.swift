@@ -12,9 +12,8 @@
 //  person's own) is YouTubeRouteRules; the URL and the PKCE challenge are
 //  YouTubeOAuth.swift.
 //
-//  What is kept: the refresh token, in the same plain UserDefaults slot the
-//  Zoom credentials use (SecretStore) - same honesty, same local-only risk -
-//  and which app issued it. It grants managing the channel's own videos
+//  What is kept: the refresh token, in the Keychain with the Zoom credentials
+//  (SecretStore), and which app issued it (UserDefaults). It grants managing the channel's own videos
 //  (youtube.force-ssl, see `YouTubeOAuth.scope`) and is revoked at Google on
 //  Sign out, and when Use another account replaces it.
 //

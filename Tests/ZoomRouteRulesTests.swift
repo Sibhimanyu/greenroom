@@ -6,10 +6,10 @@ final class ZoomRouteRulesTests: XCTestCase {
 
     private func facts(signedIn: Bool = false, name: String = "Sibhi -8A", email: String = "s@example.com",
                        endpointSet: Bool = true, sdk: Bool = false, s2s: Bool = false,
-                       clientID: String = "AbCdEfGh1234wxyz", prefersOwnApps: Bool = false) -> ZoomRouteFacts {
+                       clientID: String = "AbCdEfGh1234wxyz", prefersSignIn: Bool = false) -> ZoomRouteFacts {
         ZoomRouteFacts(signedIn: signedIn, accountName: name, accountEmail: email, endpointSet: endpointSet,
                        ownSDKComplete: sdk, ownS2SComplete: s2s, sdkClientID: clientID,
-                       prefersOwnApps: prefersOwnApps)
+                       prefersSignIn: prefersSignIn)
     }
 
     // MARK: Precedence
@@ -22,21 +22,23 @@ final class ZoomRouteRulesTests: XCTestCase {
         XCTAssertEqual(ZoomRouteRules.route(facts(sdk: true, s2s: true)), .ownApps(sdkClientID: "AbCdEfGh1234wxyz"))
     }
 
-    func testBothSetUpTheSignInWinsByDefault() {
+    /// Owner, 2026-11-26 (A): own apps work for any account; the sign-in only starts meetings on the
+    /// account that owns Greenroom's Zoom app (error 63 elsewhere), so own apps win by default.
+    func testBothSetUpOwnAppsWinByDefault() {
         let f = facts(signedIn: true, sdk: true, s2s: true)
-        XCTAssertEqual(ZoomRouteRules.route(f), .greenroomApp(account: "Sibhi -8A"))
+        XCTAssertEqual(ZoomRouteRules.route(f), .ownApps(sdkClientID: "AbCdEfGh1234wxyz"))
         XCTAssertTrue(ZoomRouteRules.bothSetUp(f))
     }
 
-    func testBothSetUpTheSwitchPicksOwnApps() {
-        let f = facts(signedIn: true, sdk: true, s2s: true, prefersOwnApps: true)
-        XCTAssertEqual(ZoomRouteRules.route(f), .ownApps(sdkClientID: "AbCdEfGh1234wxyz"))
+    func testBothSetUpTheSwitchPicksTheSignIn() {
+        let f = facts(signedIn: true, sdk: true, s2s: true, prefersSignIn: true)
+        XCTAssertEqual(ZoomRouteRules.route(f), .greenroomApp(account: "Sibhi -8A"))
         XCTAssertTrue(ZoomRouteRules.bothSetUp(f))
     }
 
     func testTheSwitchIsIgnoredWhileOwnAppsAreIncomplete() {
         // Only the Meeting SDK half pasted: Start could not create a meeting with it.
-        let f = facts(signedIn: true, sdk: true, s2s: false, prefersOwnApps: true)
+        let f = facts(signedIn: true, sdk: true, s2s: false)
         XCTAssertEqual(ZoomRouteRules.route(f), .greenroomApp(account: "Sibhi -8A"))
         XCTAssertFalse(ZoomRouteRules.bothSetUp(f))
     }
@@ -102,10 +104,10 @@ final class ZoomRouteRulesTests: XCTestCase {
 
     func testBothSetUpSaysWhichWinsAndOffersTheOtherOne() {
         XCTAssertEqual(ZoomRouteWords.bothNote(.greenroomApp(account: "A")),
-                       "Your own Zoom apps are set up too. Start uses your Zoom account while you are signed in.")
+                       "Your own Zoom apps are set up too. Start uses your Zoom account, as you chose.")
         XCTAssertEqual(ZoomRouteWords.switchTitle(.greenroomApp(account: "A")), "Use my own Zoom apps")
         XCTAssertEqual(ZoomRouteWords.bothNote(.ownApps(sdkClientID: "x")),
-                       "You are signed in with Zoom too. Start uses your own Zoom apps.")
+                       "You are signed in with Zoom too. Start uses your own Zoom apps: they can start meetings on any account.")
         XCTAssertEqual(ZoomRouteWords.switchTitle(.ownApps(sdkClientID: "x")), "Use my Zoom account")
         XCTAssertNil(ZoomRouteWords.switchTitle(.none(.notSetUp)))
     }

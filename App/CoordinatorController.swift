@@ -566,23 +566,23 @@ final class CoordinatorController: ObservableObject {
     // `ZoomRouteRules.route` picks ONE route and Start takes both halves from
     // it: signed in with Zoom (REST as the person, the JWT from the signing
     // function) or your own Zoom apps (the pasted S2S app and SDK keys). When
-    // both work, `zoomPrefersOwnApps` (Settings' switch) picks; off, the
-    // sign-in wins, as it always did. Settings, Home, Start and the session
+    // both work, `zoomPrefersSignIn` (Settings' switch) picks; off, your
+    // own Zoom apps win (they start meetings on any account; owner, 2026-11-26). Settings, Home, Start and the session
     // log all read `zoomRoute`, so none of them can disagree with Start.
 
     let zoomUser = ZoomUserAuth()
 
-    /// Settings' switch: with both routes set up, use your own Zoom apps.
-    @Published var zoomPrefersOwnApps: Bool = false {
+    /// Settings' switch: with both routes set up, use the sign-in instead of your own Zoom apps.
+    @Published var zoomPrefersSignIn: Bool = false {
         didSet {
-            guard zoomPrefersOwnApps != oldValue else { return }
-            defaults.set(zoomPrefersOwnApps, forKey: Self.zoomPrefersOwnAppsKey)
+            guard zoomPrefersSignIn != oldValue else { return }
+            defaults.set(zoomPrefersSignIn, forKey: Self.zoomPrefersSignInKey)
             // The list and a warmed host key belong to the other account.
             scheduledMeetings = []
             prefetchedZAK = nil
         }
     }
-    static let zoomPrefersOwnAppsKey = "zoomPrefersOwnApps"
+    static let zoomPrefersSignInKey = "zoomPrefersSignIn"
 
     /// A secret counts once it is stored, even before the lazy load reads it,
     /// so Home's readiness and Settings' line are right from launch.
@@ -605,7 +605,7 @@ final class CoordinatorController: ObservableObject {
                        ownSDKComplete: ownSDKKeysPresent,
                        ownS2SComplete: ownS2SComplete,
                        sdkClientID: sdkClientID,
-                       prefersOwnApps: zoomPrefersOwnApps)
+                       prefersSignIn: zoomPrefersSignIn)
     }
 
     /// The route Start will use right now.
@@ -1541,7 +1541,7 @@ final class CoordinatorController: ObservableObject {
         meetingPresets = Self.loadPresets(from: defaults)
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
-        zoomPrefersOwnApps = defaults.bool(forKey: Self.zoomPrefersOwnAppsKey)
+        zoomPrefersSignIn = defaults.bool(forKey: Self.zoomPrefersSignInKey)
         sdkClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
         s2sAccountID = defaults.string(forKey: "zoomS2SAccountID") ?? ""
         s2sClientID = defaults.string(forKey: "zoomS2SClientID") ?? ""

@@ -194,7 +194,7 @@ extension ZoomRouteRow {
     static func live(_ coordinator: CoordinatorController) -> ZoomRouteRow {
         ZoomRouteRow(route: coordinator.zoomRoute, bothSetUp: coordinator.zoomRoutesBothSetUp,
                      note: coordinator.zoomRouteNote,
-                     onSwitch: { coordinator.zoomPrefersOwnApps.toggle() })
+                     onSwitch: { coordinator.zoomPrefersSignIn.toggle() })
     }
 }
 

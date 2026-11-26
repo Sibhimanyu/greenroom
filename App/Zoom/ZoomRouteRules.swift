@@ -52,13 +52,14 @@ struct ZoomRouteFacts: Equatable {
     /// Server-to-Server account ID, client ID and secret all pasted.
     var ownS2SComplete: Bool
     var sdkClientID: String
-    /// The Settings switch: when both routes work, use your own Zoom apps.
-    var prefersOwnApps: Bool
+    /// The Settings switch: when both routes work, use the sign-in instead of your own Zoom apps.
+    var prefersSignIn: Bool
 }
 
 enum ZoomRouteRules {
     /// The precedence, in order: when both routes work, the switch picks
-    /// (signed in wins unless it is on); otherwise whichever works; otherwise
+    /// (your own Zoom apps win unless it is on: they start meetings on any account,
+    /// the sign-in only on the account that owns Greenroom's Zoom app; owner, 2026-11-26); otherwise whichever works; otherwise
     /// the reason neither does. "Your own Zoom apps" works only with both
     /// halves, because Start needs REST to make the meeting and the SDK to run it.
     static func route(_ f: ZoomRouteFacts) -> ZoomRoute {
@@ -67,7 +68,7 @@ enum ZoomRouteRules {
         let account = displayName(f)
         let clientID = f.sdkClientID.trimmingCharacters(in: .whitespaces)
         if greenroom && own {
-            return f.prefersOwnApps ? .ownApps(sdkClientID: clientID) : .greenroomApp(account: account)
+            return f.prefersSignIn ? .greenroomApp(account: account) : .ownApps(sdkClientID: clientID)
         }
         if greenroom { return .greenroomApp(account: account) }
         if own { return .ownApps(sdkClientID: clientID) }
@@ -148,8 +149,8 @@ enum ZoomRouteWords {
     /// Under the top line when both routes work: which one wins.
     static func bothNote(_ route: ZoomRoute) -> String? {
         switch route {
-        case .greenroomApp: return "Your own Zoom apps are set up too. Start uses your Zoom account while you are signed in."
-        case .ownApps: return "You are signed in with Zoom too. Start uses your own Zoom apps."
+        case .greenroomApp: return "Your own Zoom apps are set up too. Start uses your Zoom account, as you chose."
+        case .ownApps: return "You are signed in with Zoom too. Start uses your own Zoom apps: they can start meetings on any account."
         case .none: return nil
         }
     }

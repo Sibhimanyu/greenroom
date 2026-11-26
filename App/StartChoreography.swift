@@ -65,6 +65,58 @@ enum StartChoreography {
         opensApps || arranges
     }
 
+    // MARK: How a meeting start ends
+
+    /// What the start knows when its steps clear.
+    enum Ending: Equatable {
+        /// The start ran to its end. `inMeeting`: Zoom's own status is InMeeting right
+        /// now (the meeting did not end, or fail, while the last steps ran).
+        case live(inMeeting: Bool)
+        /// A step failed, with the words to show.
+        case failed(String)
+        /// Cancel, or End while it was starting.
+        case cancelled
+    }
+
+    /// What a start that did not go live takes down.
+    struct Teardown: Equatable {
+        /// Greenroom's Meeting window, wherever it opened.
+        var closesMeetingWindow: Bool
+        /// The one-second loop that draws (and would reopen) the Meeting window.
+        var stopsFollowLoop: Bool
+        /// The island keeps the failure on screen for the person to read.
+        var keepsIslandFailure: Bool
+    }
+
+    static func teardown(_ ending: Ending) -> Teardown {
+        switch ending {
+        // The Meeting window has no readiness card (2026-11-24): the island carries the
+        // failure, so nothing is left up to show it. A window left open on a second
+        // display, with its loop still drawing it, was the first-run bug of 2026-11-26.
+        case .failed: return Teardown(closesMeetingWindow: true, stopsFollowLoop: true, keepsIslandFailure: true)
+        case .cancelled, .live: return Teardown(closesMeetingWindow: true, stopsFollowLoop: true, keepsIslandFailure: false)
+        }
+    }
+
+    /// Whether the Meeting window may open before the meeting is live. Never: while
+    /// starting the island is the one surface (`surfaces(.starting)`), and a window
+    /// opened early is one a failure has to find again. `layoutFillsADisplay` (the
+    /// layout's Meeting fills a connected display) used to open it at the click.
+    static func opensMeetingWindowWhileStarting(layoutFillsADisplay: Bool) -> Bool {
+        false
+    }
+
+    /// The island carries the start's reading (its steps, or its failure).
+    /// `meetingWindowOpen`: Greenroom's Meeting window is on screen;
+    /// `layoutHasMeetingDisplay`: the layout fills a connected display with the Meeting.
+    /// Always, for a meeting start: the Meeting window lost its readiness card on
+    /// 2026-11-24, so when the island stepped aside for it (an arranged layout with a
+    /// Meeting display, or the window open) the failure was shown nowhere.
+    static func islandCarriesReading(failed: Bool, arranged: Bool, layoutHasMeetingDisplay: Bool,
+                                     meetingWindowOpen: Bool) -> Bool {
+        true
+    }
+
     // MARK: Geometry
 
     /// How long Home takes to step aside, and to come back.

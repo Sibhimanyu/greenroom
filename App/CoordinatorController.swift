@@ -211,10 +211,12 @@ final class CoordinatorController: ObservableObject {
         // Arranged: a panel on the reference display carries the card, so the
         // HUD is only for a start with none. Nothing arranged: the panel opens
         // on demand, so the HUD carries the card until the teacher opens it.
-        let panelCarriesCard = sessionArranges
-            ? peopleViewTargetScreen() != nil
-            : ParticipantGridWindowController.isOpen
-        guard !panelCarriesCard || (failed && !ParticipantGridWindowController.isOpen) else {
+        // The Meeting window has no readiness card any more, so the island never
+        // steps aside for it: a failure it dropped was shown nowhere.
+        guard StartChoreography.islandCarriesReading(
+            failed: failed, arranged: sessionArranges,
+            layoutHasMeetingDisplay: sessionArranges && peopleViewTargetScreen() != nil,
+            meetingWindowOpen: ParticipantGridWindowController.isOpen) else {
             ReadinessHUDController.close()
             return
         }
@@ -1826,11 +1828,11 @@ final class CoordinatorController: ObservableObject {
             let why = zoomSDKAuthChoice == .notFinished
                 ? ZoomCredentialRules.notFinishedText
                 : "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
-            log("Can't start yet \u{2014} \(why)")
+            refuseStart("Can't start yet \u{2014} \(why)")
             return
         }
         if meetingMode != .record, zoomNeedsMorePermission {
-            log("\(zoomAttentionTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
+            refuseStart("\(zoomAttentionTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
             return
         }
         switch meetingMode {
@@ -1838,12 +1840,12 @@ final class CoordinatorController: ObservableObject {
             return
         case .create:
             guard zoomHostingReady else {
-                log("Can't create a meeting yet \u{2014} sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom.")
+                refuseStart("Can't create a meeting yet \u{2014} sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom.")
                 return
             }
         case .join:
             guard !meetingNumberDigits.isEmpty else {
-                log("Choose a scheduled meeting first.")
+                refuseStart("Choose a scheduled meeting first.")
                 return
             }
         }
@@ -1900,7 +1902,11 @@ final class CoordinatorController: ObservableObject {
         // from the first frame rather than after the meeting connects.
         // (Only the reference-display panel opens this early: the meeting window
         // needs a meeting, and a single-display class has the floating card.)
-        if sessionArranges && peopleViewWanted { startCustomUIGridFollow() }
+        // No longer: the Meeting window waits for the meeting to be live (the island
+        // carries the start), so a failed start has no window to leave behind.
+        if StartChoreography.opensMeetingWindowWhileStarting(layoutFillsADisplay: sessionArranges && peopleViewWanted) {
+            startCustomUIGridFollow()
+        }
 
         startTask = Task {
             do {
@@ -2066,6 +2072,19 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
+    /// A Start refused before any step ran (not signed in, a missing permission):
+    /// said on the island with Try again, not only in the collapsed log. The first
+    /// Start on a new Mac used to do nothing visible here.
+    private func refuseStart(_ reason: String) {
+        log(reason)
+        recordFlowHUD = false
+        lastStartWasRecordFlow = false
+        startInBar = false
+        var reading = ParticipantGridWindowController.Readiness()
+        reading.failure = reason
+        startReadiness = reading
+    }
+
     /// A display event that settled while a Start was still running.
     private var displayChangedDuringStart = false
 
@@ -2132,16 +2151,21 @@ final class CoordinatorController: ObservableObject {
                 await layoutEngine.closeApps(template)
             }
             // Custom UI: stop the SDK rendering into views that are about to
-            // go away, then drop our window.
-            if failure == nil {
+            // go away, then drop our window. A failed start takes its window and
+            // loop down too (the island, not the window, carries the failure);
+            // only the island's failure stays.
+            let teardown = StartChoreography.teardown(failure.map { .failed($0) } ?? .cancelled)
+            if teardown.stopsFollowLoop {
                 customUIGridTask?.cancel()
                 customUIGridTask = nil
+            }
+            if !teardown.keepsIslandFailure {
                 finishStartReadiness()
                 ReadinessHUDController.close()
             }
             recorder?.disarmClipBuffer()
             zoomChatClient.onParticipantCountChanged = nil
-                if failure == nil { ParticipantGridWindowController.close() }
+            if teardown.closesMeetingWindow { ParticipantGridWindowController.close() }
             RoomScreen.close()
             MeetingViewWindows.reset()
             meetingWindowWanted = true

@@ -2056,7 +2056,25 @@ final class CoordinatorController: ObservableObject {
                 if autoRecordOnStart && !isRecording {
                     log("Starting the recording automatically (Settings \u{2192} Devices).")
                     toggleRecording(withCountdown: false)
-                    mark(.recording, .done)
+                    // Done once a frame is in the file, not when Record was asked for.
+                    let asked = Date()
+                    proof: while true {
+                        switch StartChoreography.recordingStep(rolling: isRecording,
+                                                               firstFrameWritten: recorder?.elapsedMilliseconds != nil,
+                                                               waited: Date().timeIntervalSince(asked)) {
+                        case .done:
+                            mark(.recording, .done)
+                            break proof
+                        case .waiting:
+                            try await Task.sleep(nanoseconds: 100_000_000)
+                        case .failed(let words):
+                            // The meeting is live and stays live; the take is what failed.
+                            mark(.recording, .failed)
+                            log(words)
+                            ToastController.show(words, kind: .failure)
+                            break proof
+                        }
+                    }
                 }
                 mark(.tiling, sessionArranges ? .active : .skipped)
 

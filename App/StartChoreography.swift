@@ -163,6 +163,31 @@ enum StartChoreography {
         return "Greenroom\u{2019}s picture did not come up in \(waitedSeconds) seconds, so the meeting would have had no video. Check that Greenroom may use the camera (System Settings \u{2192} Privacy & Security \u{2192} Camera), then press Try again."
     }
 
+    // MARK: Steps done only on proof
+
+    /// Where a step stands against its proof.
+    enum StepCheck: Equatable {
+        case done
+        /// Not yet; look again.
+        case waiting
+        /// The proof did not come: the step goes red with these words.
+        case failed(String)
+    }
+
+    /// How long the Recording step waits for the first frame in the file.
+    static let recordingProofSeconds: TimeInterval = 5
+
+    /// The Recording step. `rolling`: the take began; `firstFrameWritten`: the
+    /// encoder took a frame (the recorder's clock started); `waited`: seconds since
+    /// the take was asked for.
+    static func recordingStep(rolling: Bool, firstFrameWritten: Bool, waited: TimeInterval) -> StepCheck {
+        if rolling && firstFrameWritten { return .done }
+        guard waited >= recordingProofSeconds else { return .waiting }
+        return .failed(rolling
+            ? "The recording did not start: no picture reached the file in \(Int(recordingProofSeconds)) seconds. The meeting is live; press Record to try again."
+            : "The recording did not start. The meeting is live; press Record to try again.")
+    }
+
     // MARK: Geometry
 
     /// How long Home takes to step aside, and to come back.

@@ -29,6 +29,11 @@ import ZoomSDK
 final class ZoomMeetingSDKClient: NSObject, ObservableObject {
 
     @Published private(set) var isJoined = false
+    /// How the current (or last) meeting ended, as Zoom said: set at Ended or
+    /// Failed, before `isJoined` drops; cleared at each start. Plain values only.
+    private(set) var lastEnd: MeetingEnd?
+    /// `leave()` was called for this meeting: End, Leave or quit, the owner's own.
+    private(set) var leaveRequested = false
     /// True when this SDK connection STARTED the meeting (New Meeting
     /// mode) rather than joining one - decides whether leaving should end
     /// the meeting for everyone.
@@ -1436,6 +1441,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         guard let number = Int64(ZoomMeetingLinkParser.digits(meetingNumber)) else {
             throw ZoomMeetingSDKError.invalidMeetingNumber
         }
+        lastEnd = nil
+        leaveRequested = false
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             guard let meetingService = ZoomSDK.shared().getMeetingService() else {
                 continuation.resume(throwing: ZoomMeetingSDKError.meetingServiceUnavailable)
@@ -1489,6 +1496,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         let isHostNow = ZoomSDK.shared().getMeetingService()?
             .getMeetingActionController().getMyself()?.isHost() ?? false
         let cmd = (isHosting || isHostNow) ? LeaveMeetingCmd_End : LeaveMeetingCmd_Leave
+        leaveRequested = true
         ZoomSDK.shared().getMeetingService()?.leaveMeeting(with: cmd)
         isJoined = false
         isHosting = false
@@ -1798,6 +1806,8 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
             // because nothing had actually gone wrong.
             isJoined = false
         case ZoomSDKMeetingStatus_Failed, ZoomSDKMeetingStatus_Ended:
+            lastEnd = MeetingEnd(failed: state == ZoomSDKMeetingStatus_Failed, error: Int(error.rawValue),
+                                 reason: Int(reason.rawValue), byOwner: leaveRequested)
             if !isJoined {
                 joinCompletion?(.failure(ZoomMeetingSDKError.joinRejected(error, status: state)))
                 joinCompletion = nil

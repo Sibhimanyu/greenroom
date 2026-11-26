@@ -372,6 +372,7 @@ targets:
       - path: App/LiveExitRules.swift
       - path: App/MainWindowVisibility.swift
       - path: App/StartChoreography.swift
+      - path: App/Zoom/MeetingEndWords.swift
       - path: App/RecordStartFlow.swift
       - path: App/SessionPhase.swift
       - path: App/Meeting/MeetingSurface.swift

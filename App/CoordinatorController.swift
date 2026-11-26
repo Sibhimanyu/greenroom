@@ -1625,9 +1625,34 @@ final class CoordinatorController: ObservableObject {
         }
         if phase.isInMeeting {
             log("Meeting over \u{2014} ending the session.")
+            // Zoom ended it, not the owner (End and Leave set isStopping; quit and
+            // both of those call leave() first): say why on the island, then wind
+            // down as before. Zoom's Ended, with its reason, can land a moment
+            // after the Disconnecting that dropped isJoined, so it is waited for.
+            if !zoomChatClient.leaveRequested { tellWhyZoomEndedIt() }
             stop()
         } else {
             log("Meeting over \u{2014} chat window closed.")
+        }
+    }
+
+    /// The island's one line for a meeting Zoom ended (MeetingEndWords), once
+    /// Zoom's own end status has come (up to 2 s; without it, "reason 0").
+    private func tellWhyZoomEndedIt() {
+        Task { @MainActor [weak self] in
+            var end: MeetingEnd?
+            for _ in 0..<20 {
+                guard let self else { return }
+                if let seen = self.zoomChatClient.lastEnd { end = seen; break }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard let self else { return }
+            // The owner's own leave() during the wind-down does not make it theirs.
+            var said = end ?? MeetingEnd(failed: false, error: 0, reason: 0, byOwner: false)
+            said.byOwner = false
+            guard let line = MeetingEndWords.line(for: said) else { return }
+            self.log("\(line) (status \(said.failed ? "Failed" : "Ended"), error \(said.error), end reason \(said.reason)).")
+            ToastController.show(line, kind: .info)
         }
     }
 

@@ -32,6 +32,7 @@ Note: `startAsHost(... enableMedia: true)` is the real meeting client (camera an
 | `.../RecentSpeakers.swift` | Stable "last N speakers" for Multi-speaker | `RecentSpeakers` (1.5 s join, 8 s min stay, 1 change / 2 s) |
 | `.../HandsUpOrdering.swift` | Raised hands in order, waiting room in front | `HandRow`, `HandStamps.ordered` |
 | `.../MeetingRoomLedgers.swift` | Memories the SDK lacks: waiting-room arrival order, live reactions | `WaitingRoomLedger`, `WaitingPerson`, `WaitingRoomWords`, `ReactionLedger`, `ReactionWords` |
+| `.../MeetingEndWords.swift` | Pure, tested: Zoom ended a live meeting the owner did not end -> one plain island line from the end reason, else the error (`EndMeetingReason` / `ZoomSDKMeetingError` raw values); nil when the owner ended it. The client records `lastEnd` at Ended/Failed and `leaveRequested` in `leave()`; the coordinator's `tellWhyZoomEndedIt` (from `chatSessionDidEnd`) shows it | `MeetingEnd`, `MeetingEndWords.line(for:)`; tests `MeetingEndWordsTests` |
 | `.../MeetingShareRules.swift` | Share/chat rules and which share is on stage, SDK-free | `ShareRule`, `WhoCanShare`, `ConcurrentShare`, `ChatWho`, `ShareStageSelection`, `ZoomAppLink.make` |
 | `.../ParticipantAvatarStore.swift` | Profile photos (SDK file path -> NSImage cache, publishes changes) | `ParticipantAvatarStore.shared`, `image(for:)`, `avatarPathUpdated` |
 | `.../SecretStore.swift` | Pasted credentials and the YouTube token in plain UserDefaults (the Zoom refresh token is the one Keychain item, see `ZoomKeychain`) | `SecretStore.set/get` |

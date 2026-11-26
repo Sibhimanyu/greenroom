@@ -47,7 +47,9 @@ struct ZoomSettingsTab: View {
             displayName: $coordinator.userDisplayName,
             hideSelfView: $coordinator.hideSelfView,
             signIn: ZoomSignInSection.live(coordinator),
-            showGuide: { coordinator.presentOnboarding() })
+            route: ZoomRouteRow.live(coordinator),
+            showGuide: { coordinator.presentOnboarding() },
+            ownAppsRequest: $coordinator.zoomOwnAppsRequested)
     }
 }
 
@@ -62,12 +64,16 @@ struct ZoomPageContent: View {
     @Binding var displayName: String
     @Binding var hideSelfView: Bool
     let signIn: ZoomSignInSection
+    /// "Start uses: ...": which of the two ways Start takes right now.
+    let route: ZoomRouteRow
     /// Opens the setup guide. Nil in the off-screen render, which hides the button.
     var showGuide: (() -> Void)? = nil
     /// Starts with "Use your own Zoom apps" open; for the off-screen render only.
     var ownAppsOpen = false
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
+    /// The failure card's Open Settings unfolds "Use your own Zoom apps".
+    var ownAppsRequest: Binding<Bool>? = nil
 
     // "During the meeting" (moved from the Layout tab; keys unchanged).
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
@@ -87,6 +93,10 @@ struct ZoomPageContent: View {
     var body: some View {
         Form {
             Section {
+                route
+            }
+
+            Section {
                 signIn
             } header: {
                 Text("Zoom account")
@@ -94,7 +104,7 @@ struct ZoomPageContent: View {
             }
 
             Section {
-                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: ownAppsOpen) {
+                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: ownAppsOpen, openRequest: ownAppsRequest) {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -114,7 +124,7 @@ struct ZoomPageContent: View {
                                 Spacer()
                                 s2sState.badge
                             }
-                            .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result. Used only when you are not signed in with Zoom.")
+                            .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result. Used when Start uses your own Zoom apps (see the line at the top).")
                             TextField("Account ID", text: $s2sAccountID)
                             TextField("Client ID", text: $s2sClientID)
                             SecureField("Client Secret", text: $s2sClientSecret)
@@ -145,6 +155,48 @@ struct ZoomPageContent: View {
 }
 
 // MARK: - Pieces
+
+/// The page's first line: the route Start will use (`ZoomRouteRules`), and,
+/// when both ways are set up, which one wins with a one-click switch.
+struct ZoomRouteRow: View {
+    let route: ZoomRoute
+    let bothSetUp: Bool
+    /// Zoom refused this account before (error 63): why, and what to do.
+    var note: String? = nil
+    let onSwitch: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                StatusBadge(text: ZoomRouteWords.line(route), tone: route.isUsable ? .good : .waiting)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if bothSetUp, let title = ZoomRouteWords.switchTitle(route) {
+                    Button(title, action: onSwitch)
+                        .help("Start takes the meeting and the video from the same place. This switches both.")
+                }
+            }
+            if let note {
+                StatusBadge(text: note, tone: .problem)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if bothSetUp, let note = ZoomRouteWords.bothNote(route) {
+                Text(note).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension ZoomRouteRow {
+    @MainActor
+    static func live(_ coordinator: CoordinatorController) -> ZoomRouteRow {
+        ZoomRouteRow(route: coordinator.zoomRoute, bothSetUp: coordinator.zoomRoutesBothSetUp,
+                     note: coordinator.zoomRouteNote,
+                     onSwitch: { coordinator.zoomPrefersOwnApps.toggle() })
+    }
+}
 
 /// Whether a set of keys is all in, none in, or part way.
 private struct CredentialState {

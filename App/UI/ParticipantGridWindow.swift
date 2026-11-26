@@ -67,6 +67,8 @@ enum ParticipantGridWindowController {
         /// Set only as the steps clear on a start that really went live (Zoom said
         /// InMeeting, or the take is rolling): the one reading the island may call Live.
         var liveConfirmed = false
+        /// The failure's button when it is not Try again ("Open Settings").
+        var failureActionTitle: String?
 
         /// True once there is nothing left to wait for. An empty list counts as
         /// live so that anything not driving readiness - a panel
@@ -2745,7 +2747,8 @@ enum ReadinessHUDController {
             failure: readiness.failure,
             detail: readiness.detail,
             cancellable: cancellable && readiness.failure == nil,
-            liveConfirmed: readiness.liveConfirmed)
+            liveConfirmed: readiness.liveConfirmed,
+            actionTitle: readiness.failureActionTitle)
         // An empty reading is the end of the start: the island says Live and folds.
         let carrying = !readiness.steps.isEmpty || readiness.failure != nil
         if carrying, !isShowing { shownAt = Date() }

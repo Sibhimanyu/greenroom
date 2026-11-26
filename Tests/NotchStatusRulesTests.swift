@@ -125,6 +125,15 @@ final class NotchStatusRulesTests: XCTestCase {
         XCTAssertEqual(NotchStatusRules.next(from: failed, input: NotchInput()), .hidden)
     }
 
+    func testAFailureCarriesItsFixButtonElseTryAgain() {
+        let plain = NotchStatusRules.next(from: .hidden, input: NotchInput(failure: "No camera"))
+        guard case .failed(let f1) = plain else { return XCTFail("not failed") }
+        XCTAssertEqual(f1.actionTitle, "Try again")
+        let fixed = NotchStatusRules.next(from: .hidden, input: NotchInput(failure: "Zoom refused", actionTitle: "Open Settings"))
+        guard case .failed(let f2) = fixed else { return XCTFail("not failed") }
+        XCTAssertEqual(f2.actionTitle, "Open Settings")
+    }
+
     func testNotchRect() {
         let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
         let left = CGRect(x: 0, y: 944, width: 656, height: 38)

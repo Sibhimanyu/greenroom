@@ -27,6 +27,8 @@ struct NotchInput: Equatable {
     /// Cleared steps mean success only with this set: Zoom reported InMeeting and the
     /// start ran to its end. Cleared steps without it are a cancel or an abandon.
     var liveConfirmed = false
+    /// The failure's button when it is not Try again (e.g. "Open Settings").
+    var actionTitle: String? = nil
 }
 
 struct NotchProgress: Equatable {
@@ -71,6 +73,8 @@ struct NotchProgress: Equatable {
 struct NotchFailure: Equatable {
     var message: String
     var detail: String?
+    /// The button beside the headline.
+    var actionTitle: String = "Try again"
 
     /// The one line the folded island shows.
     var headline: String { NotchStatusRules.headline(for: message) }
@@ -150,7 +154,8 @@ enum NotchStatusRules {
     /// earns the "Live" beat.
     static func next(from phase: NotchPhase, input: NotchInput) -> NotchPhase {
         if let failure = input.failure {
-            return .failed(NotchFailure(message: failure, detail: input.detail))
+            return .failed(NotchFailure(message: failure, detail: input.detail,
+                                        actionTitle: input.actionTitle ?? "Try again"))
         }
         if !input.steps.isEmpty {
             return .working(NotchProgress(steps: input.steps, detail: input.detail,

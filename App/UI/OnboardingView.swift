@@ -22,7 +22,7 @@ struct OnboardingView: View {
     @State private var importStatus = ""
     @State private var importStatusIsError = false
     @State private var isTesting = false
-    @State private var testResults: [TestResult] = []
+    @State private var testResults: [ZoomCheckLine] = []
     @State private var showZoomChecks = false
     @State private var copiedScope: String?
     @State private var connectingYouTube = false
@@ -164,15 +164,8 @@ struct OnboardingView: View {
         }
     }
 
-    private enum CheckStatus { case waiting, running, passed, failed, skipped }
-
-    private struct TestResult: Identifiable {
-        let check: ZoomCheck
-        var status: CheckStatus = .waiting
-        var detail = "Waiting to check"
-        var id: ZoomCheck { check }
-        var ok: Bool { status == .passed }
-    }
+    // One line per check: the shared model and look (ZoomCheckPanel), the same as "Check sign-in".
+    private typealias CheckStatus = ZoomCheckStatus
 
     private static let zoomBuilder = ZoomMarketplaceGuide.builderURL
     private static let requiredScopes = ZoomScopes.all
@@ -208,15 +201,10 @@ struct OnboardingView: View {
                               detail: hostingConfigured ? "Details saved. Run the check below to verify the connection." : "Needs the Account ID, Client ID and Secret from a Server-to-Server app.",
                               actionTitle: nil, action: {})
                 }
-                HStack(spacing: 12) {
-                    zoomCheckButton
-                    if isTesting { ProgressView().controlSize(.small) }
-                    if !testResults.isEmpty && !isTesting {
-                        Text("\(testResults.filter(\.ok).count) of \(testResults.count) checks passed")
-                            .font(.callout).foregroundStyle(.secondary)
-                        Button("View results") { showZoomChecks = true }
-                    }
-                }
+                ZoomCheckButtonRow(title: "Check Zoom setup", lines: testResults, isRunning: isTesting,
+                                   disabled: coordinator.phase.isInMeeting,
+                                   onCheck: { showZoomChecks = true; if !isTesting { runConnectionTest() } },
+                                   onView: { showZoomChecks = true })
                 Text(coordinator.phase.isInMeeting
                      ? "End the current session before checking Zoom."
                      : "Checks both Zoom apps, all \(ZoomScopes.countWord) hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
@@ -328,68 +316,14 @@ struct OnboardingView: View {
     }
 
     private var zoomCheckPanel: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(isTesting ? "Checking your Zoom setup" : (testResults.allSatisfy(\.ok) ? "Zoom setup checks passed" : "Zoom setup needs attention"))
-                        .font(.title2.bold())
-                    Text("\(testResults.filter(\.ok).count) of \(testResults.count) checks passed")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if isTesting { ProgressView().controlSize(.small) }
-            }
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(testResults) { result in
-                        HStack(alignment: .top, spacing: 12) {
-                            checkIcon(result.status).frame(width: 20, height: 20)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(result.check.title).font(.callout.weight(.semibold))
-                                if result.status == .failed || result.status == .skipped || result.status == .running {
-                                    Text(result.detail).font(.caption).foregroundStyle(.secondary)
-                                        .textSelection(.enabled)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            if result.ok { Text("Passed").font(.caption).foregroundStyle(.secondary) }
-                        }
-                        .help(result.detail)
-                    }
-                }
-                .padding(4)
-            }
-            Divider()
-            Text("Scope checks read Zoom’s granted permissions. Creating, joining and ending a real meeting are still tested when you start a meeting.")
-                .font(.caption).foregroundStyle(.secondary)
-            HStack {
-                if !isTesting {
-                    Button("Check again") { runConnectionTest() }
-                        .disabled(coordinator.phase.isInMeeting)
-                }
-                Spacer()
-                Button(isTesting ? "Close checks" : "Done") { showZoomChecks = false }
-                    .keyboardShortcut(.cancelAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 580, height: 640)
-    }
-
-    @ViewBuilder
-    private func checkIcon(_ status: CheckStatus) -> some View {
-        switch status {
-        case .running: ProgressView().controlSize(.small)
-        case .passed: Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.text)
-        case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-        case .skipped: Image(systemName: "minus.circle").foregroundStyle(.secondary)
-        case .waiting: Image(systemName: "circle.dotted").foregroundStyle(.secondary)
-        }
+        ZoomCheckPanel(subject: "Zoom setup", lines: testResults, isRunning: isTesting,
+                       footnote: "Scope checks read Zoom\u{2019}s granted permissions. Creating, joining and ending a real meeting are still tested when you start a meeting.",
+                       againDisabled: coordinator.phase.isInMeeting,
+                       onAgain: { runConnectionTest() }, onDone: { showZoomChecks = false })
     }
 
     private func updateCheck(_ check: ZoomCheck, _ status: CheckStatus, _ detail: String) {
-        guard let index = testResults.firstIndex(where: { $0.check == check }) else { return }
+        guard let index = testResults.firstIndex(where: { $0.id == check.rawValue }) else { return }
         testResults[index].status = status
         testResults[index].detail = detail
     }
@@ -398,7 +332,7 @@ struct OnboardingView: View {
         guard !isTesting && !coordinator.phase.isInMeeting else { return }
         coordinator.loadSecretsIfNeeded()
         isTesting = true
-        testResults = ZoomCheck.allCases.map { TestResult(check: $0) }
+        testResults = ZoomCheck.allCases.map { ZoomCheckLine(id: $0.rawValue, title: $0.title) }
         let credentials = zoomCredentials
         let (sdkID, sdkSecret, account, client, secret) = (credentials[0], credentials[1], credentials[2], credentials[3], credentials[4])
         Task { @MainActor in

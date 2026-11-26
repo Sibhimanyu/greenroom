@@ -28,6 +28,8 @@ struct ZoomSignInSection: View {
     var needsMorePermission = false
     var attentionTitle = ZoomScopeCheck.promptTitle
     var attentionDetail = ZoomScopeCheck.promptDetail
+    /// "Check sign-in" under Signed in as (nil hides it, e.g. in an off-screen render).
+    var check: ZoomSignInCheckRow? = nil
     let onSignIn: () -> Void
     let onCancel: () -> Void
     /// Returns true when Zoom confirmed the revoke, false when only the local copy was removed.
@@ -50,6 +52,7 @@ struct ZoomSignInSection: View {
                         }
                     }
                 }
+                if let check { check }
                 if let setupNote { StatusBadge(text: setupNote, tone: .problem) }
                 if needsMorePermission {
                     VStack(alignment: .leading, spacing: 6) {
@@ -96,6 +99,7 @@ extension ZoomSignInSection {
             needsMorePermission: coordinator.zoomNeedsMorePermission,
             attentionTitle: coordinator.zoomAttentionTitle,
             attentionDetail: coordinator.zoomAttentionDetail,
+            check: ZoomSignInCheckRow(checker: coordinator.zoomSignInChecker, onRun: { coordinator.checkZoomSignIn() }),
             onSignIn: { coordinator.signInWithZoom() },
             onCancel: { coordinator.cancelZoomSignIn() },
             onSignOut: { await coordinator.signOutOfZoom() })
@@ -106,12 +110,15 @@ extension ZoomSignInSection {
 /// snappy, instant under Reduce Motion).
 struct AdvancedDisclosure<Content: View>: View {
     let title: String
+    /// Set to true from outside (the failure card's Open Settings) to unfold it; reset once done.
+    var openRequest: Binding<Bool>?
     @State private var open: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let content: Content
 
-    init(_ title: String, open: Bool = false, @ViewBuilder content: () -> Content) {
+    init(_ title: String, open: Bool = false, openRequest: Binding<Bool>? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.openRequest = openRequest
         _open = State(initialValue: open)
         self.content = content()
     }
@@ -142,5 +149,13 @@ struct AdvancedDisclosure<Content: View>: View {
             }
         }
         .clipped()
+        .onAppear { honourRequest() }
+        .onChange(of: openRequest?.wrappedValue ?? false) { _, _ in honourRequest() }
+    }
+
+    private func honourRequest() {
+        guard let openRequest, openRequest.wrappedValue else { return }
+        withAnimation(anim) { open = true }
+        openRequest.wrappedValue = false
     }
 }

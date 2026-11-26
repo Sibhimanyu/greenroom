@@ -234,12 +234,13 @@ struct ZoomSetupCheckRow: View {
     var body: some View {
         ZoomCheckButtonRow(title: ZoomRouteCheck.setup.title, lines: checker.lines, isRunning: checker.isRunning,
                            disabled: disabled,
-                           onCheck: { checker.showing = true; if !checker.isRunning { onRun() } },
-                           onView: { checker.showing = true })
-            .sheet(isPresented: $checker.showing) {
+                           onCheck: { checker.showingIn = .settings; if !checker.isRunning { onRun() } },
+                           onView: { checker.showingIn = .settings })
+            .sheet(isPresented: Binding(get: { ZoomCheckSurface.settings.isShown(checker.showingIn) },
+                                        set: { if !$0, checker.showingIn == .settings { checker.showingIn = nil } })) {
                 ZoomCheckPanel(subject: "Zoom setup", lines: checker.lines, isRunning: checker.isRunning,
                                footnote: ZoomSetupChecker.footnote, againDisabled: disabled, ids: ids,
-                               onAgain: onRun, onDone: { checker.showing = false }, onAction: onAction)
+                               onAgain: onRun, onDone: { checker.showingIn = nil }, onAction: onAction)
             }
     }
 }

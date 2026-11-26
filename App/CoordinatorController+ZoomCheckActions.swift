@@ -22,7 +22,7 @@ extension CoordinatorController {
         }
         switch action {
         case .showGuide(let spot):
-            zoomSetupChecker.showing = false
+            zoomSetupChecker.showingIn = nil
             zoomSignInChecker.showing = false
             zoomGuideSpot = spot
             presentOnboarding()

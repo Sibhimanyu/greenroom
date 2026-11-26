@@ -100,3 +100,17 @@ final class ZoomSetupCheckRulesTests: XCTestCase {
         XCTAssertNil(ZoomCheckSummary.trailing(.failed))
     }
 }
+
+/// Owner, 2026-11-26: pressing Check in Settings opened the results in Settings AND in the open
+/// setup guide, because both watched one shared flag. Each surface shows only its own.
+final class ZoomCheckSurfaceTests: XCTestCase {
+    func testResultsShowOnlyWhereCheckWasPressed() {
+        var shown: ZoomCheckSurface? = nil
+        shown = .settings
+        XCTAssertTrue(ZoomCheckSurface.settings.isShown(shown))
+        XCTAssertFalse(ZoomCheckSurface.guide.isShown(shown))
+        shown = .guide
+        XCTAssertFalse(ZoomCheckSurface.settings.isShown(shown))
+        XCTAssertTrue(ZoomCheckSurface.guide.isShown(shown))
+    }
+}

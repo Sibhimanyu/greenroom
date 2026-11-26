@@ -15,7 +15,8 @@ import Foundation
 final class ZoomSetupChecker: ObservableObject {
     @Published private(set) var lines: [ZoomCheckLine] = []
     @Published private(set) var isRunning = false
-    @Published var showing = false
+    /// Where the results are open, if anywhere (one surface at a time).
+    @Published var showingIn: ZoomCheckSurface?
 
     static let footnote = "Scope checks read Zoom\u{2019}s granted permissions. Creating, joining and ending a real meeting are still tested when you start a meeting."
 

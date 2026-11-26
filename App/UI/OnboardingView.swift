@@ -148,7 +148,8 @@ struct OnboardingView: View {
     private var isTesting: Bool { setupChecker.isRunning }
     private var testResults: [ZoomCheckLine] { setupChecker.lines }
     private var showZoomChecks: Binding<Bool> {
-        Binding(get: { setupChecker.showing }, set: { setupChecker.showing = $0 })
+        Binding(get: { ZoomCheckSurface.guide.isShown(setupChecker.showingIn) },
+                set: { if !$0, setupChecker.showingIn == .guide { setupChecker.showingIn = nil } })
     }
     private func runConnectionTest() { coordinator.checkZoomSetup() }
 
@@ -178,8 +179,8 @@ struct OnboardingView: View {
             importFailed: importStatusIsError,
             jump: $zoomJump,
             onImport: { importSettingsFile() },
-            onCheck: { setupChecker.showing = true; runConnectionTest() },
-            onViewResults: { setupChecker.showing = true })
+            onCheck: { setupChecker.showingIn = .guide; runConnectionTest() },
+            onViewResults: { setupChecker.showingIn = .guide })
         .id(SetupPage.zoom)
     }
 
@@ -207,7 +208,7 @@ struct OnboardingView: View {
         ZoomCheckPanel(subject: "Zoom setup", lines: testResults, isRunning: isTesting,
                        footnote: ZoomSetupChecker.footnote,
                        againDisabled: coordinator.phase.isInMeeting, ids: coordinator.zoomCheckIDs,
-                       onAgain: { runConnectionTest() }, onDone: { setupChecker.showing = false },
+                       onAgain: { runConnectionTest() }, onDone: { setupChecker.showingIn = nil },
                        onAction: { coordinator.performZoomCheckAction($0, kind: .ownApps) })
     }
 

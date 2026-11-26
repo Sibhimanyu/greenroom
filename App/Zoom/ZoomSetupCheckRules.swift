@@ -178,3 +178,12 @@ enum ZoomSignInCheckRules {
         return t.hasSuffix(".") ? t : t + "."
     }
 }
+
+
+/// Where a Zoom check's results are showing. One checker feeds Settings and the setup guide, but
+/// the results open only where Check (or View results) was pressed (owner, 2026-11-26: both
+/// windows opened at once when they shared one flag).
+enum ZoomCheckSurface: Equatable {
+    case settings, guide
+    func isShown(_ current: ZoomCheckSurface?) -> Bool { current == self }
+}

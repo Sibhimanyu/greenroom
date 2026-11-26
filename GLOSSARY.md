@@ -99,7 +99,7 @@ While a meeting is live, the controls are in exactly one place. Code:
 
 **Camera piece**: the owner's camera as a piece. Its spot, size and shape belong to the layout it sits in.
 
-**Camera state**: who sees the owner's camera, one of four: *Everyone & me*, *Only the meeting* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app. *Off* takes only the camera out of the picture: everyone still gets the shared screen. _Avoid_: calling Off "stop video".
+**Camera state**: who sees the owner's camera, one of four: *Everyone & me*, *Only the meeting* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app. *Off* takes only the camera out of the picture: everyone still gets the shared screen. Each state's one line (`CameraState.detail`, the camera menus and tooltips) says first what the meeting gets: "The meeting gets your screen and your camera" for the two "on" states, "The meeting gets your screen without your camera" for *Only me* (with the mirror) and *Off*. _Avoid_: calling Off "stop video".
 
 **Stop video**: Zoom's own full video off for the owner, like Zoom's button: nothing is sent to the meeting, not even the screen, and everyone sees the owner's name or avatar. Not a camera state and not *Off*: the camera state stays as it was and comes back with *Start video*. The local stage, the recording and the Room screen keep going. Shown by Zoom's red, filled video.slash. Zoom's own state is the truth, so a stop by a co-host or by Zoom shows too.
 

@@ -412,7 +412,9 @@ control bar is what should be the default, unless the Zoom-like UI was set in th
 
 **R49. Stop video.** (owner, 2026-11-26, option A: "nothing goes to the meeting, not even the screen"; amends R6.6, R6.8, R17.3)
 (`StopVideoRules`, App/UI/StopVideoRules.swift; `CoordinatorController+StopVideo.swift`)
-- R49.1 Camera state Off still only takes the camera out of the picture; everyone keeps the shared screen. The four
+- R49.1 Camera state Off still only takes the camera out of the picture; everyone keeps the shared screen. Its menu
+  line says so: "The meeting gets your screen without your camera." (2026-11-26; it used to read "...nothing shows on
+  your screen", which sounded like Stop video). Every state's line starts with what the meeting gets (`CameraState.detail`). The four
   camera states stay exactly as they are and keep working while video is stopped. Stop video is separate: Zoom's own
   video mute for the owner (`setMyVideo`), so nothing is sent and everyone sees the owner's name or avatar.
 - R49.2 "Stop video" is its own row at the bottom of the camera menu, after a divider, everywhere the menu appears:

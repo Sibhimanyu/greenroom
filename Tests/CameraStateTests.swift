@@ -42,6 +42,26 @@ final class CameraStateTests: XCTestCase {
     }
 
     // R6, R17 (owner, 2026-11-26): each state has its own canvas caption and icon; Off is the only dimmed one.
+    // Off's old line ("nothing shows on your screen") read as if the meeting got nothing. Each line
+    // now says what the meeting gets; the screen is still shared in Off and Only me, which is what
+    // keeps them apart from Stop video, where nothing is sent at all.
+    func testEachDetailSaysPlainlyWhatTheMeetingGets() {
+        XCTAssertEqual(CameraState.off.detail, "The meeting gets your screen without your camera.")
+        for s in CameraState.allCases {
+            XCTAssertTrue(s.detail.hasPrefix("The meeting gets your screen"), s.name)
+            XCTAssertEqual(s.detail.contains("without your camera"), !s.everyoneSees, s.name)
+            XCTAssertFalse(s.detail.lowercased().contains("class"), s.name)
+            XCTAssertFalse(s.detail.contains("Nothing is sent"), "kept apart from Stop video, \(s.name)")
+            XCTAssertNotEqual(s.detail, StopVideoRules.stopNote, s.name)
+            XCTAssertLessThanOrEqual(s.detail.count, 90, "short, \(s.name)")
+        }
+        XCTAssertTrue(CameraState.onlyMe.detail.contains("mirror"), "Only me still says where the camera shows")
+        XCTAssertTrue(StopVideoRules.stopNote.contains("not even your screen"))
+        // The menu rows read the one source.
+        let menu = MeetingBarModel.cameraStateMenu(current: .off, noCameraAllowed: true) { _ in }
+        XCTAssertEqual(menu.compactMap(\.note), CameraState.allCases.map(\.detail))
+    }
+
     func testEachStateHasItsOwnCanvasCaptionAndIcon() {
         let c = CameraState.allCases.map { CameraCaptionRules.caption(for: $0) }
         XCTAssertEqual(c.map(\.text), ["Your camera", "Hidden on your screen", "Only you see this", "Camera off"])

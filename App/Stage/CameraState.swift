@@ -65,13 +65,15 @@ enum CameraState: Equatable, CaseIterable {
         }
     }
 
-    /// One line of what the state does, for tooltips.
+    /// One line of what the state does: what the meeting gets first, then the owner's own screen.
+    /// The one source for the camera menus, tooltips, Home and the Layouts inspector. Off and Only me
+    /// still send the screen, which is what keeps them apart from Stop video (nothing is sent, R49).
     var detail: String {
         switch self {
-        case .everyoneAndMe: return "The meeting sees you, and you see your camera on your screen."
-        case .onlyEveryone: return "The meeting sees you. Your camera is hidden on your screen."
-        case .onlyMe: return "The meeting does not see you. Your camera shows as a mirror on your screen."
-        case .off: return "The meeting does not see you, and nothing shows on your screen."
+        case .everyoneAndMe: return "The meeting gets your screen and your camera. You see your camera too."
+        case .onlyEveryone: return "The meeting gets your screen and your camera. Your camera is hidden from you."
+        case .onlyMe: return "The meeting gets your screen without your camera. You see it as a mirror."
+        case .off: return "The meeting gets your screen without your camera."
         }
     }
 

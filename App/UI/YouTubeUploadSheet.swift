@@ -31,7 +31,7 @@ struct YouTubeUploadSheet: View {
             draft: draft,
             privacy: coordinator.youtubePrivacy,
             madeForKids: coordinator.youtubeMadeForKids,
-            signedIn: coordinator.youtubeConnected,
+            signedIn: coordinator.youtubeAccountChoice.readyToUpload,
             channel: coordinator.youtubeChannel,
             signingIn: coordinator.youtubeSigningIn,
             route: coordinator.youtubeSignInRoute,

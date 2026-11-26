@@ -109,6 +109,8 @@ struct OnboardingView: View {
         }
         .onAppear { goToGuideSpot() }
         .onChange(of: coordinator.zoomGuideSpot) { _, _ in goToGuideSpot() }
+        .onAppear { goToYouTubeSpot() }
+        .onChange(of: coordinator.youtubeGuideSpot) { _, _ in goToYouTubeSpot() }
         .sheet(isPresented: showZoomChecks) { zoomCheckPanel }
     }
 
@@ -161,6 +163,14 @@ struct OnboardingView: View {
         step = .zoom
         // The step may not exist yet; it reads the spot when it appears.
         DispatchQueue.main.async { zoomJump = spot }
+    }
+
+    /// Settings -> YouTube's "Set up… / Edit setup…": the YouTube step, own-app part open.
+    private func goToYouTubeSpot() {
+        guard let spot = coordinator.youtubeGuideSpot else { return }
+        coordinator.youtubeGuideSpot = nil
+        step = .youtube
+        if spot == .ownApp { youtubeHelpExpanded = true }
     }
 
     private var credentialsStep: some View {
@@ -422,15 +432,20 @@ struct OnboardingView: View {
                     if !coordinator.youtubeStatus.isEmpty {
                         Text(coordinator.youtubeStatus).font(.callout).foregroundStyle(.secondary)
                     }
-                    DisclosureGroup("Use your own Google app", isExpanded: $youtubeHelpExpanded) {
+                    DisclosureGroup("How Greenroom connects to YouTube", isExpanded: $youtubeHelpExpanded) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Toggle("Sign in through my own Google app", isOn: $coordinator.youtubeUsesOwnApp)
-                            Text("For when Greenroom’s Google app has reached Google’s limit of 100 people. In Google Cloud Console, enable YouTube Data API v3 and create an OAuth client ID of type Desktop app.")
-                            if coordinator.youtubeUsesOwnApp {
-                                credentialField("Client ID", text: $coordinator.youtubeClientID)
-                                credentialField("Client Secret", text: $coordinator.youtubeClientSecret, secure: true)
+                            YouTubeAppChoiceRow(usesOwnApp: $coordinator.youtubeUsesOwnApp)
+                            Collapsible(hidden: !coordinator.youtubeUsesOwnApp) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Link(YouTubeCloudGuide.linkTitle, destination: YouTubeCloudGuide.url)
+                                    ForEach(Array(YouTubeCloudGuide.steps.enumerated()), id: \.offset) { i, step in
+                                        Text("\(i + 1). \(step)").fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    credentialField("Client ID", text: $coordinator.youtubeClientID)
+                                    credentialField("Client Secret", text: $coordinator.youtubeClientSecret, secure: true)
+                                    Text(YouTubeCloudGuide.clientHelp).foregroundStyle(.secondary)
+                                }
                             }
-                            Link("Open Google Cloud Console…", destination: URL(string: "https://console.cloud.google.com/")!)
                         }
                         .font(.callout).padding(.top, 12)
                     }

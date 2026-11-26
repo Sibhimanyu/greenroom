@@ -1,8 +1,9 @@
 #!/bin/bash
 # Settings -> YouTube and the upload sheet, off screen, sample data (a made-up channel, no real
-# names or keys), light and dark. Settings: not signed in with the shared app, the shared app
-# still a placeholder, signed in (with and without a channel picture), signing in, your own
-# Google app open, automatic uploads without the Made for Kids answer. Sheet: signed in with the
+# names or keys), light and dark. Settings: Greenroom's Google app not signed in / signed in /
+# signing in / still a placeholder / sign-in failed; your own Google app not set up / set up and
+# signed in / chosen while signed in through Greenroom's; automatic uploads without the Made for
+# Kids answer. Sheet: signed in with the
 # answer missing and given, not signed in, not available yet. The coordinator-fed tab and sheet
 # structs and the Thriveni row are cut out; YouTubePageContent and YouTubeUploadSheetContent are
 # what render.
@@ -27,5 +28,6 @@ grep -q AdvancedDisclosure "$STAGE/AdvancedDisclosure.swift" || { echo "render: 
 render youtube-render youtube-main.swift "$STAGE/YouTubeSettingsTab.swift" "$STAGE/YouTubeUploadSheet.swift" \
   "$STAGE/AdvancedDisclosure.swift" "$STAGE/YouTubeTypes.swift" "$STAGE/Brand.swift" \
   App/UI/SettingsKit.swift App/UI/Segmented.swift App/UI/SegmentedMath.swift App/UI/Tiles.swift App/UI/TileAppearance.swift App/UI/Glass.swift \
+  App/UI/YouTubeAccountViews.swift App/YouTube/YouTubeAccountChoiceRules.swift \
   App/YouTube/YouTubeOAuth.swift App/YouTube/YouTubeRouteRules.swift App/YouTube/YouTubeUploadRules.swift App/YouTube/YouTubeErrorRules.swift
 finish

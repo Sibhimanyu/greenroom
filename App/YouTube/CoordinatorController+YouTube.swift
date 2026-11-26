@@ -67,6 +67,28 @@ extension CoordinatorController {
         YouTubeRouteRules.signInRoute(youtubeRouteFacts)
     }
 
+    /// The chosen option's account, for Settings, the guide and the upload sheet.
+    var youtubeAccountFacts: YouTubeAccountFacts {
+        YouTubeAccountFacts(route: youtubeRouteFacts, signedIn: youtubeConnected, tokenApp: YouTubeAuth.tokenApp,
+                            channelName: youtubeChannel?.name, signingIn: youtubeSigningIn)
+    }
+
+    var youtubeAccountChoice: YouTubeAccountChoice { YouTubeAccountRules.choice(youtubeAccountFacts) }
+
+    /// Uploads can go: signed in through the CHOSEN Google app. A sign-in from
+    /// the other app never stands in for it (no silent fallback).
+    var youtubeReadyToUpload: Bool {
+        loadSecretsIfNeeded()
+        return youtubeAccountChoice.readyToUpload
+    }
+
+    /// The setup guide's YouTube step, at a spot (Settings' "Set up… / Edit setup…").
+    func openYouTubeSetupGuide(at spot: YouTubeGuideSpot = .ownApp) {
+        NSApp.activate(ignoringOtherApps: true)
+        youtubeGuideSpot = spot
+        presentOnboarding()
+    }
+
     /// The client for an app. Your own: the pasted fields, trimmed (a pasted
     /// secret often arrives with a trailing newline, and Google answers that
     /// with "invalid secret").
@@ -100,8 +122,8 @@ extension CoordinatorController {
         lastFinishedRecording = file
         if !phase.isSessionUp { presentFinishedSession() }
         guard youtubeUploadMode == .automatic else { return }
-        guard youtubeConnected else {
-            log("YouTube upload is on, but nobody is signed in \u{2014} the card after the meeting has Upload to YouTube.")
+        guard youtubeReadyToUpload else {
+            log("YouTube upload is on, but nobody is signed in through the chosen Google app \u{2014} the card after the meeting has Upload to YouTube.")
             return
         }
         guard let madeForKids = youtubeMadeForKids else {
@@ -164,8 +186,8 @@ extension CoordinatorController {
             ToastController.show("An upload is already running", detail: "Try this one from Sessions when it finishes.", kind: .failure)
             return
         }
-        guard youtubeConnected else {
-            reportYouTubeFailure(file, details, YouTubeErrorRules.problem(.notSignedIn, sharedApp: true))
+        guard youtubeReadyToUpload else {
+            reportYouTubeFailure(file, details, YouTubeErrorRules.problem(.notSignedIn, sharedApp: !youtubeUsesOwnApp))
             return
         }
         isUploadingToYouTube = true

@@ -20,7 +20,7 @@ struct SessionFinishedCard: View {
     /// Automatic mode is already uploading (signed in, Made for Kids
     /// answered), so it says so instead.
     private var uploadsOnItsOwn: Bool {
-        coordinator.youtubeUploadMode == .automatic && coordinator.youtubeConnected && coordinator.youtubeMadeForKids != nil
+        coordinator.youtubeUploadMode == .automatic && coordinator.youtubeAccountChoice.readyToUpload && coordinator.youtubeMadeForKids != nil
     }
 
     /// Upload is always offered otherwise: the sheet has Upload in YouTube

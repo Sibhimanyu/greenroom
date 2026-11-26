@@ -638,7 +638,7 @@ struct RecordingsView: View {
         guard let take else { return .noVideo }
         if let upload = take.upload { return .uploaded(privacy: upload.privacy, when: upload.uploadedAt) }
         if coordinator.isUploadingToYouTube { return .uploading }
-        guard coordinator.youtubeConnected else { return .notConnected }
+        guard coordinator.youtubeAccountChoice.readyToUpload else { return .notConnected }
         return .ready(privacy: coordinator.youtubePrivacy)
     }
 

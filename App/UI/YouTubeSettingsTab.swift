@@ -4,11 +4,17 @@
 //
 //  Settings -> YouTube: uploading recordings, and the YouTube account.
 //
-//  The account is Sign in with Google, through Greenroom's shared Google app;
-//  the paste-your-own-client way is folded under "Use your own Google app"
-//  (YouTubeRouteRules decides which one signs in).
+//  The account is one choice of two (owner, 2026-11-26), like Settings ->
+//  Zoom: "Greenroom's Google app | Your own Google app", one segmented
+//  control bound to `youtubeUsesOwnApp`. The pick IS what signing in and
+//  uploading use, and only its section shows; the other folds away. Your own
+//  app's section is a summary (setup status, the account, one "Set up… /
+//  Edit setup…" button into the setup guide); the Client ID, Secret and the
+//  Google Cloud steps live only in the guide's YouTube step. The words come
+//  from `YouTubeAccountRules`; the choice row and the account line are shared
+//  with the guide (YouTubeAccountViews.swift).
 //
-//  The one feature that sends class content off the Mac, so the page opens on
+//  The one feature that sends meeting content off the Mac, so the page opens on
 //  a picture of exactly that: this Mac, an arrow, YouTube. The arrow is amber
 //  (DESIGN.md `--net`) whenever a recording could cross it, and grey with
 //  "Stays here" when it can't. The choices are pictures; where the file goes
@@ -31,17 +37,14 @@ struct YouTubeSettingsTab: View {
             privacy: $coordinator.youtubePrivacy,
             madeForKids: $coordinator.youtubeMadeForKids,
             usesOwnApp: $coordinator.youtubeUsesOwnApp,
-            clientID: $coordinator.youtubeClientID,
-            clientSecret: $coordinator.youtubeClientSecret,
-            connected: coordinator.youtubeConnected,
+            account: coordinator.youtubeAccountFacts,
             channel: coordinator.youtubeChannel,
-            tokenApp: YouTubeAuth.tokenApp,
-            route: coordinator.youtubeSignInRoute,
-            signingIn: coordinator.youtubeSigningIn,
             uploading: coordinator.isUploadingToYouTube,
             status: coordinator.youtubeStatus,
             signIn: { await coordinator.signInToYouTube() },
-            signOut: { await coordinator.signOutOfYouTube() })
+            signOut: { await coordinator.signOutOfYouTube() },
+            openSetup: { coordinator.openYouTubeSetupGuide(at: $0) })
+            .onAppear { coordinator.loadSecretsIfNeeded() }
             .task {
                 // A sign-in from before the channel line existed: read it once.
                 if coordinator.youtubeConnected, coordinator.youtubeChannel == nil {
@@ -57,51 +60,59 @@ struct YouTubePageContent: View {
     @Binding var uploadMode: YouTubeUploadMode
     @Binding var privacy: String
     @Binding var madeForKids: Bool?
+    /// The choice: true = your own Google app, false = Greenroom's. It is what signing in and uploading use.
     @Binding var usesOwnApp: Bool
-    @Binding var clientID: String
-    @Binding var clientSecret: String
-    let connected: Bool
+    /// The sign-in, the stored token's app and the own app's fields, for `YouTubeAccountRules`.
+    let account: YouTubeAccountFacts
     let channel: YouTubeChannel?
-    /// Which Google app the current sign-in came through.
-    let tokenApp: YouTubeGoogleApp
-    /// What Sign in with Google would use now.
-    let route: YouTubeRoute
-    let signingIn: Bool
     let uploading: Bool
     /// The coordinator's last word on the account, or empty.
     let status: String
     let signIn: () async -> Void
     let signOut: () async -> Void
+    /// Opens the setup guide's YouTube step at a spot (your own app's part).
+    var openSetup: (YouTubeGuideSpot) -> Void = { _ in }
 
-    private var failed: Bool { !connected && !signingIn && status.hasPrefix("Not connected:") }
+    /// What an option's section says. Each section reads its own option, so the
+    /// one folding away keeps its words while it goes.
+    private func choice(_ option: YouTubeAppOption) -> YouTubeAccountChoice {
+        var f = account
+        f.route.prefersOwnApp = option.prefersOwnApp
+        return YouTubeAccountRules.choice(f)
+    }
+
+    private var current: YouTubeAccountChoice { choice(YouTubeAppOption(prefersOwnApp: usesOwnApp)) }
+
+    /// A failed sign-in, or a signed-in account with no channel: in the chosen section.
+    private var problem: String? {
+        if !account.signedIn && !account.signingIn && status.hasPrefix("Not connected:") {
+            return String(status.dropFirst("Not connected: ".count))
+        }
+        if account.signedIn && channel == nil && !status.isEmpty { return status }
+        return nil
+    }
 
     var body: some View {
         Form {
             #if DEBUG
-            Section("Upload to") { SharedChannelRow(ownChannelConnected: connected) }
+            Section("Upload to") { SharedChannelRow(ownChannelConnected: current.readyToUpload) }
             #endif
 
             Section("Recordings") {
-                UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)
+                UploadFlowPicture(mode: uploadMode, connected: current.readyToUpload, uploading: uploading)
                 uploadChoices
                 // Do nothing: no upload, so no visibility or audience to choose.
                 Collapsible(hidden: uploadMode == .off) { uploadDefaults }
             }
 
             Section {
-                accountRow
-                if failed || (connected && channel == nil && !status.isEmpty) {
-                    Text(failed ? String(status.dropFirst("Not connected: ".count)) : status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                ownApp
+                YouTubeAppChoiceRow(usesOwnApp: $usesOwnApp)
+                Collapsible(hidden: usesOwnApp) { greenroomSection }
+                Collapsible(hidden: !usesOwnApp) { ownSection }
             } header: {
-                Text("YouTube account")
+                Text("How Greenroom connects to YouTube")
             } footer: {
-                Text("No sign-in needed for Upload in YouTube Studio: every upload sheet has it. It opens YouTube, shows the recording in Finder and copies the title and description.")
+                Text("Upload in YouTube Studio needs no sign-in: it is on every upload sheet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -109,6 +120,42 @@ struct YouTubePageContent: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: Account
+
+    /// Greenroom's Google app: the account line and its buttons.
+    private var greenroomSection: some View {
+        accountLine(choice(.greenroom))
+            .padding(.vertical, 4)
+    }
+
+    /// Your own Google app: its setup status, the account line, and one button
+    /// into the setup guide, where the Client ID, Secret and Google Cloud steps live.
+    private var ownSection: some View {
+        let c = choice(.own)
+        return VStack(alignment: .leading, spacing: 10) {
+            if let status = c.setupStatus, let tone = c.setupTone {
+                HStack(spacing: 12) {
+                    StatusBadge(text: status, tone: StatusBadge.Tone(tone))
+                    Spacer(minLength: 8)
+                    if let entry = c.setupEntry {
+                        Button(entry.title) { openSetup(entry.spot) }
+                            .help("Opens the setup guide\u{2019}s YouTube step, where the Client ID, Client Secret and the Google Cloud steps live.")
+                    }
+                }
+            }
+            Divider()
+            accountLine(c)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func accountLine(_ c: YouTubeAccountChoice) -> some View {
+        YouTubeAccountLine(choice: c, avatarURL: channel?.avatarURL, uploading: uploading,
+                           problem: c.selected == current.selected ? problem : nil,
+                           signIn: { Task { await signIn() } },
+                           signOut: { Task { await signOut() } })
     }
 
     private var uploadChoices: some View {
@@ -152,89 +199,6 @@ struct YouTubePageContent: View {
         .accessibilityElement(children: .contain)
     }
 
-    // MARK: Account
-
-    private var accountRow: some View {
-        HStack(spacing: 12) {
-            if connected {
-                YouTubeChannelAvatar(url: channel?.avatarURL, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(channel?.name ?? "Signed in").font(.body.weight(.medium))
-                    Text(tokenApp == .shared ? "Signed in with Google" : "Signed in through your own Google app")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if uploading { ProgressView().controlSize(.small) }
-                Button("Use another account") { Task { await signIn() } }
-                    .disabled(signingIn || route.app == nil)
-                    .help("Google shows its account chooser. The current sign-in is removed once the new one is in.")
-                Button("Sign out") { Task { await signOut() } }
-                    .help("Signs out here and tells Google to remove Greenroom\u{2019}s access.")
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    accountBadge
-                    Text(signInNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Button(signingIn ? "Waiting for Google\u{2026}" : "Sign in with Google") {
-                    Task { await signIn() }
-                }
-                .disabled(signingIn || route.app == nil)
-                .help("Opens Google in your browser to choose an account. Greenroom can upload and edit your own videos, nothing else.")
-            }
-        }
-    }
-
-    private var signInNote: String {
-        switch route {
-        case .none(let gap): return gap.message
-        case .shared: return YouTubeSettingsWords.unverifiedNote
-        case .own: return "Signs in through your own Google app."
-        }
-    }
-
-    @ViewBuilder
-    private var accountBadge: some View {
-        if signingIn {
-            StatusBadge(text: "Waiting for Google", tone: .waiting)
-        } else if failed {
-            StatusBadge(text: "Couldn\u{2019}t sign in", tone: .problem)
-        } else if route.app == nil {
-            StatusBadge(text: "Not available yet", tone: .waiting)
-        } else {
-            StatusBadge(text: "Not signed in", tone: .waiting)
-        }
-    }
-
-    // MARK: Your own Google app
-
-    private var ownApp: some View {
-        AdvancedDisclosure("Use your own Google app", open: usesOwnApp) {
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle("Sign in through my own Google app", isOn: $usesOwnApp.animatedCollapse())
-                Text("For when Greenroom\u{2019}s Google app has reached Google\u{2019}s limit of 100 people, or to have your own daily upload limit. You need a Google Cloud OAuth client of type Desktop app with YouTube Data API v3 turned on.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Collapsible(hidden: !usesOwnApp) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("Client ID", text: $clientID)
-                            .help(Self.clientHelp)
-                        SecureField("Client Secret", text: $clientSecret)
-                            .help(Self.clientHelp)
-                        Link("Open Google Cloud", destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
-                            .font(.caption)
-                    }
-                }
-            }
-        }
-    }
-
-    private static let clientHelp = "From a Google Cloud OAuth client of type \u{201C}Desktop app\u{201D} with the YouTube Data API v3 enabled. While the Google project is in Testing, the sign-in lasts seven days."
 }
 
 // MARK: - Pieces

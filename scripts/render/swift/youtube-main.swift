@@ -55,24 +55,24 @@ struct Settings: View {
     @State var privacy = "unlisted"
     @State var kids: Bool? = false
     @State var ownApp = false
-    @State var clientID = ""
-    @State var secret = ""
+    var clientID = ""
+    var secret = ""
 
     init(connected: Bool = false, channel: YouTubeChannel? = nil, tokenApp: YouTubeGoogleApp = .shared,
          sharedID: String = shared, signingIn: Bool = false, status: String = "",
-         mode: YouTubeUploadMode = .ask, kids: Bool? = false, ownApp: Bool = false) {
+         mode: YouTubeUploadMode = .ask, kids: Bool? = false, ownApp: Bool = false, ownPasted: Bool = false) {
         self.connected = connected; self.channel = channel; self.tokenApp = tokenApp
         self.sharedID = sharedID; self.signingIn = signingIn; self.status = status
         _mode = State(initialValue: mode); _kids = State(initialValue: kids); _ownApp = State(initialValue: ownApp)
-        if ownApp { _clientID = State(initialValue: "1234-sample.apps.googleusercontent.com"); _secret = State(initialValue: "secret") }
+        if ownPasted { clientID = "1234-sample.apps.googleusercontent.com"; secret = "secret" }
     }
 
     var body: some View {
-        let route = YouTubeRouteRules.signInRoute(YouTubeRouteFacts(
-            prefersOwnApp: ownApp, sharedClientID: sharedID, ownClientID: clientID, ownClientSecret: secret))
+        let facts = YouTubeAccountFacts(
+            route: YouTubeRouteFacts(prefersOwnApp: ownApp, sharedClientID: sharedID, ownClientID: clientID, ownClientSecret: secret),
+            signedIn: connected, tokenApp: tokenApp, channelName: channel?.name, signingIn: signingIn)
         YouTubePageContent(uploadMode: $mode, privacy: $privacy, madeForKids: $kids, usesOwnApp: $ownApp,
-                           clientID: $clientID, clientSecret: $secret, connected: connected, channel: channel,
-                           tokenApp: tokenApp, route: route, signingIn: signingIn, uploading: false, status: status,
+                           account: facts, channel: channel, uploading: false, status: status,
                            signIn: {}, signOut: {})
     }
 }
@@ -95,16 +95,19 @@ MainActor.assumeIsolated {
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
         let w: CGFloat = 640, h: CGFloat = 860
-        shoot(Settings(), "settings-1-not-signed-in-\(tag)", dark: dark, width: w, height: h)
-        shoot(Settings(sharedID: placeholder), "settings-2-not-available-yet-\(tag)", dark: dark, width: w, height: h)
-        shoot(Settings(connected: true, channel: channel), "settings-3-signed-in-\(tag)", dark: dark, width: w, height: h)
-        shoot(Settings(connected: true, channel: YouTubeChannel(name: "Sample Classroom", avatarURL: nil), tokenApp: .own, ownApp: true),
-              "settings-4-own-app-signed-in-\(tag)", dark: dark, width: w, height: 1000)
-        shoot(Settings(signingIn: true), "settings-5-signing-in-\(tag)", dark: dark, width: w, height: h)
-        shoot(Settings(connected: true, channel: channel, mode: .automatic, kids: nil),
-              "settings-6-automatic-needs-answer-\(tag)", dark: dark, width: w, height: 960)
+        shoot(Settings(), "settings-1-greenroom-not-signed-in-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(connected: true, channel: channel), "settings-2-greenroom-signed-in-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(ownApp: true), "settings-3-own-not-set-up-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(connected: true, channel: channel, tokenApp: .own, ownApp: true, ownPasted: true),
+              "settings-4-own-set-up-signed-in-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(connected: true, channel: channel, tokenApp: .shared, ownApp: true, ownPasted: true),
+              "settings-5-own-chosen-signed-in-through-greenroom-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(signingIn: true), "settings-6-signing-in-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(sharedID: placeholder), "settings-7-not-available-yet-\(tag)", dark: dark, width: w, height: h)
         shoot(Settings(status: "Not connected: Google refused the sign-in: access_denied."),
-              "settings-7-sign-in-failed-\(tag)", dark: dark, width: w, height: h)
+              "settings-8-sign-in-failed-\(tag)", dark: dark, width: w, height: h)
+        shoot(Settings(connected: true, channel: channel, mode: .automatic, kids: nil),
+              "settings-9-automatic-needs-answer-\(tag)", dark: dark, width: w, height: 960)
 
         let sw: CGFloat = 540, sh: CGFloat = 640
         shoot(sheet(signedIn: true, channel: channel, kids: nil), "sheet-1-signed-in-needs-answer-\(tag)", dark: dark, width: sw, height: sh)

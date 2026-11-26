@@ -527,6 +527,8 @@ final class CoordinatorController: ObservableObject {
     /// Where a check's "Show me where" asked the setup guide to open; the
     /// guide jumps there and clears it.
     @Published var zoomGuideSpot: ZoomGuideSpot?
+    /// Where Settings -> YouTube's "Set up… / Edit setup…" asked the guide to open; cleared once used.
+    @Published var youtubeGuideSpot: YouTubeGuideSpot?
 
     func completeOnboarding() {
         showOnboarding = false
@@ -1479,8 +1481,9 @@ final class CoordinatorController: ObservableObject {
             SecretStore.set(youtubeClientSecret, forKey: "youtubeClientSecret")
         }
     }
-    /// Settings -> YouTube -> Use your own Google app: sign in through the
-    /// pasted client instead of Greenroom's shared one (YouTubeRouteRules).
+    /// Settings -> YouTube's choice, "Your own Google app" (true) or
+    /// "Greenroom's Google app" (false): what signing in and uploading use
+    /// (YouTubeRouteRules, YouTubeAccountRules).
     @Published var youtubeUsesOwnApp: Bool {
         didSet { defaults.set(youtubeUsesOwnApp, forKey: "youtubeUsesOwnApp") }
     }

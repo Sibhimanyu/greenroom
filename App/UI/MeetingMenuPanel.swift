@@ -86,6 +86,7 @@ final class MeetingMenuPanel {
     }
 
     private static func open(_ entries: [MenuEntry], anchor: CGRect, view: NSView?, window: NSWindow, below: Bool) {
+        let entries = entries.tidiedSeparators   // so the log counts the rows drawn
         let menu = MeetingMenuPanel(entries: entries)
         let area = (NSScreen.screens.first { screen in
             screen.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) } ?? NSScreen.main)?.visibleFrame ?? anchor
@@ -183,12 +184,15 @@ final class MeetingMenuPanel {
     /// The rows as the panel shows them, at their whole size: the off-screen render
     /// (scripts/render/bar-menu.sh) draws this same view.
     static func content(_ entries: [MenuEntry]) -> NSView {
-        let host = Host(rootView: MenuPanelView(entries: entries, handlers: Handlers()))
+        let host = Host(rootView: MenuPanelView(entries: entries.tidiedSeparators, handlers: Handlers()))
         host.setFrameSize(host.fittingSize)
         return host
     }
 
+    /// Every panel, submenus included, draws its entries through the one divider rule
+    /// (`tidiedSeparators`): no empty section, whatever a builder hands it.
     private init(entries: [MenuEntry]) {
+        let entries = entries.tidiedSeparators
         let handlers = Handlers()
         let host = Host(rootView: MenuPanelView(entries: entries, handlers: handlers))
         let size = host.fittingSize

@@ -36,4 +36,33 @@ extension MeetingMenus {
         }
         return out
     }
+
+    /// The window toolbar's controls, as the bar's Views menu offers them while the
+    /// Meeting window is away (MeetingControlsModel.viewsMenu).
+    struct BarControls {
+        var audio: [MenuEntry] = []
+        var video: [MenuEntry] = []
+        var react: [MenuEntry] = []
+        /// Nil for a guest: Security is for a host or co-host.
+        var security: [MenuEntry]?
+        var sharing: [MenuEntry] = []
+        /// A content-only view's pickers (Spotlight person, Shared screen); often none.
+        var pickers: [MenuEntry] = []
+    }
+
+    /// The bar's Views menu while the Meeting window is away: the views, then what the
+    /// window's toolbar had that the bar's cells do not, then Meeting info and the Zoom app.
+    static func barViews(_ views: [MenuEntry], controls c: BarControls, facts: MeetingFacts,
+                         _ a: MoreMenuActions) -> [MenuEntry] {
+        var extras: [MenuEntry] = []
+        extras.append(.submenu("Microphone and speaker", c.audio))
+        extras.append(.submenu("Camera", c.video))
+        extras.append(.submenu("Raise hand and react", c.react))
+        if let security = c.security { extras.append(.submenu("Security", security)) }
+        extras.append(.submenu("Sharing", c.sharing))
+        if !c.pickers.isEmpty { extras += [.separator] + c.pickers }
+        // No closing divider here: More puts one after a non-empty overflow, and a
+        // second one drew an empty section above Meeting info (1.10.0).
+        return views + [.separator] + more(overflow: extras, facts: facts, views: [], a)
+    }
 }

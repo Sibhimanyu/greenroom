@@ -51,6 +51,23 @@ struct MenuEntry {
 extension Array where Element == MenuEntry {
     var flatTitles: [String] { flatMap(\.flatTitles) }
 
+    /// The one divider rule, applied where a menu is drawn (MeetingMenuPanel): dividers
+    /// only between sections, so a builder that leaves a section empty never shows two
+    /// in a row, and none leads or trails. Submenus get the same rule.
+    var tidiedSeparators: [MenuEntry] {
+        var out: [MenuEntry] = []
+        for var entry in self {
+            if entry.kind == .separator {
+                if out.isEmpty || out.last?.kind == .separator { continue }
+            } else if entry.kind == .submenu {
+                entry.children = entry.children.tidiedSeparators
+            }
+            out.append(entry)
+        }
+        if out.last?.kind == .separator { out.removeLast() }
+        return out
+    }
+
     func entry(titled title: String) -> MenuEntry? {
         for entry in self {
             if entry.title == title { return entry }

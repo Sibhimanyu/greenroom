@@ -44,4 +44,90 @@ final class ViewsMenuTests: XCTestCase {
         XCTAssertEqual(submenu?.children.count, views.count)
         XCTAssertTrue(MeetingMenus.more(overflow: [], facts: .init(), .init()).entry(titled: "Views") == nil)
     }
+
+    // MARK: The bar's Views menu while the Meeting window is away
+
+    private func barViews(pickers: [MenuEntry] = [], host: Bool = true) -> [MenuEntry] {
+        let views = MeetingMenus.views(.init(), toggleMeetingWindow: {}, toggleView: { _ in })
+        let item = MenuEntry.item("x") {}
+        let controls = MeetingMenus.BarControls(audio: [item], video: [item], react: [item],
+                                                security: host ? [item] : nil, sharing: [item], pickers: pickers)
+        let facts = MeetingMenus.MeetingFacts(number: "82916390348", passcode: "", joinURL: "https://zoom.us/j/1")
+        return MeetingMenus.barViews(views, controls: controls, facts: facts, .init())
+    }
+
+    /// Kinds top to bottom, "-" for a divider, for reading a failure.
+    private func shape(_ entries: [MenuEntry]) -> String {
+        entries.map { $0.kind == .separator ? "-" : $0.title }.joined(separator: " | ")
+    }
+
+    private func assertNoEmptySection(_ entries: [MenuEntry], file: StaticString = #filePath, line: UInt = #line) {
+        let kinds = entries.map(\.kind)
+        XCTAssertNotEqual(kinds.first, .separator, shape(entries), file: file, line: line)
+        XCTAssertNotEqual(kinds.last, .separator, shape(entries), file: file, line: line)
+        for (a, b) in zip(kinds, kinds.dropFirst()) where a == .separator {
+            XCTAssertNotEqual(b, .separator, "two dividers in a row: \(shape(entries))", file: file, line: line)
+        }
+    }
+
+    // The owner's screenshot (1.10.0): two dividers between "Sharing" and "Meeting info",
+    // 21 rows. The controls closed their own section and More closed it again.
+    func testTheBarsViewsMenuHasNoEmptySection() {
+        let entries = barViews()
+        assertNoEmptySection(entries)
+        XCTAssertEqual(entries.count, 20)
+        assertNoEmptySection(barViews(host: false))
+    }
+
+    func testAContentViewsPickersAreTheirOwnSection() {
+        let picker = MenuEntry.submenu("Spotlight person", [.item("Ana") {}])
+        let entries = barViews(pickers: [picker])
+        assertNoEmptySection(entries)
+        let at = entries.lastIndex { $0.title == "Spotlight person" }!   // the view row comes first
+        XCTAssertEqual(entries[at - 1].kind, .separator)
+        XCTAssertEqual(entries[at - 2].title, "Sharing")
+        XCTAssertEqual(entries[at + 1].kind, .separator)
+        XCTAssertEqual(entries[at + 2].title, "Meeting info")
+    }
 }
+
+/// The menu builder's divider rule (`[MenuEntry].tidiedSeparators`), for every menu it draws.
+final class MenuSeparatorRuleTests: XCTestCase {
+    private let a = MenuEntry.item("A") {}
+    private let b = MenuEntry.item("B") {}
+    private let sep = MenuEntry.separator
+
+    private func shape(_ entries: [MenuEntry]) -> [String] {
+        entries.map { $0.kind == .separator ? "-" : $0.title }
+    }
+
+    func testRepeatedDividersCollapseToOne() {
+        XCTAssertEqual(shape([a, sep, sep, sep, b].tidiedSeparators), ["A", "-", "B"])
+    }
+
+    func testLeadingAndTrailingDividersGo() {
+        XCTAssertEqual(shape([sep, sep, a, sep, b, sep].tidiedSeparators), ["A", "-", "B"])
+        XCTAssertEqual(shape([sep, sep].tidiedSeparators), [])
+        XCTAssertEqual(shape([MenuEntry]().tidiedSeparators), [])
+    }
+
+    func testAWellFormedMenuIsUnchanged() {
+        let header = MenuEntry.header("Camera")
+        let entries = [header, a, sep, b]
+        XCTAssertEqual(shape(entries.tidiedSeparators), shape(entries))
+    }
+
+    func testSubmenusFollowTheSameRule() {
+        let sub = MenuEntry.submenu("More", [sep, a, sep, sep, b, sep])
+        let tidied = [sub].tidiedSeparators
+        XCTAssertEqual(shape(tidied.first!.children), ["A", "-", "B"])
+    }
+
+    func testItemsKeepTheirActions() {
+        var ran = 0
+        let entries = [sep, MenuEntry.item("Go") { ran += 1 }, sep].tidiedSeparators
+        entries.first?.action?()
+        XCTAssertEqual(ran, 1)
+    }
+}
+

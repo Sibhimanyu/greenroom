@@ -451,19 +451,14 @@ final class MeetingControlsModel: ObservableObject {
         // Security, display share, meeting info, the Zoom app) comes here.
         if coordinator.sessionArranges, !ParticipantGridWindowController.meetingWindowIsShowing {
             let m = MeetingToolbarView.menus(for: self)
-            var extras: [MenuEntry] = []
-            extras.append(.submenu("Microphone and speaker", m.audio()))
-            extras.append(.submenu("Camera", m.video()))
-            extras.append(.submenu("Raise hand and react", m.react()))
-            if isHost { extras.append(.submenu("Security", m.security())) }
-            extras.append(.submenu("Sharing", m.sharing()))
-            let pickers = MeetingViewWindows.pickerMenuEntries()
-            if !pickers.isEmpty { extras += [.separator] + pickers }
-            extras.append(.separator)
+            let controls = MeetingMenus.BarControls(
+                audio: m.audio(), video: m.video(), react: m.react(),
+                security: isHost ? m.security() : nil, sharing: m.sharing(),
+                pickers: MeetingViewWindows.pickerMenuEntries())
             var a = MeetingMenus.MoreMenuActions()
             a.copy = copy
             a.openInZoom = openInZoomApp
-            out += [.separator] + MeetingMenus.more(overflow: extras, facts: meetingFacts, views: [], a)
+            out = MeetingMenus.barViews(out, controls: controls, facts: meetingFacts, a)
         }
         return out
     }

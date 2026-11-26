@@ -57,6 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// where launch crashes happen.
     func applicationWillFinishLaunching(_ notification: Notification) {
         startAnalytics()
+        // Secrets: read the Keychain item once and finish the one-time move
+        // out of UserDefaults (it runs earlier if something asks first).
+        SecretStore.prepare()
     }
 
     /// System-wide shortcuts (see HotkeyManager and ShortcutRuntime - they work

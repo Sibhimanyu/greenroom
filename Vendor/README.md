@@ -40,10 +40,9 @@ It runs off TWO Marketplace apps:
    inside this, not its own app type anymore).
 3. On its **Features** page -> **Embed** tab, toggle **Meeting SDK** on.
 4. From **App Credentials**, copy the **Client ID** and **Client Secret**
-   into Greenroom's Settings -> Zoom tab (both are stored in
-   local app preferences / UserDefaults in plaintext - see
-   `App/Zoom/SecretStore.swift`; only the Sign in with Zoom refresh token
-   is in the Keychain - never put either in this repo).
+   into Greenroom's Settings -> Zoom tab (the Client ID in app
+   preferences, the Client Secret in the Keychain - see
+   `App/Zoom/SecretStore.swift`; never put either in this repo).
 
 **App 2 - Server-to-Server OAuth (powers "Start New Meeting", the
 Scheduled-meetings list, and hosting your own meetings):**

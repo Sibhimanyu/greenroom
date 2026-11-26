@@ -421,6 +421,11 @@ control bar is what should be the default, unless the Zoom-like UI was set in th
   the floating bar's camera arrow, the Meeting toolbar's camera caret (after the cameras) and, while live, Home's
   camera tile. Its note: "Everyone sees your name. Nothing is sent, not even your screen." While stopped it reads
   "Start video" ("Everyone sees your picture again."). `MeetingBarModel.cameraMenu`, `StopVideoRules.menuRow`.
+  (2026-11-26) The whole menu is always on screen, Stop video included: in 1.10.0 the panel measured each two-line
+  note as one line and cut the divider and Stop video off its bottom. Notes are now measured wrapped
+  (`MeetingMenuPanel`'s `NoteWidth`) and the panel is placed by `MenuPanelPlacement` (above, else below, else
+  shifted onto the visible frame; it scrolls only when taller than the screen). `Tests/MenuPanelPlacementTests.swift`,
+  render `scripts/render/bar-menu.sh`.
 - R49.3 While stopped, the camera button wears Zoom's red, filled `video.slash.fill` (`VisibilitySymbol.videoStopped`,
   tint `.stopped`); the Meeting toolbar's caption reads "Start video". Camera state Off now wears the quiet outline
   `video.slash` (tint `.neutral`, as R17.3 always said), no longer red: red means "the meeting gets nothing from you"

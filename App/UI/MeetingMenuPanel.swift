@@ -8,6 +8,11 @@
 //  other windows forward or jump desktops, so the menu is a floating,
 //  non-activating panel instead: it shows whatever app is in front.
 //
+//  Placement is MenuPanelPlacement (pure, tested): the whole menu is always on the
+//  screen, last row included. A note wraps at 300pt and is measured wrapped
+//  (NoteWidth), so the panel's size counts every line (1.10.0 measured each note
+//  as one line and cut the camera menu's divider and Stop video off the bottom).
+//
 //  Not handled: arrow-key navigation and type-to-select (Escape, a click
 //  outside, a desktop switch or the anchor going away close it).
 //
@@ -82,14 +87,9 @@ final class MeetingMenuPanel {
 
     private static func open(_ entries: [MenuEntry], anchor: CGRect, view: NSView?, window: NSWindow, below: Bool) {
         let menu = MeetingMenuPanel(entries: entries)
-        let size = menu.size
         let area = (NSScreen.screens.first { screen in
             screen.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) } ?? NSScreen.main)?.visibleFrame ?? anchor
-        // Above the cell, unless it would run off the top; then below.
-        var y = below ? anchor.minY - 4 - size.height : anchor.maxY + 4
-        if !below, y + size.height > area.maxY { y = anchor.minY - 4 - size.height }
-        if below, y < area.minY { y = anchor.maxY + 4 }
-        menu.place(at: NSPoint(x: anchor.minX, y: y), in: area)
+        menu.apply(MenuPanelPlacement.place(size: menu.size, anchor: anchor, area: area, below: below))
         anchorView = view
         chain = [menu]
         menu.panel.orderFrontRegardless()
@@ -173,14 +173,29 @@ final class MeetingMenuPanel {
     }
 
     private let panel: NSPanel
+    private let host: Host
+    private let entries: [MenuEntry]
+    private let handlers: Handlers
+    /// The whole menu, every row.
     private let size: CGSize
     private weak var child: MeetingMenuPanel?
+
+    /// The rows as the panel shows them, at their whole size: the off-screen render
+    /// (scripts/render/bar-menu.sh) draws this same view.
+    static func content(_ entries: [MenuEntry]) -> NSView {
+        let host = Host(rootView: MenuPanelView(entries: entries, handlers: Handlers()))
+        host.setFrameSize(host.fittingSize)
+        return host
+    }
 
     private init(entries: [MenuEntry]) {
         let handlers = Handlers()
         let host = Host(rootView: MenuPanelView(entries: entries, handlers: handlers))
         let size = host.fittingSize
         self.size = size
+        self.host = host
+        self.entries = entries
+        self.handlers = handlers
         host.setFrameSize(size)
         host.setAccessibilityRole(.menu)
         host.setAccessibilityLabel("Menu")
@@ -211,10 +226,13 @@ final class MeetingMenuPanel {
         }
     }
 
-    private func place(at origin: NSPoint, in area: CGRect) {
-        let x = min(max(origin.x, area.minX), max(area.minX, area.maxX - size.width))
-        let y = min(max(origin.y, area.minY), max(area.minY, area.maxY - size.height))
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+    /// Puts the panel where `placement` says; a menu taller than the screen scrolls in that height.
+    private func apply(_ placement: MenuPanelPlacement) {
+        if placement.scrolls {
+            host.rootView = MenuPanelView(entries: entries, handlers: handlers, scrollHeight: placement.frame.height)
+        }
+        host.setFrameSize(placement.frame.size)
+        panel.setFrame(placement.frame, display: false)
     }
 
     private func closeChild() {
@@ -236,7 +254,7 @@ final class MeetingMenuPanel {
         var x = frame.maxX - 4
         if x + sub.size.width > area.maxX { x = frame.minX - sub.size.width + 4 }
         let top = frame.maxY - row.minY + 6
-        sub.place(at: NSPoint(x: x, y: top - sub.size.height), in: area)
+        sub.apply(MenuPanelPlacement.fit(origin: NSPoint(x: x, y: top - sub.size.height), size: sub.size, area: area))
         child = sub
         MeetingMenuPanel.chain.append(sub)
         sub.panel.orderFrontRegardless()
@@ -255,8 +273,21 @@ private final class Handlers {
 private struct MenuPanelView: View {
     let entries: [MenuEntry]
     let handlers: Handlers
+    /// Set only when the whole menu is taller than the screen (MenuPanelPlacement.scrolls).
+    var scrollHeight: CGFloat?
 
     var body: some View {
+        if let scrollHeight {
+            ScrollView(.vertical) { rows.padding(6) }
+                .frame(height: scrollHeight)
+                .fixedSize(horizontal: true, vertical: false)
+                .modifier(MenuChrome())
+        } else {
+            rows.padding(6).fixedSize().modifier(MenuChrome())
+        }
+    }
+
+    private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                 switch entry.kind {
@@ -273,12 +304,35 @@ private struct MenuPanelView: View {
                 }
             }
         }
-        .padding(6)
-        .frame(minWidth: 200, alignment: .leading)
-        .fixedSize()
-        .coordinateSpace(name: "menu")
-        .greenroomGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .environment(\.colorScheme, .dark)
+        .frame(minWidth: 188, alignment: .leading)
+    }
+}
+
+/// The panel's glass, dark whatever the system is.
+private struct MenuChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .coordinateSpace(name: "menu")
+            .greenroomGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .environment(\.colorScheme, .dark)
+    }
+}
+
+/// A note's width: its own line up to `max`, then it wraps, and its height is measured wrapped.
+/// `.frame(maxWidth:)` asks the text for its ideal size with no width, which is one line, so a
+/// panel sized from `fittingSize` came out a line short per two-line note.
+private struct NoteWidth: Layout {
+    let max: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let text = subviews.first else { return .zero }
+        let width = Swift.min(text.sizeThatFits(.unspecified).width, max, proposal.width ?? .infinity)
+        return text.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
@@ -301,11 +355,12 @@ private struct MenuRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.title).font(.system(size: 13))
                     if let note = entry.note, !note.isEmpty {
-                        Text(note)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: 300, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                        NoteWidth(max: 300) {
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 Spacer(minLength: 16)

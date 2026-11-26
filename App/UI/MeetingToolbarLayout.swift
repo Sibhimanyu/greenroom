@@ -38,6 +38,13 @@ struct ToolbarItemSpec: Equatable {
 enum MeetingToolbarLayout {
     /// One control: icon over caption.
     static let cell: CGFloat = 68
+    /// The caption's point size (system font, regular), under every glyph.
+    static let captionSize: CGFloat = 11
+    /// The camera control is wider than the rest: its caption is the camera state's own name
+    /// (CameraState.name, the words every other surface uses) or "Start video", and the longest,
+    /// "Only the meeting", is 90pt at `captionSize`. 68pt cut it and "Everyone & me" (1.10.0).
+    /// MeetingToolbarTests measures every caption against this.
+    static let cameraCell: CGFloat = 94
     /// The little chevron beside Mute, Stop Video and Share.
     static let caret: CGFloat = 18
     /// Between groups: the hairline sits in the middle (the gaps either side
@@ -60,7 +67,7 @@ enum MeetingToolbarLayout {
     static func specs(showsSecurity: Bool, recording: Bool = false) -> [ToolbarItemSpec] {
         var out: [ToolbarItemSpec] = [
             .init(id: .mute, group: 0, width: cell + caret, keep: 11),
-            .init(id: .video, group: 0, width: cell + caret, keep: 10),
+            .init(id: .video, group: 0, width: cameraCell + caret, keep: 10),
         ]
         if showsSecurity { out.append(.init(id: .security, group: 1, width: cell, keep: 6)) }
         out += [

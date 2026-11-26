@@ -112,23 +112,28 @@ MainActor.assumeIsolated {
     }
     shoot(menus, "camera-menus-light", dark: false, width: 1100)
 
-    // 3. The Meeting toolbar: Off and video stopped, side by side.
-    let toolbars = VStack(alignment: .leading, spacing: 8) {
-        ForEach(Array([(CameraState.off, false), (.everyoneAndMe, true), (.everyoneAndMe, false)].enumerated()), id: \.offset) { _, pair in
-            let s: MeetingToolbarState = {
-                var t = MeetingToolbarState(); t.cameraState = pair.0; t.videoStopped = pair.1; t.participants = 4
-                t.isHost = true; t.clock = "12:34"; return t
-            }()
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(pair.0.name)\(pair.1 ? ", video stopped" : "")").font(.system(size: 11)).foregroundStyle(.white)
-                MeetingToolbarBar(state: s, menus: MeetingToolbarMenus(), actions: MeetingToolbarActions())
-                    .frame(width: 1100, height: MeetingToolbarBar.height)
-                    .background(MeetingTheme.window)
+    // 3. The Meeting toolbar, every caption the camera cell wears (the four states, and Start video),
+    // at the window's minimum width (760pt) and at a normal one (1100pt).
+    let toolbarCases: [(CameraState, Bool)] = CameraState.allCases.map { ($0, false) } + [(.everyoneAndMe, true)]
+    for barWidth in [CGFloat(760), 1100] {
+        let toolbars = VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(toolbarCases.enumerated()), id: \.offset) { _, pair in
+                let s: MeetingToolbarState = {
+                    var t = MeetingToolbarState(); t.cameraState = pair.0; t.videoStopped = pair.1; t.participants = 4
+                    t.isHost = true; t.clock = "12:34"; return t
+                }()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(pair.0.name)\(pair.1 ? ", video stopped" : ""), \(Int(barWidth))pt").font(.system(size: 11)).foregroundStyle(.white)
+                    MeetingToolbarBar(state: s, menus: MeetingToolbarMenus(), actions: MeetingToolbarActions())
+                        .frame(width: barWidth, height: MeetingToolbarBar.height)
+                        .background(MeetingTheme.window)
+                }
             }
         }
+        .padding(10).background(MeetingTheme.window)
+        shoot(toolbars, barWidth == 1100 ? "meeting-toolbar-dark" : "meeting-toolbar-\(Int(barWidth))-dark",
+              dark: true, width: barWidth + 40)
     }
-    .padding(10).background(MeetingTheme.window)
-    shoot(toolbars, "meeting-toolbar-dark", dark: true, width: 1140)
 
     // 4. The "You" tile: Off (what everyone sees, Off's mark) beside video stopped (the name, Stop video's mark).
     final class StagedScreen: NSView {

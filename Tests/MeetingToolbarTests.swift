@@ -1,5 +1,6 @@
 import XCTest
 import CoreGraphics
+import AppKit
 
 final class MeetingToolbarLayoutTests: XCTestCase {
     private typealias L = MeetingToolbarLayout
@@ -118,6 +119,24 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         let f = fit(760)
         XCTAssertTrue(f.visible.starts(with: [.mute, .video]))
         XCTAssertTrue(f.visible.contains(.people) && f.visible.contains(.chat) && f.visible.contains(.share))
+    }
+
+    // 1.10.0 cut "Everyone & me" to "Everyone &\u{2026}" at the 68pt cell. Every caption the camera
+    // cell can wear (the four camera states, and "Start video" while stopped) shows whole, at full
+    // size, with a little air either side (the text's shrink-to-fit is not counted on).
+    func testEveryCameraCaptionShowsWhole() {
+        let video = L.specs(showsSecurity: true).first { $0.id == .video }!
+        let glyphWidth = video.width - L.caret
+        let font = NSFont.systemFont(ofSize: L.captionSize)
+        var captions: [String] = []
+        for state in CameraState.allCases {
+            for stopped in [false, true] { captions.append(StopVideoRules.caption(state: state, videoStopped: stopped)) }
+        }
+        XCTAssertTrue(captions.contains("Everyone & me") && captions.contains("Start video"))
+        for caption in Set(captions) {
+            let width = ceil((caption as NSString).size(withAttributes: [.font: font]).width)
+            XCTAssertLessThanOrEqual(width + 4, glyphWidth, "\"\(caption)\" needs \(width)pt + 4 in a \(glyphWidth)pt cell")
+        }
     }
 
     // R6, R17: one camera control; the second (bubble) cell is gone.

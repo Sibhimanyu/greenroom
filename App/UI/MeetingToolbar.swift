@@ -198,7 +198,8 @@ struct MeetingToolbarBar: View {
             withCaret(menus.video, label: "Who sees my camera") {
                 cell(symbol: cam.symbol, caption: StopVideoRules.caption(state: state.cameraState, videoStopped: state.videoStopped),
                      tint: Self.tint(cam.tint), on: cam.on,
-                     symbolBadge: cam.symbolBadge, help: cam.help, action: actions.toggleVideo)
+                     symbolBadge: cam.symbolBadge, help: cam.help, width: MeetingToolbarLayout.cameraCell,
+                     action: actions.toggleVideo)
                     .accessibilityLabel(cam.spoken)
                     .disabled(!state.inMeeting)
             }
@@ -316,17 +317,18 @@ struct MeetingToolbarBar: View {
     /// caption, with Zoom's hover wash behind it.
     private func glyph(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                        badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
-                       symbolBadge: String? = nil) -> some View {
+                       symbolBadge: String? = nil, width: CGFloat = MeetingToolbarLayout.cell) -> some View {
         ToolbarGlyph(symbol: symbol, symbolBadge: symbolBadge, caption: caption, tint: tint, on: on, badge: badge,
-                     badgeFilled: badgeFilled, captionPill: captionPill, height: Self.cellHeight)
+                     badgeFilled: badgeFilled, captionPill: captionPill, width: width, height: Self.cellHeight)
     }
 
     private func cell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                       badge: String? = nil, symbolBadge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
-                      help: String? = nil, action: @escaping () -> Void) -> some View {
+                      help: String? = nil, width: CGFloat = MeetingToolbarLayout.cell,
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
             glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge,
-                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge)
+                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge, width: width)
         }
         .buttonStyle(.plain)
         .help(help ?? caption)
@@ -422,6 +424,7 @@ private struct ToolbarGlyph: View {
     let badge: String?
     let badgeFilled: Bool
     let captionPill: Bool
+    var width: CGFloat = MeetingToolbarLayout.cell
     let height: CGFloat
     @State private var hovering = false
 
@@ -434,14 +437,14 @@ private struct ToolbarGlyph: View {
                 .frame(height: 24)
                 .overlay(alignment: .topTrailing) { badgeView.offset(x: 14, y: -5) }
             Text(caption)
-                .font(.system(size: 11, weight: captionPill ? .semibold : .regular))
+                .font(.system(size: MeetingToolbarLayout.captionSize, weight: captionPill ? .semibold : .regular))
                 .foregroundStyle(captionPill ? Color.black : MeetingTheme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.9)
                 .padding(.horizontal, captionPill ? 4 : 0)
                 .background(captionPill ? Brand.fill : Color.clear, in: Capsule())
         }
-        .frame(width: MeetingToolbarLayout.cell, height: height)
+        .frame(width: width, height: height)
         .background(on || hovering ? MeetingTheme.hover : Color.clear,
                     in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
         .contentShape(Rectangle())

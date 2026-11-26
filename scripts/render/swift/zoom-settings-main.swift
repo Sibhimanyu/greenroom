@@ -28,6 +28,7 @@ struct Page: View {
     let both: Bool
     let signedIn: Bool
     let ownAppsOpen: Bool
+    var note: String? = nil
     @State var sdkID = ""
     @State var sdkSecret = ""
     @State var acct = ""
@@ -36,8 +37,8 @@ struct Page: View {
     @State var name = "Sample Host"
     @State var hide = false
 
-    init(route: ZoomRoute, both: Bool, signedIn: Bool, ownApps: Bool, ownAppsOpen: Bool = false) {
-        self.route = route; self.both = both; self.signedIn = signedIn; self.ownAppsOpen = ownAppsOpen
+    init(route: ZoomRoute, both: Bool, signedIn: Bool, ownApps: Bool, ownAppsOpen: Bool = false, note: String? = nil) {
+        self.route = route; self.both = both; self.signedIn = signedIn; self.ownAppsOpen = ownAppsOpen; self.note = note
         if ownApps {
             _sdkID = State(initialValue: "SampleClientID9z7Q"); _sdkSecret = State(initialValue: "secret")
             _acct = State(initialValue: "SampleAccount"); _s2sID = State(initialValue: "SampleS2S")
@@ -53,7 +54,7 @@ struct Page: View {
                 signedIn: signedIn ? ZoomSignInInfo(name: "Sample Host", email: "host@example.com") : nil,
                 signingIn: false, error: nil, setupNote: nil,
                 onSignIn: {}, onCancel: {}, onSignOut: { true }),
-            route: ZoomRouteRow(route: route, bothSetUp: both, onSwitch: {}),
+            route: ZoomRouteRow(route: route, bothSetUp: both, note: note, onSwitch: {}),
             ownAppsOpen: ownAppsOpen)
     }
 }
@@ -71,5 +72,9 @@ MainActor.assumeIsolated {
               "4-both-own-apps-win-\(tag)", dark: dark)
         shoot(Page(route: .none(.notSetUp), both: false, signedIn: false, ownApps: false),
               "5-nothing-\(tag)", dark: dark)
+        let refused = ZoomRefusalRules.settingsNote(route: .greenroomApp(account: "Sample Host"), accountID: "b", refused: ["b"])
+        shoot(Page(route: .greenroomApp(account: "Sample Host"), both: false, signedIn: true, ownApps: false,
+                   ownAppsOpen: true, note: refused),
+              "6-refused-own-apps-open-\(tag)", dark: dark, height: 1100)
     }
 }

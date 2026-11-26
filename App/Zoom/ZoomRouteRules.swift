@@ -168,3 +168,70 @@ enum ZoomRouteWords {
         "\(message)\n\n\(line(route))"
     }
 }
+
+// MARK: - Error 63: Zoom refused the account
+
+/// What the failure card's button does instead of Try again.
+enum StartFailureFix: Equatable {
+    /// Settings -> Zoom with "Use your own Zoom apps (advanced)" unfolded.
+    case openOwnZoomApps
+    var title: String { "Open Settings" }
+}
+
+/// Error 63 (`ZoomSDKMeetingError_UnableToJoinExternalMeeting`) in plain words.
+/// On Greenroom's Zoom app it means the meeting is on an account other than
+/// the one that owns the app (proven 2026-11-26: meeting created on the
+/// signed-in account, started with its own ZAK, refused at Connecting). Zoom
+/// staff say a Meeting SDK app cannot start meetings for external users at
+/// all (devforum 145559, 146160), so the advice is the route that works:
+/// your own Zoom apps, which live on your own account. A refusal is
+/// remembered per account so Home warns before the next Start, and cleared
+/// by the next Start that works.
+enum ZoomRefusalRules {
+    static func startFailure(_ text: String, crossAccount: Bool, route: ZoomRoute) -> (message: String, fix: StartFailureFix?) {
+        guard crossAccount else { return (ZoomRouteWords.failure(text, route: route), nil) }
+        let why: String
+        switch route {
+        case .greenroomApp(let account):
+            let who = account.isEmpty ? "Your account" : "Your account (\(account))"
+            why = "Zoom refused to start this meeting on your account. "
+                + "Greenroom\u{2019}s Zoom app can only start meetings on the Zoom account that made it, "
+                + "and Zoom has not opened it to other accounts yet. \(who) is a different one. "
+                + "To host from Greenroom now, use your own Zoom apps: Settings \u{2192} Zoom \u{2192} Use your own Zoom apps (advanced)."
+        case .ownApps, .none:
+            why = "Zoom refused to start this meeting. Your Meeting SDK app and your Server-to-Server app "
+                + "need to be on the same Zoom account. Check both in Settings \u{2192} Zoom."
+        }
+        return (ZoomRouteWords.failure(why, route: route), .openOwnZoomApps)
+    }
+
+    /// The remembered refusals after a Start ended (refused or live).
+    static func afterStart(_ refused: Set<String>, accountID: String, route: ZoomRoute,
+                           crossAccountRefusal: Bool) -> Set<String> {
+        guard route.usesGreenroomApp, !accountID.isEmpty else { return refused }
+        var next = refused
+        if crossAccountRefusal { next.insert(accountID) } else { next.remove(accountID) }
+        return next
+    }
+
+    static func wasRefused(route: ZoomRoute, accountID: String, refused: Set<String>) -> Bool {
+        route.usesGreenroomApp && !accountID.isEmpty && refused.contains(accountID)
+    }
+
+    /// Home's Zoom pill. A warning only: Start still runs, in case Zoom has opened the app since.
+    static func homeWarning(route: ZoomRoute, accountID: String, refused: Set<String>) -> String? {
+        wasRefused(route: route, accountID: accountID, refused: refused) ? "Zoom: this account can\u{2019}t host yet" : nil
+    }
+
+    /// Under Settings' "Start uses" line.
+    static func settingsNote(route: ZoomRoute, accountID: String, refused: Set<String>) -> String? {
+        wasRefused(route: route, accountID: accountID, refused: refused)
+            ? "Zoom refused the last Start with this account. Greenroom\u{2019}s Zoom app can\u{2019}t start meetings on it yet, so use your own Zoom apps below."
+            : nil
+    }
+
+    static func encode(_ refused: Set<String>) -> String { refused.sorted().joined(separator: ",") }
+    static func decode(_ stored: String?) -> Set<String> {
+        Set((stored ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty })
+    }
+}

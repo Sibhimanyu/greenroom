@@ -64,6 +64,8 @@ enum ParticipantGridWindowController {
         /// The newest status line, shown under the steps. Without it the card
         /// says only which step is running, and a slow step reads as a hang.
         var detail: String?
+        /// The failure's button when it is not Try again ("Open Settings").
+        var failureActionTitle: String?
 
         /// True once there is nothing left to wait for. An empty list counts as
         /// live so that anything not driving readiness - a panel
@@ -2741,7 +2743,8 @@ enum ReadinessHUDController {
             steps: readiness.steps.map { NotchStep(label: $0.label, state: NotchStepState($0.state)) },
             failure: readiness.failure,
             detail: readiness.detail,
-            cancellable: cancellable && readiness.failure == nil)
+            cancellable: cancellable && readiness.failure == nil,
+            actionTitle: readiness.failureActionTitle)
         // An empty reading is the end of the start: the island says Live and folds.
         let carrying = !readiness.steps.isEmpty || readiness.failure != nil
         if carrying, !isShowing { shownAt = Date() }

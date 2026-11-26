@@ -106,12 +106,15 @@ extension ZoomSignInSection {
 /// snappy, instant under Reduce Motion).
 struct AdvancedDisclosure<Content: View>: View {
     let title: String
+    /// Set to true from outside (the failure card's Open Settings) to unfold it; reset once done.
+    var openRequest: Binding<Bool>?
     @State private var open: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let content: Content
 
-    init(_ title: String, open: Bool = false, @ViewBuilder content: () -> Content) {
+    init(_ title: String, open: Bool = false, openRequest: Binding<Bool>? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.openRequest = openRequest
         _open = State(initialValue: open)
         self.content = content()
     }
@@ -142,5 +145,13 @@ struct AdvancedDisclosure<Content: View>: View {
             }
         }
         .clipped()
+        .onAppear { honourRequest() }
+        .onChange(of: openRequest?.wrappedValue ?? false) { _, _ in honourRequest() }
+    }
+
+    private func honourRequest() {
+        guard let openRequest, openRequest.wrappedValue else { return }
+        withAnimation(anim) { open = true }
+        openRequest.wrappedValue = false
     }
 }

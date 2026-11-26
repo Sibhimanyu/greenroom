@@ -722,7 +722,7 @@ private struct NotchPillView: View {
                 .accessibilityLabel(failure.headline)
                 .accessibilityHint(failure.hasMore ? (model.failureOpen ? "Folds the message" : "Shows the whole message") : "")
                 Button { model.onAction?() } label: {
-                    Text("Try again")
+                    Text(failure.actionTitle)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.black)
                         .padding(.horizontal, 10).padding(.vertical, 4)

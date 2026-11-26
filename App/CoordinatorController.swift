@@ -320,12 +320,16 @@ final class CoordinatorController: ObservableObject {
         stop()
     }
 
-    private func failStartReadiness(_ message: String) {
+    private func failStartReadiness(_ message: String, fix: StartFailureFix? = nil) {
         if let active = startReadiness.steps.firstIndex(where: { $0.state == .active }) {
             startReadiness.steps[active].state = .failed
         }
+        startFailureFix = fix
+        startReadiness.failureActionTitle = fix?.title
         startReadiness.failure = message
     }
+    /// What the failure card's button does when it is not Try again.
+    private var startFailureFix: StartFailureFix?
     /// True only during the Start transition (pipeline + meeting setup).
     /// `stageLive` is the "session is live" flag the buttons key
     /// off once starting completes.
@@ -675,7 +679,42 @@ final class CoordinatorController: ObservableObject {
     /// What Home's Zoom pill and the menu bar say when Start can run but
     /// something about its route needs a look; nil when nothing does.
     var zoomRouteAttention: String? {
-        zoomRoute.usesGreenroomApp && zoomNeedsMorePermission ? zoomAttentionTitle : nil
+        let route = zoomRoute
+        if route.usesGreenroomApp && zoomNeedsMorePermission { return zoomAttentionTitle }
+        return ZoomRefusalRules.homeWarning(route: route, accountID: zoomAccountID, refused: zoomRefusedAccounts)
+    }
+    /// Settings' note under "Start uses" when Zoom refused this account before.
+    var zoomRouteNote: String? {
+        ZoomRefusalRules.settingsNote(route: zoomRoute, accountID: zoomAccountID, refused: zoomRefusedAccounts)
+    }
+    private var zoomAccountID: String { zoomUser.profile?.accountID ?? "" }
+
+    /// Signed-in accounts Zoom refused to start a meeting for through
+    /// Greenroom's Zoom app (error 63). Cleared by the next Start that works.
+    @Published private(set) var zoomRefusedAccounts: Set<String> =
+        ZoomRefusalRules.decode(UserDefaults.standard.string(forKey: CoordinatorController.zoomRefusedAccountsKey))
+    static let zoomRefusedAccountsKey = "zoomRefusedAccountIDs"
+
+    private func noteStartOutcome(route: ZoomRoute, crossAccountRefusal: Bool) {
+        let next = ZoomRefusalRules.afterStart(zoomRefusedAccounts, accountID: zoomAccountID, route: route,
+                                               crossAccountRefusal: crossAccountRefusal)
+        guard next != zoomRefusedAccounts else { return }
+        zoomRefusedAccounts = next
+        defaults.set(ZoomRefusalRules.encode(next), forKey: Self.zoomRefusedAccountsKey)
+    }
+
+    /// Asks Settings -> Zoom to unfold "Use your own Zoom apps (advanced)".
+    @Published var zoomOwnAppsRequested = false
+
+    /// The failure card's Open Settings: Settings -> Zoom, own apps unfolded.
+    func openZoomOwnApps() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let open = SwiftUIActions.openSettings { open() }
+        else { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+        zoomOwnAppsRequested = true
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .showSettingsTab, object: "zoom")
+        }
     }
     var zoomAttentionDetail: String { zoomUser.attentionDetail }
     var zoomSignInError: String? { zoomUser.lastError }
@@ -2035,6 +2074,7 @@ final class CoordinatorController: ObservableObject {
 
                 try Task.checkCancellation()
                 mark(.meeting, .done)
+                noteStartOutcome(route: route, crossAccountRefusal: false)
                 // The island has carried the start since the click; the floating bar
                 // first appears now, live. It is the surface unless the layout places a
                 // Meeting window piece (owner, 2026-11-26), whoever is already in the
@@ -2105,7 +2145,10 @@ final class CoordinatorController: ObservableObject {
                     apply(.meetingStartTaskFinished(startID: startID))
                     return
                 }
-                let message = ZoomRouteWords.failure(error.localizedDescription, route: route)
+                let crossAccount = (error as? ZoomMeetingSDKError)?.isCrossAccountRejection ?? false
+                noteStartOutcome(route: route, crossAccountRefusal: crossAccount)
+                let failure = ZoomRefusalRules.startFailure(error.localizedDescription, crossAccount: crossAccount, route: route)
+                let message = failure.message
                 log("Failed: \(message)")
                 Analytics.failure("start")
                 // Left on screen rather than cleared. The panel is the surface
@@ -2114,7 +2157,7 @@ final class CoordinatorController: ObservableObject {
                 // happened on - with Try again and Close on it.
                 // The bar is not where the error lives (it goes away, Home comes
                 // back); the island is, as it always was.
-                failStartReadiness(message)
+                failStartReadiness(message, fix: failure.fix)
                 Notifier.post(title: "Greenroom couldn\u{2019}t start", body: message)
                 // And the unwind: a failed start used to leave the cameras, the
                 // recorder and the half-started meeting running behind the card
@@ -3674,6 +3717,8 @@ final class CoordinatorController: ObservableObject {
             mark(.meeting, .active)
             try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
         } catch {
+            // Zoom's refusal of the account keeps its type, so Start can explain it.
+            if (error as? ZoomMeetingSDKError)?.isCrossAccountRejection == true { throw error }
             throw NSError(domain: "Greenroom", code: 24, userInfo: [
                 NSLocalizedDescriptionKey: "Couldn't start this meeting as host: \(error.localizedDescription)"
             ])
@@ -4455,6 +4500,12 @@ final class CoordinatorController: ObservableObject {
     /// The failure card\u{2019}s Try again: wait for the unwind of the failed start
     /// to finish (the Start guard refuses anything while it runs), then Start.
     private func retryAfterFailure() {
+        if startFailureFix == .openOwnZoomApps {
+            startFailureFix = nil
+            dismissStartFailure()
+            openZoomOwnApps()
+            return
+        }
         dismissStartFailure()
         Task {
             for _ in 0..<50 where phase.isStartOrStopInFlight {

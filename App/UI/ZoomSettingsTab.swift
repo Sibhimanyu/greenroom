@@ -48,7 +48,8 @@ struct ZoomSettingsTab: View {
             hideSelfView: $coordinator.hideSelfView,
             signIn: ZoomSignInSection.live(coordinator),
             route: ZoomRouteRow.live(coordinator),
-            showGuide: { coordinator.presentOnboarding() })
+            showGuide: { coordinator.presentOnboarding() },
+            ownAppsRequest: $coordinator.zoomOwnAppsRequested)
     }
 }
 
@@ -71,6 +72,8 @@ struct ZoomPageContent: View {
     var ownAppsOpen = false
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
+    /// The failure card's Open Settings unfolds "Use your own Zoom apps".
+    var ownAppsRequest: Binding<Bool>? = nil
 
     // "During the meeting" (moved from the Layout tab; keys unchanged).
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
@@ -101,7 +104,7 @@ struct ZoomPageContent: View {
             }
 
             Section {
-                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: ownAppsOpen) {
+                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: ownAppsOpen, openRequest: ownAppsRequest) {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -158,6 +161,8 @@ struct ZoomPageContent: View {
 struct ZoomRouteRow: View {
     let route: ZoomRoute
     let bothSetUp: Bool
+    /// Zoom refused this account before (error 63): why, and what to do.
+    var note: String? = nil
     let onSwitch: () -> Void
 
     var body: some View {
@@ -172,6 +177,10 @@ struct ZoomRouteRow: View {
                         .help("Start takes the meeting and the video from the same place. This switches both.")
                 }
             }
+            if let note {
+                StatusBadge(text: note, tone: .problem)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if bothSetUp, let note = ZoomRouteWords.bothNote(route) {
                 Text(note).font(.caption).foregroundStyle(.secondary)
             }
@@ -184,6 +193,7 @@ extension ZoomRouteRow {
     @MainActor
     static func live(_ coordinator: CoordinatorController) -> ZoomRouteRow {
         ZoomRouteRow(route: coordinator.zoomRoute, bothSetUp: coordinator.zoomRoutesBothSetUp,
+                     note: coordinator.zoomRouteNote,
                      onSwitch: { coordinator.zoomPrefersOwnApps.toggle() })
     }
 }

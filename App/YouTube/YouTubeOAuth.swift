@@ -29,15 +29,14 @@ struct YouTubeOAuthClient: Equatable {
 
 enum YouTubeOAuth {
 
-    /// THE shared client. PLACEHOLDER until the owner sends the Desktop
-    /// client ID and secret of the published Cloud project: paste both here
-    /// (nowhere else reads them). While `id` starts with "PLACEHOLDER", the
-    /// app treats Sign in with Google as "not available yet"
-    /// (`YouTubeRouteRules.sharedAvailable`) and offers your own Google app
-    /// and Upload in YouTube Studio instead.
+    /// THE shared client: the Desktop OAuth client of the owner's "Greenroom Youtube"
+    /// Cloud project (published In production, unverified; owner, 2026-11-26). Nowhere
+    /// else reads it. A desktop secret is not confidential (Google: desktop apps are
+    /// public clients). An id starting with "PLACEHOLDER" would make Sign in with Google
+    /// "not available yet" (`YouTubeRouteRules.sharedAvailable`).
     static let sharedClient = YouTubeOAuthClient(
-        id: "PLACEHOLDER.apps.googleusercontent.com",
-        secret: "PLACEHOLDER")
+        id: "586090482136-7v050te76etsgj9dk2nugtskciv3f5v3.apps.googleusercontent.com",
+        secret: "")
 
     /// Upload and edit the account's own videos. `youtube.upload` alone
     /// cannot change a title afterwards, and there is no Google scope between

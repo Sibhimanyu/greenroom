@@ -29,6 +29,8 @@ enum ZoomRouteGap: Equatable {
     case notSignedIn
     /// Signed in, but Greenroom has no signing service to use (never true in a release).
     case signInNotFinished
+    /// Sign in with Zoom is coming soon, this person used it, and their own Zoom apps aren't set up.
+    case signInComingSoon
 }
 
 enum ZoomRoute: Equatable {
@@ -56,6 +58,12 @@ struct ZoomRouteFacts: Equatable {
     var sdkClientID: String
     /// The Settings switch: when both routes work, use the sign-in instead of your own Zoom apps.
     var prefersSignIn: Bool
+    /// Sign in with Zoom shows as Coming soon (`ZoomSignInAvailability.isComingSoon`).
+    var signInComingSoon: Bool
+
+    /// The sign-in is what Start uses: chosen, and not coming soon. A saved
+    /// choice stays saved while it is coming soon, ready for when it opens.
+    var choosesSignIn: Bool { prefersSignIn && !signInComingSoon }
 }
 
 enum ZoomRouteRules {
@@ -64,7 +72,17 @@ enum ZoomRouteRules {
     /// is not ready, Start says what it is missing and never quietly takes the
     /// other one. "Your own Zoom apps" works only with both halves, because
     /// Start needs REST to make the meeting and the SDK to run it.
+    ///
+    /// While Sign in with Zoom is coming soon the route is always your own Zoom
+    /// apps: a saved sign-in choice or a stored token never makes Start use
+    /// the sign-in. Someone who used it and has no own apps yet gets their
+    /// own gap, so Home and Settings can say what to do.
     static func route(_ f: ZoomRouteFacts) -> ZoomRoute {
+        if f.signInComingSoon {
+            if ownAvailable(f) { return .ownApps(sdkClientID: f.sdkClientID.trimmingCharacters(in: .whitespaces)) }
+            if f.ownSDKComplete || f.ownS2SComplete { return .none(.ownAppsIncomplete) }
+            return .none(f.signedIn || f.prefersSignIn ? .signInComingSoon : .ownAppsNotSetUp)
+        }
         if f.prefersSignIn {
             if greenroomAvailable(f) { return .greenroomApp(account: displayName(f)) }
             return .none(f.signedIn ? .signInNotFinished : .notSignedIn)
@@ -104,6 +122,14 @@ enum ZoomRouteRules {
     }
 }
 
+/// Where Home's and the menu bar's Zoom problem opens.
+enum ZoomHomeFix: Equatable {
+    /// Settings -> Zoom.
+    case settings
+    /// The setup guide's Zoom step, at your own Zoom apps.
+    case setupGuide
+}
+
 /// The words for the route. One phrase, used by Settings, the log and failures.
 enum ZoomRouteWords {
     /// "your Zoom account (Name), through Greenroom's Zoom app" and the like.
@@ -116,6 +142,8 @@ enum ZoomRouteWords {
             return "your own Zoom apps (client ID \(clientIDTail(id)))"
         case .none(.ownAppsNotSetUp):
             return "nothing yet: your own Zoom apps aren\u{2019}t set up"
+        case .none(.signInComingSoon):
+            return "nothing yet: Sign in with Zoom is coming soon and your own Zoom apps aren\u{2019}t set up"
         case .none(.notSignedIn):
             return "nothing yet: you are not signed in with Zoom"
         case .none(.signInNotFinished):
@@ -130,6 +158,7 @@ enum ZoomRouteWords {
         switch route {
         case .greenroomApp, .ownApps: return "Start uses: \(phrase(route))."
         case .none(.ownAppsNotSetUp): return "Start can\u{2019}t run yet: your own Zoom apps aren\u{2019}t set up."
+        case .none(.signInComingSoon): return "Start can\u{2019}t run yet: Sign in with Zoom is coming soon. \(setUpOwnApps)."
         case .none(.notSignedIn): return "Start can\u{2019}t run yet: you are not signed in with Zoom."
         case .none(.signInNotFinished): return "Start can\u{2019}t run yet: Sign in with Zoom isn\u{2019}t finished setting up. Use your own Zoom apps for now."
         case .none(.ownAppsIncomplete): return "Start can\u{2019}t run yet: your own Zoom apps need both the Meeting SDK and the Server-to-Server app."
@@ -141,10 +170,20 @@ enum ZoomRouteWords {
         switch route {
         case .greenroomApp, .ownApps: return nil
         case .none(.ownAppsNotSetUp), .none(.ownAppsIncomplete): return "Zoom: set up your apps"
+        case .none(.signInComingSoon): return setUpOwnApps
         case .none(.notSignedIn): return "Zoom: sign in"
         case .none(.signInNotFinished): return "Zoom: sign-in not ready"
         }
     }
+
+    /// Where Home's Zoom pill and the menu bar's Zoom line take you.
+    /// Someone who used the sign-in has nothing to fix in Settings: the guide sets up their own apps.
+    static func homeFix(_ route: ZoomRoute) -> ZoomHomeFix {
+        route == .none(.signInComingSoon) ? .setupGuide : .settings
+    }
+
+    /// Home's, the menu bar's and Settings' status for someone who used the sign-in.
+    static let setUpOwnApps = "Set up your own Zoom apps to start meetings"
 
     /// The session log's line at Start.
     static func logLine(_ route: ZoomRoute) -> String { "Zoom route: \(phrase(route))." }

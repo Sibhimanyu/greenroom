@@ -15,17 +15,20 @@ final class ZoomRouteChoiceRulesTests: XCTestCase {
     private static func facts(signedIn: Bool = false, endpointSet: Bool = true, signingIn: Bool = false,
                               sdk: Bool = false, s2s: Bool = false,
                               sdkStarted: Bool? = nil, s2sStarted: Bool? = nil,
-                              prefersSignIn: Bool) -> ZoomRouteChoiceFacts {
+                              prefersSignIn: Bool, comingSoon: Bool = false) -> ZoomRouteChoiceFacts {
         ZoomRouteChoiceFacts(
             route: ZoomRouteFacts(signedIn: signedIn, accountName: "Sample Host", accountEmail: "host@example.com",
                                   endpointSet: endpointSet, ownSDKComplete: sdk, ownS2SComplete: s2s,
-                                  sdkClientID: "SampleClientID9z7Q", prefersSignIn: prefersSignIn),
+                                  sdkClientID: "SampleClientID9z7Q", prefersSignIn: prefersSignIn,
+                                  signInComingSoon: comingSoon),
             ownSDKStarted: sdkStarted ?? sdk, ownS2SStarted: s2sStarted ?? s2s, signingIn: signingIn)
     }
 
     private static let ownLine = "Start uses: your own Zoom apps (client ID \u{2026}9z7Q)."
     private static let signInLine = "Start uses: your Zoom account (Sample Host), through Greenroom\u{2019}s Zoom app."
 
+    /// These rows are the sign-in open (comingSoon off, as after Zoom approves
+    /// the app, or the DEBUG override). Coming soon has its own tests below.
     private static let rows: [Row] = [
         Row(name: "both set up, own apps chosen",
             facts: facts(signedIn: true, sdk: true, s2s: true, prefersSignIn: false),

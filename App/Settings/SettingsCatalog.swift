@@ -212,6 +212,7 @@ enum SettingsCatalog {
         excluded("account.mock.preset", .unset, "Debug account mock."),
         excluded("account.mock.signedIn", .unset, "Debug account mock."),
         excluded("GreenroomRawVideoSpike", .bool(false), "A debug switch."),
+        excluded("debug.*", .unset, "DEBUG-build switches; a Release build never reads or writes them."),
         excluded("secret_*", .unset, "Keychain items are named at run time; the secrets that travel are listed above."),
     ]
 

@@ -6,13 +6,14 @@ final class ZoomRouteRulesTests: XCTestCase {
 
     private func facts(signedIn: Bool = false, name: String = "Sibhi -8A", email: String = "s@example.com",
                        endpointSet: Bool = true, sdk: Bool = false, s2s: Bool = false,
-                       clientID: String = "AbCdEfGh1234wxyz", prefersSignIn: Bool = false) -> ZoomRouteFacts {
+                       clientID: String = "AbCdEfGh1234wxyz", prefersSignIn: Bool = false,
+                       comingSoon: Bool = false) -> ZoomRouteFacts {
         ZoomRouteFacts(signedIn: signedIn, accountName: name, accountEmail: email, endpointSet: endpointSet,
                        ownSDKComplete: sdk, ownS2SComplete: s2s, sdkClientID: clientID,
-                       prefersSignIn: prefersSignIn)
+                       prefersSignIn: prefersSignIn, signInComingSoon: comingSoon)
     }
 
-    // MARK: The choice is the route
+    // MARK: The choice is the route (the sign-in open: comingSoon off)
 
     func testSignInChosenAndSignedInUsesGreenroomsApp() {
         XCTAssertEqual(ZoomRouteRules.route(facts(signedIn: true, prefersSignIn: true)), .greenroomApp(account: "Sibhi -8A"))

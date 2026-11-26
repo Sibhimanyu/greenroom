@@ -1110,10 +1110,8 @@ struct HomeView: View {
     private func fix(_ fix: Fix) {
         switch fix {
         case .zoomSettings:
-            openSettings()
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .showSettingsTab, object: "zoom")
-            }
+            // Settings -> Zoom, or the setup guide when that is where the fix is.
+            coordinator.openZoomFix()
         case .cameraPrivacy: Self.openPrivacy("Privacy_Camera")
         case .micPrivacy: Self.openPrivacy("Privacy_Microphone")
         case .screenPrivacy: Self.openPrivacy("Privacy_ScreenCapture")
@@ -1297,7 +1295,7 @@ struct HomeView: View {
                 if coordinator.isLoadingScheduled {
                     Text("Loading\u{2026}")
                 } else if !hasS2SCredentials {
-                    Button("Add your Zoom account in Settings \u{2192} Zoom") { fix(.zoomSettings) }
+                    Button("Set up Zoom in Settings \u{2192} Zoom") { coordinator.openZoomSettings() }
                 } else {
                     Text("No scheduled meetings on this Zoom account. Schedule one in Zoom, then Refresh.")
                 }

@@ -75,6 +75,15 @@ struct ZoomRouteChoice: Equatable {
     var startBlocked: String?
     /// When the chosen way is not ready but the other one is.
     var otherHint: String?
+    /// Sign in with Zoom shows as Coming soon and can't be picked.
+    var signInComingSoon = false
+
+    /// Whether the choice control lets this option be picked.
+    func isSelectable(_ option: ZoomRouteOption) -> Bool { !(signInComingSoon && option == .signIn) }
+    /// The small label beside the option's title ("Coming soon"), or nil.
+    func badge(_ option: ZoomRouteOption) -> String? { isSelectable(option) ? nil : ZoomSignInAvailability.label }
+    /// The option's tooltip in the choice control.
+    func tip(_ option: ZoomRouteOption) -> String { isSelectable(option) ? option.note : ZoomSignInAvailability.tooltip }
 }
 
 enum ZoomRouteChoiceRules {
@@ -83,9 +92,9 @@ enum ZoomRouteChoiceRules {
         let route = ZoomRouteRules.route(r)
         let line = ZoomRouteWords.line(route)
         let blocked = route.isUsable ? nil : line
-        let signInWorks = r.signedIn && r.endpointSet
+        let signInWorks = r.signedIn && r.endpointSet && !r.signInComingSoon
         let ownWorks = r.ownSDKComplete && r.ownS2SComplete
-        if r.prefersSignIn {
+        if r.choosesSignIn {
             let account = [r.accountName, r.accountEmail]
                 .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             let status: String, tone: ZoomRouteTone, check: ZoomRouteCheck?, action: ZoomRouteAction?
@@ -109,7 +118,9 @@ enum ZoomRouteChoiceRules {
                                    startLine: line, startBlocked: blocked, otherHint: hint)
         }
         let status: String, tone: ZoomRouteTone
-        if ownWorks {
+        if route == .none(.signInComingSoon) {
+            (status, tone) = (ZoomRouteWords.setUpOwnApps, .problem)
+        } else if ownWorks {
             (status, tone) = ("Ready", .good)
         } else if !f.ownSDKStarted && !f.ownS2SStarted && !r.ownSDKComplete && !r.ownS2SComplete {
             (status, tone) = ("Not set up yet. Paste the keys from your two Zoom apps below.", .waiting)
@@ -118,10 +129,15 @@ enum ZoomRouteChoiceRules {
             (status, tone) = ("Needs the \(needs.joined(separator: " and ")) keys", .problem)
         }
         let started = f.ownSDKStarted || f.ownS2SStarted || r.ownSDKComplete || r.ownS2SComplete
-        let hint = !ownWorks && signInWorks
+        var hint = !ownWorks && signInWorks
             ? "You are signed in with Zoom. Choose \(ZoomRouteOption.signIn.title) to start with that instead." : nil
+        // Their sign-in is kept, never signed out quietly: say so.
+        if r.signInComingSoon && r.signedIn && !ownWorks {
+            hint = "You are still signed in with Zoom. Greenroom keeps it for when \(ZoomRouteOption.signIn.title) opens."
+        }
         return ZoomRouteChoice(selected: .ownApps, status: status, tone: tone, check: started ? .setup : nil, action: nil,
-                               startLine: line, startBlocked: blocked, otherHint: hint)
+                               startLine: line, startBlocked: blocked, otherHint: hint,
+                               signInComingSoon: r.signInComingSoon)
     }
 
     /// The choice when Greenroom launches. A saved choice carries over. With

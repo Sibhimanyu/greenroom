@@ -50,9 +50,22 @@ struct ZoomSettingsTab: View {
             refusedNote: coordinator.zoomRouteNote,
             onSignIn: { coordinator.signInWithZoom() },
             onCancelSignIn: { coordinator.cancelZoomSignIn() },
-            showGuide: { coordinator.presentOnboarding() })
+            showGuide: { coordinator.presentOnboarding() },
+            debugRows: debugRows)
             .onAppear { coordinator.loadSecretsIfNeeded() }
             .onChange(of: coordinator.zoomSetupCredentials) { _, _ in coordinator.zoomSetupChecker.credentialsChanged() }
+    }
+
+    /// DEBUG builds only: the owner turns Sign in with Zoom back on for testing. Never ships.
+    private var debugRows: AnyView? {
+        #if DEBUG
+        return AnyView(Toggle("Sign in with Zoom on for testing (Debug)", isOn: Binding(
+            get: { coordinator.zoomSignInOnForTesting },
+            set: { coordinator.zoomSignInOnForTesting = $0 }))
+            .help("Debug builds only. Lifts Coming soon so the sign-in can be chosen and tested. A Release build ignores it."))
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -84,6 +97,8 @@ struct ZoomPageContent: View {
     var showGuide: (() -> Void)? = nil
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
+    /// A DEBUG build's extra rows (the sign-in override); nil in Release and in renders.
+    var debugRows: AnyView? = nil
 
     // "During the meeting" (moved from the Layout tab; keys unchanged).
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
@@ -100,18 +115,25 @@ struct ZoomPageContent: View {
                          ("Client Secret", s2sClientSecret)])
     }
 
-    /// The segmented control's value; a pick animates the sections' fold.
+    /// The segmented control's value: what the rules say is shown (always your
+    /// own Zoom apps while the sign-in is coming soon, whatever was saved). A
+    /// pick animates the sections' fold; an option that can't be picked is ignored.
     private var option: Binding<ZoomRouteOption> {
-        Binding(get: { prefersSignIn ? .signIn : .ownApps },
-                set: { picked in Collapse.animate { prefersSignIn = (picked == .signIn) } })
+        Binding(get: { choice.selected },
+                set: { picked in
+                    guard choice.isSelectable(picked) else { return }
+                    Collapse.animate { prefersSignIn = (picked == .signIn) }
+                })
     }
+
+    private var showsSignIn: Bool { choice.selected == .signIn }
 
     var body: some View {
         Form {
             Section {
                 ZoomRouteChoiceRow(option: option, choice: choice)
-                Collapsible(hidden: prefersSignIn) { ownAppsSection }
-                Collapsible(hidden: !prefersSignIn) { signInSection }
+                Collapsible(hidden: showsSignIn) { ownAppsSection }
+                Collapsible(hidden: !showsSignIn) { signInSection }
             } header: {
                 Text("How Greenroom connects to Zoom")
             }
@@ -128,6 +150,10 @@ struct ZoomPageContent: View {
                     .help("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
                 Toggle("Hide my own tile", isOn: $hideSelfView)
                     .help("Your own video is left out of the meeting you see. Everyone still sees you.")
+            }
+
+            if let debugRows {
+                Section("Debug") { debugRows }
             }
         }
         .formStyle(.grouped)
@@ -209,7 +235,9 @@ struct ZoomPageContent: View {
 
 /// The choice at the top: the two ways as one segmented control, and the
 /// chosen one's line on who it is for. Its tooltip and accessibility value are
-/// the "Start uses: ..." sentence, the same words Home and the log use.
+/// the "Start uses: ..." sentence, the same words Home and the log use. While
+/// Sign in with Zoom is coming soon its segment is dimmed with a small
+/// "Coming soon" label, can't be picked, and its tooltip says why.
 struct ZoomRouteChoiceRow: View {
     @Binding var option: ZoomRouteOption
     let choice: ZoomRouteChoice
@@ -217,8 +245,22 @@ struct ZoomRouteChoiceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             GreenroomSegmented("How Greenroom connects to Zoom", selection: $option,
-                               options: ZoomRouteOption.allCases) { Text($0.title) }
-                .segmentHelp { $0.note }
+                               options: ZoomRouteOption.allCases) { option in
+                HStack(spacing: 6) {
+                    Text(option.title)
+                    if let badge = choice.badge(option) {
+                        Text(badge)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(.quaternary))
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+                .segmentHelp { choice.tip($0) }
+                .segmentsEnabled { choice.isSelectable($0) }
             Text(option.note)
                 .font(.caption)
                 .foregroundStyle(.secondary)

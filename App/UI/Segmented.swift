@@ -44,6 +44,9 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     var toolbar = false
     /// A tooltip for one segment, or nil.
     var segmentTips: (Value) -> String? = { _ in nil }
+    /// Whether a segment can be picked. A disabled one is drawn dimmed, keeps
+    /// its tooltip (so it can say why), and the arrow keys skip it.
+    var segmentEnabled: (Value) -> Bool = { _ in true }
     @ViewBuilder let label: (Value) -> Label
 
     @Namespace private var ns
@@ -83,11 +86,18 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
             .accessibilityRepresentation {
                 Picker(title, selection: $selection) {
                     ForEach(options, id: \.self) { option in
-                        label(option).tag(option)
+                        label(option).tag(option).disabled(!segmentEnabled(option))
                     }
                 }
                 .pickerStyle(.segmented)
             }
+    }
+
+    /// Makes the segments `enabled` says no to unpickable.
+    func segmentsEnabled(_ enabled: @escaping (Value) -> Bool) -> Self {
+        var copy = self
+        copy.segmentEnabled = enabled
+        return copy
     }
 
     /// Adds a tooltip to the segments that have one.
@@ -99,7 +109,13 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
 
     private func move(_ delta: Int) -> KeyPress.Result {
         guard let i = options.firstIndex(of: selection) else { return .ignored }
-        let n = SegmentedMath.step(from: i, by: delta, count: options.count)
+        var n = SegmentedMath.step(from: i, by: delta, count: options.count)
+        // Skip segments that can't be picked; stay put if none further can.
+        while n != i, !segmentEnabled(options[n]) {
+            let next = SegmentedMath.step(from: n, by: delta, count: options.count)
+            if next == n { n = i; break }
+            n = next
+        }
         guard n != i else { return .handled }
         withAnimation(motion) { selection = options[n] }
         return .handled
@@ -132,12 +148,16 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
 
     private func segment(_ option: Value) -> some View {
         let on = option == selection
+        let enabled = segmentEnabled(option)
         return Button {
+            // Not `.disabled`: a disabled button loses its tooltip, and the tooltip says why.
+            guard enabled else { return }
             withAnimation(motion) { selection = option }
         } label: {
             label(option)
                 .fontWeight(on ? .semibold : .regular)
                 .foregroundStyle(on ? AnyShapeStyle(Color.white)
+                                    : !enabled ? AnyShapeStyle(.tertiary)
                                     : AnyShapeStyle(toolbar || hovered == option ? .primary : .secondary))
                 .lineLimit(1)
                 .padding(.horizontal, hPadding)
@@ -148,7 +168,7 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         .buttonStyle(.plain)
         .help(segmentTips(option) ?? "")
         .onHover { inside in
-            if inside { hovered = option } else if hovered == option { hovered = nil }
+            if inside, enabled { hovered = option } else if hovered == option { hovered = nil }
         }
         .background { selectionCapsule(on: on) }
     }

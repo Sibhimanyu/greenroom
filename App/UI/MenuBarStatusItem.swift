@@ -335,10 +335,8 @@ final class MenuBarStatusItem: NSObject {
         case .fix(let fix):
             switch fix {
             case .zoomSettings:
-                openSettings()
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .showSettingsTab, object: "zoom")
-                }
+                // Settings -> Zoom, or the setup guide when that is where the fix is.
+                coordinator.openZoomFix()
             case .cameraPrivacy: openPrivacy("Privacy_Camera")
             case .micPrivacy: openPrivacy("Privacy_Microphone")
             case .screenPrivacy: openPrivacy("Privacy_ScreenCapture")

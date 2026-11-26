@@ -612,7 +612,8 @@ final class CoordinatorController: ObservableObject {
                        ownSDKComplete: ownSDKKeysPresent,
                        ownS2SComplete: ownS2SComplete,
                        sdkClientID: sdkClientID,
-                       prefersSignIn: zoomPrefersSignIn)
+                       prefersSignIn: zoomPrefersSignIn,
+                       signInComingSoon: ZoomSignInAvailability.isComingSoon)
     }
 
     /// The route Start will use right now.
@@ -633,7 +634,8 @@ final class CoordinatorController: ObservableObject {
     var zoomRESTSource: ZoomCredentialRules.RESTSource {
         let route = zoomRoute
         if route.isUsable { return ZoomRouteRules.restSource(route) }
-        if zoomPrefersSignIn { return zoomUser.isSignedIn ? .signedIn : .none }
+        // While Sign in with Zoom is coming soon a saved sign-in choice never answers.
+        if zoomRouteFacts.choosesSignIn { return zoomUser.isSignedIn ? .signedIn : .none }
         return ownS2SComplete ? .ownApps : .none
     }
 
@@ -679,6 +681,44 @@ final class CoordinatorController: ObservableObject {
     private var zoomRouteMissingText: String {
         ZoomRouteWords.line(zoomRoute) + " Settings (\u{2318},) \u{2192} Zoom."
     }
+
+    /// Home's Zoom pill and the menu bar: where their Zoom problem opens
+    /// (the setup guide for someone who used Sign in with Zoom while it is coming soon).
+    func openZoomFix() {
+        switch ZoomRouteWords.homeFix(zoomRoute) {
+        case .setupGuide: openZoomSetupGuide()
+        case .settings: openZoomSettings()
+        }
+    }
+
+    /// The setup guide's Zoom step, at your own Zoom apps.
+    func openZoomSetupGuide(at spot: ZoomGuideSpot = .sdkCredentials) {
+        NSApp.activate(ignoringOtherApps: true)
+        zoomGuideSpot = spot
+        presentOnboarding()
+    }
+
+    func openZoomSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let open = SwiftUIActions.openSettings { open() }
+        else { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .showSettingsTab, object: "zoom")
+        }
+    }
+
+    #if DEBUG
+    /// Settings -> Debug: Sign in with Zoom on for testing while it is coming soon.
+    var zoomSignInOnForTesting: Bool {
+        get { UserDefaults.standard.bool(forKey: ZoomSignInAvailability.debugSignInOnKey) }
+        set {
+            objectWillChange.send()
+            UserDefaults.standard.set(newValue, forKey: ZoomSignInAvailability.debugSignInOnKey)
+            scheduledMeetings = []
+            prefetchedZAK = nil
+        }
+    }
+    #endif
 
     /// The route the running (or last) start took.
     private(set) var startRoute: ZoomRoute?
@@ -3840,7 +3880,7 @@ final class CoordinatorController: ObservableObject {
         // join other people's meetings.
         guard let access = zoomAccess else {
             throw NSError(domain: "Greenroom", code: 23, userInfo: [
-                NSLocalizedDescriptionKey: "Couldn't start this meeting as host: sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom."
+                NSLocalizedDescriptionKey: "Couldn't start this meeting as host. \(zoomRouteMissingText)"
             ])
         }
         do {
@@ -4860,7 +4900,7 @@ final class CoordinatorController: ObservableObject {
         log("Creating a new meeting\u{2026}")
         guard let access = zoomAccess else {
             throw NSError(domain: "Greenroom", code: 26, userInfo: [
-                NSLocalizedDescriptionKey: "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom first."
+                NSLocalizedDescriptionKey: zoomRouteMissingText
             ])
         }
         let meeting = try await access.startInstantMeeting(topic: "Greenroom Meeting")
@@ -4883,7 +4923,7 @@ final class CoordinatorController: ObservableObject {
         loadSecretsIfNeeded()
         guard !isLoadingScheduled else { return }
         guard let access = zoomAccess else {
-            log("Can't list your Zoom meetings \u{2014} sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom first.")
+            log("Can't list your Zoom meetings \u{2014} \(zoomRouteMissingText)")
             return
         }
         isLoadingScheduled = true
@@ -4947,7 +4987,7 @@ final class CoordinatorController: ObservableObject {
     private func requireZoomAccess() throws -> ZoomRESTAccess {
         guard let access = zoomAccess else {
             throw NSError(domain: "Greenroom", code: 27, userInfo: [
-                NSLocalizedDescriptionKey: "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom first."
+                NSLocalizedDescriptionKey: zoomRouteMissingText
             ])
         }
         return access

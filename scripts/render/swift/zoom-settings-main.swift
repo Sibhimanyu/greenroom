@@ -64,7 +64,8 @@ struct Page: View {
         choice = ZoomRouteChoiceRules.choice(ZoomRouteChoiceFacts(
             route: ZoomRouteFacts(signedIn: signedIn, accountName: "Sample Host", accountEmail: "host@example.com",
                                   endpointSet: endpointSet, ownSDKComplete: sdk, ownS2SComplete: s2s,
-                                  sdkClientID: "SampleClientID9z7Q", prefersSignIn: prefersSignIn),
+                                  sdkClientID: "SampleClientID9z7Q", prefersSignIn: prefersSignIn,
+                                  signInComingSoon: false),
             ownSDKStarted: sdk || sdkHalf, ownS2SStarted: s2s, signingIn: signingIn))
     }
 

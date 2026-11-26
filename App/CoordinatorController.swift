@@ -1931,6 +1931,7 @@ final class CoordinatorController: ObservableObject {
 
         beginStartChoreography()
         resetStartReadiness()
+        startPlacementFinished = false
         // Before anything else, so the reference display has something on it
         // from the first frame rather than after the meeting connects.
         // (Only the reference-display panel opens this early: the meeting window
@@ -2076,9 +2077,18 @@ final class CoordinatorController: ObservableObject {
                         }
                     }
                 }
-                mark(.tiling, sessionArranges ? .active : .skipped)
-
-                if sessionArranges { mark(.tiling, .done) }
+                // Done once this start's placement pass ran to its end (hostAllInOne / joinAllInOne).
+                if sessionArranges {
+                    switch StartChoreography.tilingStep(placementFinished: startPlacementFinished) {
+                    case .done: mark(.tiling, .done)
+                    case .failed(let words):
+                        mark(.tiling, .failed)
+                        log(words)
+                    case .waiting: break
+                    }
+                } else {
+                    mark(.tiling, .skipped)
+                }
                 // Clearing the steps is what makes Readiness.isLive true, which
                 // hands the panel back to its ordinary behaviour: the class side
                 // returns to "waiting for students" and the controls come up.
@@ -3645,8 +3655,13 @@ final class CoordinatorController: ObservableObject {
         if sessionArranges {
             presentMeetingSurfaces(trigger: .start)
             finalizeLayout()
+            startPlacementFinished = true
         }
     }
+
+    /// This start's placement pass (presentMeetingSurfaces + finalizeLayout) ran
+    /// to its end: the Tiling step's proof. Reset at each Start.
+    private var startPlacementFinished = false
 
     /// Scheduled: starts one of the account's own scheduled meetings as host
     /// via the built-in client, camera/mic live, chat as yourself. Never joins
@@ -3708,6 +3723,7 @@ final class CoordinatorController: ObservableObject {
         if sessionArranges {
             presentMeetingSurfaces(trigger: .start)
             finalizeLayout()
+            startPlacementFinished = true
         }
     }
 

@@ -27,4 +27,12 @@ final class StartStepProofTests: XCTestCase {
             return XCTFail("a take that never began must fail the step")
         }
     }
+
+    func testTilingIsDoneOnlyWhenThePlacementPassFinished() {
+        XCTAssertEqual(StartChoreography.tilingStep(placementFinished: true), .done)
+        guard case .failed(let words) = StartChoreography.tilingStep(placementFinished: false) else {
+            return XCTFail("a placement pass that did not run is not done")
+        }
+        XCTAssertTrue(words.contains("windows"), words)
+    }
 }

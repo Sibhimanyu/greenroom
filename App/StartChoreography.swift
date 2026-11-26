@@ -188,6 +188,12 @@ enum StartChoreography {
             : "The recording did not start. The meeting is live; press Record to try again.")
     }
 
+    /// The Tiling step. `placementFinished`: this start's placement pass ran to its end.
+    static func tilingStep(placementFinished: Bool) -> StepCheck {
+        placementFinished ? .done
+            : .failed("Greenroom could not arrange your windows for this layout. The meeting is live; use Snap Windows Back to try again.")
+    }
+
     // MARK: Geometry
 
     /// How long Home takes to step aside, and to come back.

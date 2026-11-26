@@ -133,9 +133,9 @@ struct YouTubePageContent: View {
                     Text("Made for kids").font(.callout)
                     MadeForKidsChoice(selection: $madeForKids)
                     if uploadMode == .automatic && madeForKids == nil {
-                        Text("Automatic uploads need this answer.")
+                        Label("Automatic uploads need this answer.", systemImage: "exclamationmark.circle")
                             .font(.caption)
-                            .foregroundStyle(Brand.netText)
+                            .foregroundStyle(.secondary)
                     } else {
                         Link("What counts as made for kids?", destination: YouTubeUploadRules.madeForKidsHelpURL)
                             .font(.caption)
@@ -146,7 +146,6 @@ struct YouTubePageContent: View {
                 Text(YouTubeSettingsWords.certifyAttributed)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .tint(Brand.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

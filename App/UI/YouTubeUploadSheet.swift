@@ -199,7 +199,6 @@ struct YouTubeUploadSheetContent: View {
         Text(YouTubeSettingsWords.certifyAttributed)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .tint(Brand.text)
             .fixedSize(horizontal: false, vertical: true)
     }
 

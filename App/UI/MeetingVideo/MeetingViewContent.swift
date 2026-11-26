@@ -26,6 +26,9 @@ struct MeetingViewSnapshot: Equatable {
     /// Everyone but you, in roster order.
     var others: [MeetingViewPerson] = []
     var me: MeetingViewPerson?
+    /// How the owner's own video is drawn (CoordinatorController.selfViewLook): the same corner mark
+    /// and Video stopped look as the Meeting window's "You" tile, on any tile that shows the owner.
+    var you: SelfViewRules.Look?
     /// Active speaker and Speaker + strip: who the stage shows. A 1:1 is the other person.
     var stage: MeetingViewPerson?
     /// Multi-speaker: the person in each place, by place (0, 1, 2).
@@ -251,7 +254,7 @@ final class MeetingViewContentView: NSView {
         for plan in plans {
             let tile = tiles[plan.slot] ?? makeTile(plan.slot)
             if tile.frame != plan.frame { tile.frame = plan.frame }
-            tile.apply(plan.person)
+            tile.apply(plan.person, you: s.you)
         }
         layoutGhosts(s)
         layoutPager(s, pageSize: pageSize)

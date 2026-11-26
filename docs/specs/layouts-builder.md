@@ -244,6 +244,12 @@ different order; this table is the authority.
   shared picture alone, with a small corner mark (top left): the camera state's icon (`VisibilitySymbol.camera`) and its
   name as tooltip and VoiceOver label. Everyone & me and Only the meeting get no mark. A "Camera off" placeholder is
   prepared (`SelfViewContent.placeholder`, `SelfViewRules.showsPlaceholderWhenCameraIsOut`), not shown.
+  (2026-11-26) The Self view view window's tile of the owner wears the same look from the same rule
+  (`SelfViewRules.look` -> `CoordinatorController.selfViewLook` -> `MeetingViewSnapshot.you` -> `SelfViewRules.tile`,
+  drawn by the shared `SelfViewMarkView`): Off and Only me get the mark, Video stopped the name and its mark (R49.7).
+  The other view windows never show the owner (gallery, Active speaker, Speaker + strip, Multi-speaker and Spotlight
+  draw others only, as the Meeting window does), so nothing else needs it. Tested in `CameraMatrixTests`, rendered
+  by `scripts/render/self-view.sh`.
 - The Devices tab holds devices only: it has no "No camera" card.
 
 **R7. Other apps' 📡 and 👁.** (Q25, Q26)

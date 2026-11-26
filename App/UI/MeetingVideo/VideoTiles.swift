@@ -4,6 +4,9 @@
 //
 //  The tile every view window draws: a video view with Zoom's tile chrome
 //  (MeetingTileChrome) over it, and a right-click that says "Spotlight in window".
+//  A tile of the owner (the Self view window) wears the "You" tile's look from the
+//  same rule (SelfViewRules.tile): the camera state's corner mark, or the name and
+//  "Video stopped" while video is stopped.
 //
 //  No SDK in here. The window hands the tile a video view (the SDK's render
 //  element's view, or a coloured stand-in in the off-screen render) and the
@@ -41,6 +44,7 @@ final class MeetingVideoTile: NSView {
 
     private var video: NSView?
     private let chrome = MeetingTileChrome(frame: .zero)
+    private let mark = SelfViewMarkView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -49,6 +53,7 @@ final class MeetingVideoTile: NSView {
         layer?.cornerRadius = MeetingTheme.tileRadius
         layer?.masksToBounds = true
         addSubview(chrome)
+        addSubview(mark)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -56,9 +61,14 @@ final class MeetingVideoTile: NSView {
     override var isFlipped: Bool { false }
     var videoBounds: NSRect { NSRect(origin: .zero, size: bounds.size) }
 
-    func apply(_ person: MeetingViewPerson, model: MeetingTileModel? = nil) {
+    /// `you` is the owner's look (CoordinatorController.selfViewLook); it changes only the owner's tile.
+    func apply(_ person: MeetingViewPerson, model: MeetingTileModel? = nil, you: SelfViewRules.Look? = nil) {
         self.person = person
-        chrome.apply(model ?? person.tile)
+        let look = SelfViewRules.tile(isMe: person.isMe, zoomVideoOn: person.videoOn, you: you)
+        var tile = model ?? person.tile
+        tile.videoOn = tile.videoOn && look.videoOn
+        chrome.apply(tile)
+        mark.apply(look.mark)
         needsLayout = true
     }
 
@@ -83,6 +93,10 @@ final class MeetingVideoTile: NSView {
         super.layout()
         video?.frame = videoBounds
         chrome.frame = bounds
+        // Top left as on the "You" tile, after the hand badge when the hand is up (MeetingTileChrome's place).
+        let small = bounds.height < 150
+        let inset: CGFloat = small ? 5 : 8
+        mark.place(in: bounds, inset: inset, after: person?.handUp == true ? (small ? 20 : 26) + 4 : 0)
     }
 
     /// The whole tile is one click target, as in the meeting window: the SDK's

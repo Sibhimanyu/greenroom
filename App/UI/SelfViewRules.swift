@@ -53,6 +53,32 @@ enum SelfViewRules {
         return placeholderWhenOut && !cameraInPicture ? .placeholder : .everyoneSees
     }
 
+    /// The "You" tile's whole look, the one source every surface that shows the owner reads:
+    /// the Meeting window's "You" tile and a view window's tile of the owner (the Self view window).
+    struct Look: Equatable {
+        var mark: Mark?
+        var content: SelfViewContent
+    }
+
+    static func look(state: CameraState, cameraInPicture: Bool, videoStopped: Bool = false) -> Look {
+        Look(mark: mark(state: state, cameraInPicture: cameraInPicture, videoStopped: videoStopped),
+             content: content(cameraInPicture: cameraInPicture, videoStopped: videoStopped))
+    }
+
+    /// What a view window's tile (MeetingVideoTile) draws for one person: the corner mark, and whether
+    /// the picture shows (false draws Zoom's video-off look, the name on the tile colour).
+    struct TileLook: Equatable {
+        var mark: Mark?
+        var videoOn: Bool
+    }
+
+    /// The owner's tile follows `you`, so the placeholder shows even while Zoom's roster still says
+    /// video on; anyone else's tile, or the owner's before `you` is known, follows Zoom's flag alone.
+    static func tile(isMe: Bool, zoomVideoOn: Bool, you: Look?) -> TileLook {
+        guard isMe, let you else { return TileLook(mark: nil, videoOn: zoomVideoOn) }
+        return TileLook(mark: you.mark, videoOn: zoomVideoOn && you.content != .placeholder)
+    }
+
     /// The owner's own row in People and in view windows: the camera icon is struck when the camera
     /// is not in the meeting's picture, or Zoom is sending no video at all.
     static func ownRowCameraOff(cameraInPicture: Bool, zoomVideoOn: Bool) -> Bool {

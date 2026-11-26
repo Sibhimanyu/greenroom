@@ -694,6 +694,7 @@ enum MeetingViewWindows {
         var s = MeetingViewSnapshot()
         let people = roster.map(person)
         s.me = people.first { $0.isMe }
+        s.you = CoordinatorController.shared?.selfViewLook
         s.others = people.filter { !$0.isMe }
         let byID = Dictionary(uniqueKeysWithValues: people.map { ($0.id, $0) })
 

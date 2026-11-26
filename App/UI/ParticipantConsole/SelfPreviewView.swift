@@ -32,11 +32,9 @@ final class SelfPreviewView: NSView {
     private let caption = NSTextField(labelWithString: "You")
     private let meter = LevelMeterView()
     /// Top left, quiet: the camera state's icon while the camera is out of everyone's picture
-    /// (Off, Only me). The tile itself keeps showing what everyone sees (SelfViewRules).
-    private let markBadge = NSView()
-    private let markIcon = NSImageView()
-    private let markCorner = NSImageView()
-    private var mark: SelfViewRules.Mark?
+    /// (Off, Only me). The tile itself keeps showing what everyone sees (SelfViewRules). The same
+    /// view marks the owner in the view windows (MeetingVideoTile).
+    private let markBadge = SelfViewMarkView()
     /// Zoom's video-off look while video is stopped (R49): the owner's name, centred on the tile
     /// colour, as every other video-off tile in the window (MeetingTileChrome's cover) and as everyone
     /// in the meeting sees the owner.
@@ -79,16 +77,6 @@ final class SelfPreviewView: NSView {
 
         addSubview(meter)
 
-        markBadge.wantsLayer = true
-        markBadge.layer?.backgroundColor = MeetingTheme.capsuleNS.cgColor
-        markBadge.layer?.cornerRadius = 9
-        markIcon.contentTintColor = .white
-        markCorner.contentTintColor = .white
-        markBadge.addSubview(markIcon)
-        markBadge.addSubview(markCorner)
-        markBadge.setAccessibilityElement(true)
-        markBadge.setAccessibilityRole(.image)
-        markBadge.isHidden = true
         addSubview(markBadge)
 
         for (button, symbol, label) in [(muteButton, "mic.slash.fill", "Mute me"),
@@ -115,7 +103,7 @@ final class SelfPreviewView: NSView {
     /// `content` is SelfViewRules.content: `.placeholder` (video stopped) draws the name over the video.
     func apply(muted: Bool, camera: CameraState, videoStopped: Bool = false, content: SelfViewContent = .everyoneSees,
                name: String = "You", mark: SelfViewRules.Mark?, level: Double) {
-        applyMark(mark)
+        if markBadge.apply(mark) { needsLayout = true }
         let covered = content == .placeholder
         if offCover.isHidden == covered || offName.stringValue != name {
             offCover.isHidden = !covered
@@ -154,26 +142,6 @@ final class SelfPreviewView: NSView {
         }
     }
 
-    private func applyMark(_ next: SelfViewRules.Mark?) {
-        guard next != mark else { return }
-        mark = next
-        markBadge.isHidden = next == nil
-        guard let next else { return }
-        let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
-        markIcon.image = NSImage(systemSymbolName: next.symbol.name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        // Stop video's mark keeps Zoom's red; the camera states' marks stay white.
-        markIcon.contentTintColor = next.symbol.tint == .stopped ? MeetingTheme.redNS : .white
-        markCorner.image = next.symbol.badge.flatMap {
-            NSImage(systemSymbolName: $0, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 7, weight: .bold))
-        }
-        markCorner.isHidden = markCorner.image == nil
-        markBadge.toolTip = next.label
-        markBadge.setAccessibilityLabel(next.label)
-        needsLayout = true
-    }
-
     /// The meter alone, fed at the mic monitor's rate between the one-second
     /// `apply` calls.
     func setLevel(_ level: Double) { meter.level = level }
@@ -204,10 +172,7 @@ final class SelfPreviewView: NSView {
         // glance, quiet enough not to compete with a student's face beside it.
         meter.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 3)
         // Top left, clear of the "You" caption (bottom left) and the two buttons (top right).
-        let badgeWidth: CGFloat = markCorner.isHidden ? 22 : 28
-        markBadge.frame = NSRect(x: 6, y: bounds.height - 18 - 6, width: badgeWidth, height: 18)
-        markIcon.frame = NSRect(x: 4, y: 2, width: 14, height: 14)
-        markCorner.frame = NSRect(x: 17, y: 2, width: 9, height: 9)
+        markBadge.place(in: bounds, inset: 6)
         let side: CGFloat = 24
         muteButton.frame = NSRect(x: bounds.width - side * 2 - 12, y: bounds.height - side - 8,
                                   width: side, height: side)

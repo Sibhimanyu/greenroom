@@ -9,6 +9,6 @@ stage_layouts
 # LevelMeterView lives in ParticipantGridWindow.swift (SDK-bound); a stand-in keeps the tile's layout.
 printf 'import AppKit\nfinal class LevelMeterView: NSView { var level: Double = 0 }\n' > "$STAGE/MeterStub.swift"
 render stop-video-render stop-video-main.swift $LAYOUT_FILES "$STAGE/MeterStub.swift" \
-  App/UI/ParticipantConsole/SelfPreviewView.swift App/UI/ClosureButton.swift App/UI/SelfViewRules.swift \
+  App/UI/ParticipantConsole/SelfPreviewView.swift App/UI/ParticipantConsole/SelfViewMarkView.swift App/UI/ClosureButton.swift App/UI/SelfViewRules.swift \
   App/UI/MeetingToolbar.swift App/UI/MeetingToolbarLayout.swift
 finish

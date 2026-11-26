@@ -1605,9 +1605,10 @@ private final class RootView: NSView {
         if let sdk = ParticipantGridWindowController.sdk {
             let coordinator = controls?.coordinator
             let stopped = coordinator?.videoStopped ?? false
+            let look = coordinator?.selfViewLook
             selfPreview.apply(muted: sdk.iAmMuted, camera: coordinator?.cameraState ?? .everyoneAndMe,
-                              videoStopped: stopped, content: coordinator?.selfViewContent ?? .everyoneSees,
-                              name: sdk.myName ?? "You", mark: coordinator?.selfViewMark, level: lastMicLevel)
+                              videoStopped: stopped, content: look?.content ?? .everyoneSees,
+                              name: sdk.myName ?? "You", mark: look?.mark, level: lastMicLevel)
         }
         if shareBeside, let now = sharedNow {
             shareChrome.apply(MeetingTileModel(name: "\(now.name)\u{2019}s screen"))

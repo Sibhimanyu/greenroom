@@ -241,6 +241,39 @@ final class CameraMatrixTests: XCTestCase {
         XCTAssertEqual(SelfViewRules.content(cameraInPicture: true, placeholderWhenOut: true), .everyoneSees)
     }
 
+    // MARK: the owner in a view window
+
+    // The Self view view window (and any view-window tile that shows the owner) wears the "You"
+    // tile's look from the same rule: Off and Only me get the state's mark over what everyone sees,
+    // Video stopped gets the name and "Video stopped", the two "on" states get nothing.
+    func testAViewWindowTileOfTheOwnerWearsTheYouTilesLook() {
+        for r in rows {
+            for stopped in [false, true] {
+                let s = r.state, what = "\(s.name), video stopped \(stopped)"
+                let you = SelfViewRules.look(state: s, cameraInPicture: inPicture(s), videoStopped: stopped)
+                XCTAssertEqual(you.mark, SelfViewRules.mark(state: s, cameraInPicture: inPicture(s), videoStopped: stopped),
+                               "one source for the mark, \(what)")
+                XCTAssertEqual(you.content, SelfViewRules.content(cameraInPicture: inPicture(s), videoStopped: stopped),
+                               "one source for the content, \(what)")
+                // Zoom's roster may lag the stop by a second: the rule, not the flag, draws the name.
+                for zoomVideoOn in [true, false] {
+                    let tile = SelfViewRules.tile(isMe: true, zoomVideoOn: zoomVideoOn, you: you)
+                    XCTAssertEqual(tile.mark?.symbol.name, stopped ? "video.slash.fill" : r.selfMark, "mark, \(what)")
+                    XCTAssertEqual(tile.mark?.label, stopped ? "Video stopped" : r.selfMark.map { _ in "Camera: \(s.name)" },
+                                   "label, \(what)")
+                    XCTAssertEqual(tile.videoOn, !stopped && zoomVideoOn, "Off and Only me keep the picture, \(what)")
+                }
+                // Anyone else's tile is left to Zoom's own flag, with no mark.
+                let other = SelfViewRules.tile(isMe: false, zoomVideoOn: true, you: you)
+                XCTAssertNil(other.mark, what)
+                XCTAssertTrue(other.videoOn, what)
+            }
+        }
+        // Before the coordinator has said anything, the owner's tile is drawn as Zoom says.
+        XCTAssertEqual(SelfViewRules.tile(isMe: true, zoomVideoOn: true, you: nil),
+                       SelfViewRules.TileLook(mark: nil, videoOn: true))
+    }
+
     func testTheOwnRowFollowsZoomWhenZoomSendsNothing() {
         XCTAssertTrue(SelfViewRules.ownRowCameraOff(cameraInPicture: true, zoomVideoOn: false))
     }

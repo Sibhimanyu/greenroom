@@ -876,14 +876,11 @@ final class CoordinatorController: ObservableObject {
         SelfViewRules.ownRowCameraOff(cameraInPicture: !cameraIsOff, zoomVideoOn: zoomVideoOn)
     }
 
-    /// The "You" tile's corner mark: the state's icon and name while the camera is out of the picture.
-    var selfViewMark: SelfViewRules.Mark? {
-        SelfViewRules.mark(state: cameraState, cameraInPicture: !cameraIsOff, videoStopped: videoStopped)
-    }
-
-    /// What the "You" tile draws: what everyone sees, or the name while video is stopped (R49).
-    var selfViewContent: SelfViewContent {
-        SelfViewRules.content(cameraInPicture: !cameraIsOff, videoStopped: videoStopped)
+    /// How the owner's own video is drawn wherever it shows (the Meeting window's "You" tile, the
+    /// Self view window): the corner mark while the camera is out of the picture, and the name
+    /// while video is stopped (R6.9, R49.7).
+    var selfViewLook: SelfViewRules.Look {
+        SelfViewRules.look(state: cameraState, cameraInPicture: !cameraIsOff, videoStopped: videoStopped)
     }
 
     /// The preview's picture is in use by a session - a meeting, or a

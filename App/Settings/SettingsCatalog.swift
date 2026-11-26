@@ -98,6 +98,7 @@ enum SettingsCatalog {
         travels("zoomS2SAccountID", .string(""), as: "s2sAccountID"),
         travels("zoomS2SClientID", .string(""), as: "s2sClientID"),
         travels("zoomS2SClientSecret", .string(""), as: "s2sClientSecret"),
+        excluded("zoomPrefersOwnApps", .bool(false), "Picks between this Mac's Zoom sign-in and the pasted apps; the sign-in does not travel, so neither does the choice."),
         travels("youtubeClientID", .string("")),
         travels("youtubeClientSecret", .string("")),
         travels("youtubeUploadMode", .string("off")),

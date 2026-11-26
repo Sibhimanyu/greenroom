@@ -555,20 +555,62 @@ final class CoordinatorController: ObservableObject {
     let zoomChatClient = ZoomMeetingSDKClient()
 
     // MARK: Where Zoom credentials come from. THE one place that decides.
-    // Signed in with Zoom: meetings, host key and the list come from the
-    // person's own Zoom account. Otherwise the pasted Server-to-Server app
-    // (advanced path, unchanged). The Meeting SDK's JWT follows the rules in
-    // ZoomCredentialRules.sdkAuth.
+    // `ZoomRouteRules.route` picks ONE route and Start takes both halves from
+    // it: signed in with Zoom (REST as the person, the JWT from the signing
+    // function) or your own Zoom apps (the pasted S2S app and SDK keys). When
+    // both work, `zoomPrefersOwnApps` (Settings' switch) picks; off, the
+    // sign-in wins, as it always did. Settings, Home, Start and the session
+    // log all read `zoomRoute`, so none of them can disagree with Start.
 
     let zoomUser = ZoomUserAuth()
 
-    private var ownS2SComplete: Bool {
-        !s2sAccountID.isEmpty && !s2sClientID.isEmpty && !s2sClientSecret.isEmpty
+    /// Settings' switch: with both routes set up, use your own Zoom apps.
+    @Published var zoomPrefersOwnApps: Bool = false {
+        didSet {
+            guard zoomPrefersOwnApps != oldValue else { return }
+            defaults.set(zoomPrefersOwnApps, forKey: Self.zoomPrefersOwnAppsKey)
+            // The list and a warmed host key belong to the other account.
+            scheduledMeetings = []
+            prefetchedZAK = nil
+        }
     }
-    private var ownSDKKeysPresent: Bool { !sdkClientID.isEmpty && !sdkClientSecret.isEmpty }
+    static let zoomPrefersOwnAppsKey = "zoomPrefersOwnApps"
 
+    /// A secret counts once it is stored, even before the lazy load reads it,
+    /// so Home's readiness and Settings' line are right from launch.
+    private func secretPresent(_ value: String, key: String) -> Bool {
+        if secretsLoaded { return !value.isEmpty }
+        return !(SecretStore.get(key) ?? "").isEmpty
+    }
+    private var ownS2SComplete: Bool {
+        !s2sAccountID.isEmpty && !s2sClientID.isEmpty && secretPresent(s2sClientSecret, key: "zoomS2SClientSecret")
+    }
+    private var ownSDKKeysPresent: Bool {
+        !sdkClientID.isEmpty && secretPresent(sdkClientSecret, key: "zoomSDKClientSecret")
+    }
+
+    var zoomRouteFacts: ZoomRouteFacts {
+        ZoomRouteFacts(signedIn: zoomUser.isSignedIn,
+                       accountName: zoomUser.profile?.name ?? "",
+                       accountEmail: zoomUser.profile?.email ?? "",
+                       endpointSet: !ZoomOAuth.sdkSignatureEndpoint.isEmpty,
+                       ownSDKComplete: ownSDKKeysPresent,
+                       ownS2SComplete: ownS2SComplete,
+                       sdkClientID: sdkClientID,
+                       prefersOwnApps: zoomPrefersOwnApps)
+    }
+
+    /// The route Start will use right now.
+    var zoomRoute: ZoomRoute { ZoomRouteRules.route(zoomRouteFacts) }
+    /// Both routes work: Settings says which wins and offers the switch.
+    var zoomRoutesBothSetUp: Bool { ZoomRouteRules.bothSetUp(zoomRouteFacts) }
+
+    /// REST follows the route. With no usable route the old rule still
+    /// answers, so a half set-up account can be listed and tested.
     var zoomRESTSource: ZoomCredentialRules.RESTSource {
-        ZoomCredentialRules.restSource(signedIn: zoomUser.isSignedIn, ownS2SComplete: ownS2SComplete)
+        let route = zoomRoute
+        if route.isUsable { return ZoomRouteRules.restSource(route) }
+        return ZoomCredentialRules.restSource(signedIn: zoomUser.isSignedIn, ownS2SComplete: ownS2SComplete)
     }
 
     /// nil when neither a Zoom sign-in nor pasted S2S credentials exist.
@@ -583,11 +625,8 @@ final class CoordinatorController: ObservableObject {
     /// Can Greenroom create, list and host meetings right now?
     var zoomHostingReady: Bool { zoomRESTSource != .none }
 
-    var zoomSDKAuthChoice: ZoomCredentialRules.SDKAuth {
-        ZoomCredentialRules.sdkAuth(signedIn: zoomUser.isSignedIn,
-                                    endpointSet: !ZoomOAuth.sdkSignatureEndpoint.isEmpty,
-                                    ownKeysPresent: ownSDKKeysPresent)
-    }
+    /// The SDK's JWT follows the same route as REST.
+    var zoomSDKAuthChoice: ZoomCredentialRules.SDKAuth { ZoomRouteRules.sdkAuth(zoomRoute) }
 
     /// Can the Meeting SDK be authorised right now?
     var zoomSDKReady: Bool { zoomSDKAuthChoice == .worker || zoomSDKAuthChoice == .ownKeys }
@@ -607,10 +646,21 @@ final class CoordinatorController: ObservableObject {
             throw NSError(domain: "Greenroom", code: 25, userInfo: [NSLocalizedDescriptionKey: ZoomCredentialRules.notFinishedText])
         case .missingKeys:
             throw NSError(domain: "Greenroom", code: 21, userInfo: [
-                NSLocalizedDescriptionKey: "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
+                NSLocalizedDescriptionKey: zoomRouteMissingText
             ])
         }
     }
+
+    /// Why Start can't run, in the route's words.
+    private var zoomRouteMissingText: String {
+        switch zoomRoute {
+        case .none(.ownAppsIncomplete): return ZoomRouteWords.line(zoomRoute) + " Settings (\u{2318},) \u{2192} Zoom."
+        default: return "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
+        }
+    }
+
+    /// The route the running (or last) start took.
+    private(set) var startRoute: ZoomRoute?
 
     /// Plain-values sign-in state for views (they observe the coordinator).
     var zoomSignedInAs: (name: String, email: String)? {
@@ -622,6 +672,11 @@ final class CoordinatorController: ObservableObject {
     /// Signed in, but the app now needs a scope the sign-in does not carry.
     var zoomNeedsMorePermission: Bool { zoomUser.needsSignInAgain }
     var zoomAttentionTitle: String { zoomUser.attentionTitle }
+    /// What Home's Zoom pill and the menu bar say when Start can run but
+    /// something about its route needs a look; nil when nothing does.
+    var zoomRouteAttention: String? {
+        zoomRoute.usesGreenroomApp && zoomNeedsMorePermission ? zoomAttentionTitle : nil
+    }
     var zoomAttentionDetail: String { zoomUser.attentionDetail }
     var zoomSignInError: String? { zoomUser.lastError }
 
@@ -1437,6 +1492,7 @@ final class CoordinatorController: ObservableObject {
         meetingPresets = Self.loadPresets(from: defaults)
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
+        zoomPrefersOwnApps = defaults.bool(forKey: Self.zoomPrefersOwnAppsKey)
         sdkClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
         s2sAccountID = defaults.string(forKey: "zoomS2SAccountID") ?? ""
         s2sClientID = defaults.string(forKey: "zoomS2SClientID") ?? ""
@@ -1825,11 +1881,12 @@ final class CoordinatorController: ObservableObject {
         if meetingMode != .record, !zoomSDKReady {
             let why = zoomSDKAuthChoice == .notFinished
                 ? ZoomCredentialRules.notFinishedText
-                : "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
+                : zoomRouteMissingText
             log("Can't start yet \u{2014} \(why)")
             return
         }
-        if meetingMode != .record, zoomNeedsMorePermission {
+        // The permission gap belongs to the sign-in; your own Zoom apps don't need it.
+        if meetingMode != .record, zoomRoute.usesGreenroomApp, zoomNeedsMorePermission {
             log("\(zoomAttentionTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
             return
         }
@@ -1849,6 +1906,10 @@ final class CoordinatorController: ObservableObject {
         }
 
         apply(.meetingStartRequested)
+        // The route this start takes, named in the log and under any failure.
+        let route = zoomRoute
+        startRoute = route
+        log(ZoomRouteWords.logLine(route))
         MeetingSurfaceOwner.coordinator = self
         MeetingSurfaceOwner.send(.startBegan)
         // This start's number: its task reports back with it, so a late end
@@ -2044,7 +2105,7 @@ final class CoordinatorController: ObservableObject {
                     apply(.meetingStartTaskFinished(startID: startID))
                     return
                 }
-                let message = error.localizedDescription
+                let message = ZoomRouteWords.failure(error.localizedDescription, route: route)
                 log("Failed: \(message)")
                 Analytics.failure("start")
                 // Left on screen rather than cleared. The panel is the surface

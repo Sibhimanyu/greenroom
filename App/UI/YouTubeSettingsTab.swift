@@ -2,7 +2,11 @@
 //  YouTubeSettingsTab.swift
 //  Greenroom
 //
-//  Settings -> YouTube: uploading recordings.
+//  Settings -> YouTube: uploading recordings, and the YouTube account.
+//
+//  The account is Sign in with Google, through Greenroom's shared Google app;
+//  the paste-your-own-client way is folded under "Use your own Google app"
+//  (YouTubeRouteRules decides which one signs in).
 //
 //  The one feature that sends class content off the Mac, so the page opens on
 //  a picture of exactly that: this Mac, an arrow, YouTube. The arrow is amber
@@ -25,13 +29,25 @@ struct YouTubeSettingsTab: View {
         YouTubePageContent(
             uploadMode: $coordinator.youtubeUploadMode,
             privacy: $coordinator.youtubePrivacy,
+            madeForKids: $coordinator.youtubeMadeForKids,
+            usesOwnApp: $coordinator.youtubeUsesOwnApp,
             clientID: $coordinator.youtubeClientID,
             clientSecret: $coordinator.youtubeClientSecret,
             connected: coordinator.youtubeConnected,
+            channel: coordinator.youtubeChannel,
+            tokenApp: YouTubeAuth.tokenApp,
+            route: coordinator.youtubeSignInRoute,
+            signingIn: coordinator.youtubeSigningIn,
             uploading: coordinator.isUploadingToYouTube,
             status: coordinator.youtubeStatus,
-            connect: { await coordinator.connectYouTube() },
-            disconnect: { await coordinator.disconnectYouTube() })
+            signIn: { await coordinator.signInToYouTube() },
+            signOut: { await coordinator.signOutOfYouTube() })
+            .task {
+                // A sign-in from before the channel line existed: read it once.
+                if coordinator.youtubeConnected, coordinator.youtubeChannel == nil {
+                    await coordinator.refreshYouTubeChannel()
+                }
+            }
     }
 }
 
@@ -40,19 +56,24 @@ struct YouTubeSettingsTab: View {
 struct YouTubePageContent: View {
     @Binding var uploadMode: YouTubeUploadMode
     @Binding var privacy: String
+    @Binding var madeForKids: Bool?
+    @Binding var usesOwnApp: Bool
     @Binding var clientID: String
     @Binding var clientSecret: String
     let connected: Bool
+    let channel: YouTubeChannel?
+    /// Which Google app the current sign-in came through.
+    let tokenApp: YouTubeGoogleApp
+    /// What Sign in with Google would use now.
+    let route: YouTubeRoute
+    let signingIn: Bool
     let uploading: Bool
     /// The coordinator's last word on the account, or empty.
     let status: String
-    let connect: () async -> Void
-    let disconnect: () async -> Void
+    let signIn: () async -> Void
+    let signOut: () async -> Void
 
-    @State private var connecting = false
-
-    private var hasClient: Bool { !clientID.isEmpty && !clientSecret.isEmpty }
-    private var failed: Bool { !connected && !connecting && status.hasPrefix("Not connected:") }
+    private var failed: Bool { !connected && !signingIn && status.hasPrefix("Not connected:") }
 
     var body: some View {
         Form {
@@ -63,22 +84,27 @@ struct YouTubePageContent: View {
             Section("Recordings") {
                 UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)
                 uploadChoices
-                // Do nothing: no upload, so no visibility to choose.
-                Collapsible(hidden: uploadMode == .off) { visibilityChoices }
+                // Do nothing: no upload, so no visibility or audience to choose.
+                Collapsible(hidden: uploadMode == .off) { uploadDefaults }
             }
 
-            Section("Your own channel") {
-                TextField("Client ID", text: $clientID)
-                    .help(Self.clientHelp)
-                SecureField("Client Secret", text: $clientSecret)
-                    .help(Self.clientHelp)
+            Section {
                 accountRow
-                if failed {
-                    Text(status)
+                if failed || (connected && channel == nil && !status.isEmpty) {
+                    Text(failed ? String(status.dropFirst("Not connected: ".count)) : status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                ownApp
+            } header: {
+                Text("YouTube account")
+            } footer: {
+                Text("No sign-in needed for Upload in YouTube Studio: every upload sheet has it. It opens YouTube, shows the recording in Finder and copies the title and description.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -93,56 +119,122 @@ struct YouTubePageContent: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var visibilityChoices: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Visibility").font(.callout)
-            VisibilityPicker(selection: $privacy)
+    /// Visibility beside the Made for Kids answer (DESIGN.md: upload behaviour
+    /// beside visibility), then, for automatic uploads, the Terms line: the
+    /// person never sees an Upload button, so choosing Upload here is the click.
+    private var uploadDefaults: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Visibility").font(.callout)
+                    VisibilityPicker(selection: $privacy)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Made for kids").font(.callout)
+                    MadeForKidsChoice(selection: $madeForKids)
+                    if uploadMode == .automatic && madeForKids == nil {
+                        Label("Automatic uploads need this answer.", systemImage: "exclamationmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Link("What counts as made for kids?", destination: YouTubeUploadRules.madeForKidsHelpURL)
+                            .font(.caption)
+                    }
+                }
+            }
+            Collapsible(hidden: uploadMode != .automatic) {
+                Text(YouTubeSettingsWords.certifyAttributed)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .accessibilityElement(children: .contain)
     }
 
-    private static let clientHelp = "From a Google Cloud OAuth client of type \u{201C}Desktop app\u{201D} with the YouTube Data API v3 enabled. The setup guide (? on the main window) has the clicks. While the Google project is in Testing, the sign-in lasts seven days."
+    // MARK: Account
 
     private var accountRow: some View {
-        LabeledContent {
-            HStack(spacing: 12) {
-                if uploading { ProgressView().controlSize(.small) }
-                if connected {
-                    Button("Disconnect") { Task { await disconnect() } }
-                        .foregroundStyle(Brand.text)
-                } else {
-                    Button(connecting ? "Waiting\u{2026}" : "Connect\u{2026}") {
-                        connecting = true
-                        Task {
-                            await connect()
-                            connecting = false
-                        }
-                    }
-                    .disabled(connecting || !hasClient)
+        HStack(spacing: 12) {
+            if connected {
+                YouTubeChannelAvatar(url: channel?.avatarURL, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(channel?.name ?? "Signed in").font(.body.weight(.medium))
+                    Text(tokenApp == .shared ? "Signed in with Google" : "Signed in through your own Google app")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer()
+                if uploading { ProgressView().controlSize(.small) }
+                Button("Use another account") { Task { await signIn() } }
+                    .disabled(signingIn || route.app == nil)
+                    .help("Google shows its account chooser. The current sign-in is removed once the new one is in.")
+                Button("Sign out") { Task { await signOut() } }
+                    .help("Signs out here and tells Google to remove Greenroom\u{2019}s access.")
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    accountBadge
+                    Text(signInNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button(signingIn ? "Waiting for Google\u{2026}" : "Sign in with Google") {
+                    Task { await signIn() }
+                }
+                .disabled(signingIn || route.app == nil)
+                .help("Opens Google in your browser to choose an account. Greenroom can upload and edit your own videos, nothing else.")
             }
-        } label: {
-            accountBadge
-                .help(status.isEmpty
-                      ? "Signs in once in your browser. Greenroom can upload and edit your own videos, nothing else."
-                      : status)
+        }
+    }
+
+    private var signInNote: String {
+        switch route {
+        case .none(let gap): return gap.message
+        case .shared: return YouTubeSettingsWords.unverifiedNote
+        case .own: return "Signs in through your own Google app."
         }
     }
 
     @ViewBuilder
     private var accountBadge: some View {
-        if connected {
-            StatusBadge(text: "Connected", tone: .good)
-        } else if connecting {
+        if signingIn {
             StatusBadge(text: "Waiting for Google", tone: .waiting)
         } else if failed {
-            StatusBadge(text: "Couldn\u{2019}t connect", tone: .problem)
-        } else if hasClient {
-            StatusBadge(text: "Not connected", tone: .waiting)
+            StatusBadge(text: "Couldn\u{2019}t sign in", tone: .problem)
+        } else if route.app == nil {
+            StatusBadge(text: "Not available yet", tone: .waiting)
         } else {
-            StatusBadge(text: "Not set up", tone: .waiting)
+            StatusBadge(text: "Not signed in", tone: .waiting)
         }
     }
+
+    // MARK: Your own Google app
+
+    private var ownApp: some View {
+        AdvancedDisclosure("Use your own Google app", open: usesOwnApp) {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Sign in through my own Google app", isOn: $usesOwnApp.animatedCollapse())
+                Text("For when Greenroom\u{2019}s Google app has reached Google\u{2019}s limit of 100 people, or to have your own daily upload limit. You need a Google Cloud OAuth client of type Desktop app with YouTube Data API v3 turned on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Collapsible(hidden: !usesOwnApp) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Client ID", text: $clientID)
+                            .help(Self.clientHelp)
+                        SecureField("Client Secret", text: $clientSecret)
+                            .help(Self.clientHelp)
+                        Link("Open Google Cloud", destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+
+    private static let clientHelp = "From a Google Cloud OAuth client of type \u{201C}Desktop app\u{201D} with the YouTube Data API v3 enabled. While the Google project is in Testing, the sign-in lasts seven days."
 }
 
 // MARK: - Pieces

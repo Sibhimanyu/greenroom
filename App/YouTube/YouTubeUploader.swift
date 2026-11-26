@@ -9,9 +9,11 @@
 //  toast. No SDK: a few request shapes and URLSession. After the upload,
 //  the same file renames the video and deletes it.
 //
-//  Quota, for the record: an upload costs about 1,600 of the project's
-//  10,000 daily units, so roughly six uploads a day. One class a morning is
-//  well inside that.
+//  Quota, for the record (Google's docs, 2026-11-26): videos.insert has its
+//  own bucket of 100 calls a day per Cloud project. With the shared Google
+//  app that bucket is shared by everyone using Greenroom; when it runs out,
+//  Google answers quotaExceeded and YouTubeErrorRules says so and offers
+//  Upload in YouTube Studio.
 //
 import Foundation
 
@@ -22,14 +24,16 @@ enum YouTubeUploader {
         var url: URL { URL(string: "https://youtu.be/\(videoID)")! }
     }
 
+    /// `api` carries Google's reason code, which YouTubeErrorRules turns
+    /// into plain words and buttons.
     enum UploadError: LocalizedError {
-        case unreadable, noSession(String), rejected(Int, String), gaveUp
+        case unreadable, api(status: Int, reason: String?, message: String), gaveUp
 
         var errorDescription: String? {
             switch self {
             case .unreadable: return "The recording could not be read."
-            case .noSession(let why): return "YouTube would not start the upload: \(why)"
-            case .rejected(let status, let why): return "YouTube rejected the upload (HTTP \(status)): \(why)"
+            case .api(let status, let reason, let why):
+                return "YouTube answered HTTP \(status)\(reason.map { " (\($0))" } ?? ""): \(why)"
             case .gaveUp: return "The connection kept dropping; gave up after several retries. The recording is still on this Mac."
             }
         }
@@ -40,9 +44,7 @@ enum YouTubeUploader {
     /// Uploads `file`. `token` is asked for before every chunk so a
     /// sign-in that expires during a long upload renews itself.
     static func upload(file: URL,
-                       title: String,
-                       description: String,
-                       privacy: String,
+                       details: YouTubeUploadDetails,
                        token: @escaping () async throws -> String,
                        progress: @escaping @Sendable (Double) -> Void) async throws -> Result {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
@@ -52,8 +54,7 @@ enum YouTubeUploader {
         }
         defer { try? handle.close() }
 
-        let session = try await startSession(title: title, description: description, privacy: privacy,
-                                             size: size, token: token)
+        let session = try await startSession(details: details, size: size, token: token)
 
         var offset: Int64 = 0
         var failures = 0
@@ -96,7 +97,7 @@ enum YouTubeUploader {
                 progress(1)
                 guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                       let id = json["id"] as? String else {
-                    throw UploadError.rejected(status, "no video id in the response")
+                    throw UploadError.api(status: status, reason: nil, message: "no video id in the response")
                 }
                 return Result(videoID: id)
             case 500...599:
@@ -105,10 +106,10 @@ enum YouTubeUploader {
                 try await Task.sleep(nanoseconds: UInt64(min(30, 2 << failures)) * 1_000_000_000)
                 offset = try await confirmedOffset(session: session, size: size, token: token) ?? offset
             default:
-                throw UploadError.rejected(status, message(in: data))
+                throw apiError(status, data)
             }
         }
-        throw UploadError.rejected(0, "the upload ended without a video id")
+        throw UploadError.api(status: 0, reason: nil, message: "the upload ended without a video id")
     }
 
     /// Changes a video's title after the fact (videos.update, 50 quota
@@ -123,7 +124,7 @@ enum YouTubeUploader {
         let body: [String: Any] = [
             "id": videoID,
             "snippet": [
-                "title": String(title.prefix(100)),
+                "title": YouTubeUploadRules.title(title),
                 "description": description,
                 "categoryId": "27",
             ],
@@ -132,10 +133,7 @@ enum YouTubeUploader {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            if status == 403, message(in: data).localizedCaseInsensitiveContains("insufficient") {
-                throw UploadError.rejected(status, YouTubeAuth.reconnectHint)
-            }
-            throw UploadError.rejected(status, message(in: data))
+            throw apiError(status, data)
         }
     }
 
@@ -152,16 +150,13 @@ enum YouTubeUploader {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) || status == 404 else {
-            if status == 403, message(in: data).localizedCaseInsensitiveContains("insufficient") {
-                throw UploadError.rejected(status, YouTubeAuth.reconnectHint)
-            }
-            throw UploadError.rejected(status, message(in: data))
+            throw apiError(status, data)
         }
     }
 
     /// Step one: register the upload and get the session URL every chunk
     /// goes to. Metadata travels here, once.
-    private static func startSession(title: String, description: String, privacy: String,
+    private static func startSession(details: YouTubeUploadDetails,
                                      size: Int64, token: () async throws -> String) async throws -> URL {
         var request = URLRequest(url: URL(string: "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status")!)
         request.httpMethod = "POST"
@@ -169,25 +164,15 @@ enum YouTubeUploader {
         request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
         request.setValue("video/mp4", forHTTPHeaderField: "X-Upload-Content-Type")
         request.setValue(String(size), forHTTPHeaderField: "X-Upload-Content-Length")
-        let metadata: [String: Any] = [
-            "snippet": [
-                "title": String(title.prefix(100)),   // YouTube's title limit
-                "description": description,
-                "categoryId": "27",                    // Education
-            ],
-            "status": [
-                "privacyStatus": privacy,
-                "selfDeclaredMadeForKids": false,
-            ],
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: metadata)
+        request.httpBody = try JSONSerialization.data(withJSONObject: YouTubeUploadRules.metadata(details))
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status),
               let location = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location"),
               let url = URL(string: location) else {
-            throw UploadError.noSession(status == 0 ? "no response" : "HTTP \(status): \(message(in: data))")
+            if status == 0 { throw UploadError.gaveUp }
+            throw apiError(status, data)
         }
         return url
     }
@@ -212,13 +197,9 @@ enum YouTubeUploader {
         return nil
     }
 
-    private static func message(in data: Data) -> String {
-        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return String(data: data.prefix(200), encoding: .utf8) ?? "no detail"
-        }
-        if let error = json["error"] as? [String: Any] {
-            if let message = error["message"] as? String { return message }
-        }
-        return (json["error_description"] as? String) ?? (json["error"] as? String) ?? "no detail"
+    private static func apiError(_ status: Int, _ data: Data) -> UploadError {
+        let parsed = YouTubeErrorRules.parse(data)
+        let fallback = String(data: data.prefix(200), encoding: .utf8) ?? "no detail"
+        return .api(status: status, reason: parsed.reason, message: parsed.message ?? fallback)
     }
 }

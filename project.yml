@@ -432,6 +432,10 @@ targets:
       - path: App/Zoom/ZoomScopes.swift
       - path: App/Zoom/ZoomMarketplaceGuide.swift
       - path: App/Zoom/ZoomServerToServerClient.swift
+      - path: App/YouTube/YouTubeOAuth.swift
+      - path: App/YouTube/YouTubeRouteRules.swift
+      - path: App/YouTube/YouTubeUploadRules.swift
+      - path: App/YouTube/YouTubeErrorRules.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

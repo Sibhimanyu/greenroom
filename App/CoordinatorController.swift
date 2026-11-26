@@ -1479,6 +1479,28 @@ final class CoordinatorController: ObservableObject {
             SecretStore.set(youtubeClientSecret, forKey: "youtubeClientSecret")
         }
     }
+    /// Settings -> YouTube -> Use your own Google app: sign in through the
+    /// pasted client instead of Greenroom's shared one (YouTubeRouteRules).
+    @Published var youtubeUsesOwnApp: Bool {
+        didSet { defaults.set(youtubeUsesOwnApp, forKey: "youtubeUsesOwnApp") }
+    }
+    /// The Made for Kids answer, nil until the person first gives one (the
+    /// upload sheet preselects it; automatic uploads need it).
+    @Published var youtubeMadeForKids: Bool? {
+        didSet {
+            if let youtubeMadeForKids { defaults.set(youtubeMadeForKids, forKey: "youtubeMadeForKids") }
+            else { defaults.removeObject(forKey: "youtubeMadeForKids") }
+        }
+    }
+    /// The signed-in account's channel, for "Signed in as".
+    @Published var youtubeChannel: YouTubeChannel? {
+        didSet { defaults.set(youtubeChannel.flatMap { try? JSONEncoder().encode($0) }, forKey: "youtubeChannel") }
+    }
+    /// The upload sheet, when it is up (main window).
+    @Published var youtubeUploadDraft: YouTubeUploadDraft?
+    /// The last upload that failed, with its plain words and buttons.
+    @Published var youtubeFailure: YouTubeUploadFailure?
+    @Published var youtubeSigningIn = false
     @Published var youtubeConnected = YouTubeAuth.isConnected
     @Published var isUploadingToYouTube = false
     /// 0...1 while an upload runs, for the menu bar; nil otherwise.
@@ -1603,6 +1625,12 @@ final class CoordinatorController: ObservableObject {
         youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
         youtubeClientID = defaults.string(forKey: "youtubeClientID") ?? ""
         youtubeClientSecret = "" // loaded lazily via loadSecretsIfNeeded()
+        youtubeUsesOwnApp = YouTubeRouteRules.initialPrefersOwnApp(
+            saved: defaults.object(forKey: "youtubeUsesOwnApp") as? Bool,
+            ownClientComplete: !(defaults.string(forKey: "youtubeClientID") ?? "").isEmpty
+                && !(SecretStore.get("youtubeClientSecret") ?? "").isEmpty)
+        youtubeMadeForKids = defaults.object(forKey: "youtubeMadeForKids") as? Bool
+        youtubeChannel = defaults.data(forKey: "youtubeChannel").flatMap { try? JSONDecoder().decode(YouTubeChannel.self, from: $0) }
         // Absent means never answered, which is opted IN - matching the consent
         // the Apptics setup already carries. An explicit false stays false.
         analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true

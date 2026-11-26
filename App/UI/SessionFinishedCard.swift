@@ -17,15 +17,18 @@ struct SessionFinishedCard: View {
 
     private func close() { coordinator.finishedSession = nil }
 
-    /// Upload is offered when YouTube is set up at all: an account is
-    /// connected, or Settings → YouTube asks or uploads. Automatic mode is
-    /// already uploading, so it says so instead.
-    private var offersUpload: Bool {
-        coordinator.youtubeUploadMode == .ask || (coordinator.youtubeUploadMode == .off && coordinator.youtubeConnected)
+    /// Automatic mode is already uploading (signed in, Made for Kids
+    /// answered), so it says so instead.
+    private var uploadsOnItsOwn: Bool {
+        coordinator.youtubeUploadMode == .automatic && coordinator.youtubeConnected && coordinator.youtubeMadeForKids != nil
     }
 
+    /// Upload is always offered otherwise: the sheet has Upload in YouTube
+    /// Studio, which needs no sign-in.
+    private var offersUpload: Bool { !uploadsOnItsOwn }
+
     private var line: String {
-        if coordinator.youtubeUploadMode == .automatic, coordinator.youtubeConnected {
+        if uploadsOnItsOwn {
             return coordinator.youtubeUploadProgress != nil
                 ? "It's in Sessions, and uploading to YouTube."
                 : "It's in Sessions, and goes to YouTube on its own."
@@ -68,15 +71,14 @@ struct SessionFinishedCard: View {
                     if offersUpload {
                         // Leaves this Mac: amber, not green (DESIGN.md).
                         Button {
-                            coordinator.connectAndUpload(session.file)
                             close()
+                            coordinator.presentYouTubeUpload(session.file, title: session.title)
                         } label: {
-                            Label(coordinator.youtubeConnected ? "Upload to YouTube" : "Connect & Upload",
-                                  systemImage: "arrow.up.circle")
+                            Label("Upload to YouTube\u{2026}", systemImage: "arrow.up.circle")
                                 .foregroundStyle(Brand.netText)
                         }
                         .disabled(coordinator.youtubeUploadProgress != nil)
-                        .help("Uploads it to your channel as \(coordinator.youtubePrivacy.lowercased()). The file stays on this Mac either way.")
+                        .help("Choose the title, visibility and audience, then upload. The file stays on this Mac either way.")
                     }
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([session.file])

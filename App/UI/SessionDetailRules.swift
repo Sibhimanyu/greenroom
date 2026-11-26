@@ -136,7 +136,4 @@ enum SessionDetailRules {
     static func currentLine(starts: [Double], at time: Double) -> Int? {
         starts.lastIndex { $0 <= time + 0.05 }
     }
-
-    /// The first upload asks once; after that it just goes.
-    static let uploadConfirmedKey = "youtubeUploadConfirmed"
 }

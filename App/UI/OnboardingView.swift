@@ -22,7 +22,6 @@ struct OnboardingView: View {
     @State private var importStatus = ""
     @State private var importStatusIsError = false
     @State private var copiedScope: String?
-    @State private var connectingYouTube = false
     @State private var editCredentials = false
     @State private var youtubeHelpExpanded = false
     @State private var permissionDetailsExpanded = false
@@ -518,37 +517,47 @@ struct OnboardingView: View {
                 Text("Recordings stay in Documents/Greenroom. “Ask” lets you decide after each recording.")
                     .font(.callout).foregroundStyle(.secondary)
                 if coordinator.youtubeUploadMode != .off {
+                    let route = coordinator.youtubeSignInRoute
                     StatusRow(ok: coordinator.youtubeConnected, title: "YouTube account",
-                              detail: coordinator.youtubeConnected ? "Connected. Uploads go to this account’s channel." : "Connect the Google account that owns your channel.",
+                              detail: coordinator.youtubeConnected
+                                ? "Signed in as \(coordinator.youtubeChannel?.name ?? "your channel"). Uploads go there."
+                                : "Sign in with the Google account that owns your channel.",
                               actionTitle: nil, action: {})
                     if coordinator.youtubeConnected {
-                        Button("Disconnect account") { Task { await coordinator.disconnectYouTube() } }
-                    } else {
-                        credentialField("Client ID", text: $coordinator.youtubeClientID)
-                        credentialField("Client Secret", text: $coordinator.youtubeClientSecret, secure: true)
                         HStack(spacing: 12) {
-                            Button(connectingYouTube ? "Waiting for Google…" : "Connect Google account…") {
-                                connectingYouTube = true
-                                Task {
-                                    await coordinator.connectYouTube()
-                                    connectingYouTube = false
-                                }
-                            }
-                            .disabled(connectingYouTube || coordinator.youtubeClientID.isEmpty || coordinator.youtubeClientSecret.isEmpty)
-                            if connectingYouTube { ProgressView().controlSize(.small) }
+                            Button("Use another account") { Task { await coordinator.signInToYouTube() } }
+                                .disabled(coordinator.youtubeSigningIn || route.app == nil)
+                            Button("Sign out") { Task { await coordinator.signOutOfYouTube() } }
                         }
+                    } else {
+                        HStack(spacing: 12) {
+                            Button(coordinator.youtubeSigningIn ? "Waiting for Google…" : "Sign in with Google") {
+                                Task { await coordinator.signInToYouTube() }
+                            }
+                            .disabled(coordinator.youtubeSigningIn || route.app == nil)
+                            if coordinator.youtubeSigningIn { ProgressView().controlSize(.small) }
+                        }
+                        Text(route.app == .shared ? YouTubeSettingsWords.unverifiedNote
+                             : route.app == .own ? "Signs in through your own Google app." : (route.noneMessage ?? ""))
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                     if !coordinator.youtubeStatus.isEmpty {
                         Text(coordinator.youtubeStatus).font(.callout).foregroundStyle(.secondary)
                     }
-                    DisclosureGroup("Where do I get the Client ID and Secret?", isExpanded: $youtubeHelpExpanded) {
+                    DisclosureGroup("Use your own Google app", isExpanded: $youtubeHelpExpanded) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("In Google Cloud Console, create a project and enable YouTube Data API v3. Under Credentials, create an OAuth client ID with type Desktop app. Paste its ID and Secret above, then connect your account.")
+                            Toggle("Sign in through my own Google app", isOn: $coordinator.youtubeUsesOwnApp)
+                            Text("For when Greenroom’s Google app has reached Google’s limit of 100 people. In Google Cloud Console, enable YouTube Data API v3 and create an OAuth client ID of type Desktop app.")
+                            if coordinator.youtubeUsesOwnApp {
+                                credentialField("Client ID", text: $coordinator.youtubeClientID)
+                                credentialField("Client Secret", text: $coordinator.youtubeClientSecret, secure: true)
+                            }
                             Link("Open Google Cloud Console…", destination: URL(string: "https://console.cloud.google.com/")!)
-                            Text("If your imported settings file includes these details, you can connect right away.")
                         }
                         .font(.callout).padding(.top, 12)
                     }
+                    Text("No sign-in needed for Upload in YouTube Studio, on every recording’s upload sheet.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 Label("Uploading sends the recording to YouTube. With “Do nothing”, no recordings are uploaded.", systemImage: "arrow.up.right")
                     .font(.callout).foregroundStyle(Brand.netText)

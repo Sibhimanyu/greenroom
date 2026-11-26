@@ -197,7 +197,6 @@ struct RecordingsView: View {
     @State private var renameError: String?
     @State private var deletingVideo: (upload: SessionMetadata.Upload, folder: URL)?
     @State private var deleteVideoError: String?
-    @State private var confirmingUpload: Recording?
 
     /// Used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
@@ -436,21 +435,6 @@ struct RecordingsView: View {
         .sheet(isPresented: $review.showingSetup) {
             AnalysisSetupPanel(done: { review.showingSetup = false })
         }
-        .confirmationDialog("Upload to YouTube?",
-                            isPresented: Binding(get: { confirmingUpload != nil },
-                                                 set: { if !$0 { confirmingUpload = nil } }),
-                            titleVisibility: .visible) {
-            Button("Upload") {
-                if let take = confirmingUpload {
-                    UserDefaults.standard.set(true, forKey: SessionDetailRules.uploadConfirmedKey)
-                    coordinator.uploadRecordingToYouTube(take.url)
-                }
-                confirmingUpload = nil
-            }
-            Button("Cancel", role: .cancel) { confirmingUpload = nil }
-        } message: {
-            Text("This sends the recording to YouTube. It leaves this Mac. You are asked once on this Mac.")
-        }
         .alert("Rename this session",
                isPresented: Binding(get: { renaming != nil },
                                     set: { if !$0 { renaming = nil } })) {
@@ -624,6 +608,10 @@ struct RecordingsView: View {
             model.upload = .init(title: upload.title, url: upload.url,
                                  privacy: upload.privacy, uploadedAt: upload.uploadedAt)
         }
+        if let take, let failure = coordinator.youtubeFailure, failure.file == take.url, take.upload == nil,
+           !coordinator.isUploadingToYouTube {
+            model.youtubeProblem = failure.problem
+        }
         if let folder = session.folder, review.selected?.folder == folder, let analysis = review.analysis {
             model.summary = analysis.headline ?? analysis.summary
             if review.selectionMismatch {
@@ -687,11 +675,17 @@ struct RecordingsView: View {
         var actions = SessionInspectorActions()
         actions.upload = {
             guard let take else { return }
-            // The first upload on this Mac asks once; after that it goes.
-            if UserDefaults.standard.bool(forKey: SessionDetailRules.uploadConfirmedKey) {
-                coordinator.uploadRecordingToYouTube(take.url)
+            // The sheet is the question: what it is called, who can watch,
+            // made for kids, and the Terms line above Upload.
+            coordinator.presentYouTubeUpload(
+                take.url, title: SessionsIndex.shared.title(for: session.id, fallback: session.displayTitle))
+        }
+        actions.youtubeAction = { action in
+            let failure = coordinator.youtubeFailure.flatMap { $0.file == take?.url ? $0 : nil }
+            if action == .openStudio, failure == nil, let take {
+                coordinator.presentYouTubeUpload(take.url)
             } else {
-                confirmingUpload = take
+                coordinator.performYouTubeAction(action, failure: failure)
             }
         }
         actions.copyLink = { if let upload { copy(upload.url) } }

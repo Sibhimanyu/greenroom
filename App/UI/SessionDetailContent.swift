@@ -394,14 +394,21 @@ struct SessionShareCard: View {
             case .noVideo:
                 secondary("Nothing to share: this session has no recording.")
             case .notConnected:
-                secondary("Connect a YouTube channel to share this meeting.")
-                Button("Connect YouTube\u{2026}", action: actions.connectYouTube)
-                    .controlSize(.regular)
-            case .ready(let privacy):
+                if let problem = model.youtubeProblem { problemBlock(problem) }
                 Button(action: actions.upload) {
-                    Text("Upload as \(privacy.capitalized)").frame(maxWidth: .infinity)
+                    Text("Upload to YouTube\u{2026}").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(Brand.net)
+                .controlSize(.large)
+                secondary("Sign in with Google in the sheet, or use Upload in YouTube Studio: no sign-in needed.")
+            case .ready:
+                if let problem = model.youtubeProblem { problemBlock(problem) }
+                Button(action: actions.upload) {
+                    Text("Upload to YouTube\u{2026}").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Brand.net)
                 .controlSize(.large)
                 Text("Leaves this Mac")
                     .font(.system(size: 11))
@@ -422,6 +429,24 @@ struct SessionShareCard: View {
             // this VStack, so the card keeps one primary action and one caption.
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The last upload's problem: plain words, then its buttons.
+    @ViewBuilder private func problemBlock(_ problem: YouTubeProblem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(problem.title, systemImage: "exclamationmark.triangle.fill")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(Brand.netText)
+                .fixedSize(horizontal: false, vertical: true)
+            secondary("\(problem.detail) \(YouTubeErrorRules.savedNote)")
+            HStack(spacing: 8) {
+                ForEach(problem.actions, id: \.self) { action in
+                    Button(action.title) { actions.youtubeAction(action) }
+                }
+            }
+            .controlSize(.small)
+        }
+        .padding(.bottom, 4)
     }
 
     private func secondary(_ text: String) -> some View {

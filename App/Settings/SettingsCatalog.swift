@@ -104,6 +104,8 @@ enum SettingsCatalog {
         travels("youtubeClientSecret", .string("")),
         travels("youtubeUploadMode", .string("off")),
         travels("youtubePrivacy", .string("unlisted")),
+        excluded("youtubeUsesOwnApp", .derived("your own Google app when one was pasted before, else Greenroom's"), "Picks between Greenroom's Google app and the pasted one for this Mac's sign-in; the sign-in does not travel, so neither does the choice."),
+        excluded("youtubeMadeForKids", .unset, "An answer the person gives about their own videos, on their own Mac."),
 
         // The picture and the person.
         travels("webcamShape", .string("circle")),
@@ -203,8 +205,9 @@ enum SettingsCatalog {
         excluded("sessionNotesBarSpots", .unset, "Where the notes bar was dropped, per display: window positions stay on their Mac."),
         excluded("sessionNotesBarLastDisplay", .unset, "Which display the notes bar was last on: window positions stay on their Mac."),
         excluded("layoutLibrary.knownStarters", .unset, "Bookkeeping of which starter layouts this Mac has seen."),
-        excluded("youtubeUploadConfirmed", .bool(false), "A consent the person gives on their own Mac."),
         excluded("youtubeRefreshToken", .unset, "A token: each Mac connects its own account."),
+        excluded("youtubeTokenApp", .unset, "Which Google app issued this Mac's token; goes with the token."),
+        excluded("youtubeChannel", .unset, "The signed-in account's channel name and picture; each Mac signs in itself."),
         excluded("zoomUserRefreshToken", .unset, "A token: each Mac signs in itself."),
         excluded("zoomUserProfile", .unset, "An account: each Mac signs in itself."),
         excluded("zoomUserGrantedScopes", .unset, "An account: each Mac signs in itself."),

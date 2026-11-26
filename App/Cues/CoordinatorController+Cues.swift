@@ -56,9 +56,8 @@ extension CoordinatorController {
             configuration.linksFile = folder.appendingPathComponent("cues.txt")
         }
         if youtubeConnected {
-            let clientID = youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-            let clientSecret = youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-            configuration.youtubeToken = { try await YouTubeAuth.accessToken(clientID: clientID, clientSecret: clientSecret) }
+            loadSecretsIfNeeded()
+            configuration.youtubeToken = youtubeTokenProvider()
         }
         configuration.rosterNames = { [weak self] in
             guard let self else { return [] }

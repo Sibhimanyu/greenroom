@@ -179,6 +179,11 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: coordinator.finishedSession)
+        // Upload to YouTube: the after-session card and the session page open it.
+        .sheet(item: $coordinator.youtubeUploadDraft) { draft in
+            YouTubeUploadSheet(draft: draft)
+                .environmentObject(coordinator)
+        }
         // Control-Command-S, the system's own sidebar key, which the single
         // View menu item (SidebarCommands) no longer carries. Present but
         // invisible: the menu shows one item.

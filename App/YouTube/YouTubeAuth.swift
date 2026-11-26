@@ -8,13 +8,17 @@
 //  and the one-time code is exchanged for tokens with PKCE. No embedded web
 //  view, no password ever passes through Greenroom.
 //
+//  Which Google app it signs in through (Greenroom's shared one, or the
+//  person's own) is YouTubeRouteRules; the URL and the PKCE challenge are
+//  YouTubeOAuth.swift.
+//
 //  What is kept: the refresh token, in the same plain UserDefaults slot the
-//  Zoom credentials use (SecretStore) - same honesty, same local-only risk.
-//  It grants managing the channel's own videos (youtube.force-ssl, see
-//  `scope`) and is revoked at Google when the teacher presses Disconnect.
+//  Zoom credentials use (SecretStore) - same honesty, same local-only risk -
+//  and which app issued it. It grants managing the channel's own videos
+//  (youtube.force-ssl, see `YouTubeOAuth.scope`) and is revoked at Google on
+//  Sign out, and when Use another account replaces it.
 //
 import AppKit
-import CryptoKit
 import Foundation
 import Darwin
 
@@ -28,62 +32,49 @@ enum YouTubeAuth {
             case .noPort(let why): return "Couldn't open a local port for Google to call back on (\(why))."
             case .timedOut: return "Google did not call back within five minutes."
             case .badRedirect(let why): return "Google's callback was not what was expected: \(why)"
-            case .tokenExchange(let why): return "Google refused the sign-in code: \(why). Check that the Client Secret belongs to this Client ID (Google Cloud \u{2192} Credentials \u{2192} the Desktop app client) and re-copy both."
-            case .notConnected: return "No Google account is connected. Settings \u{2192} YouTube \u{2192} Connect."
-            case .refreshFailed(let why): return "Google would not renew the sign-in: \(why). Connect again in Settings \u{2192} YouTube."
-            case .signInExpired: return "Your Google sign-in has expired. Connect again in Settings \u{2192} YouTube. (Google ends sign-ins after 7 days while the Google Cloud project is in Testing; publish it to stop this.)"
+            case .tokenExchange(let why): return "Google refused the sign-in: \(why)."
+            case .notConnected: return "Not signed in to YouTube. Settings \u{2192} YouTube \u{2192} Sign in with Google."
+            case .refreshFailed(let why): return "Google would not renew the sign-in: \(why)."
+            case .signInExpired: return "Your Google sign-in has ended (signed out, access removed, or expired). Sign in again in Settings \u{2192} YouTube."
             }
         }
     }
 
-    /// Upload and edit the account's own videos. `youtube.upload` alone
-    /// cannot change a title afterwards, and there is no Google scope between
-    /// "add only" and "manage videos" - so this is the narrowest that lets a
-    /// class be renamed on YouTube after the fact. Greenroom uses it for
-    /// uploads, title changes, deleting a video the teacher chose to delete,
-    /// and Cues video search when that is on - nothing else.
-    static let scope = "https://www.googleapis.com/auth/youtube.force-ssl"
+    static var scope: String { YouTubeOAuth.scope }
 
     /// Tokens granted before the scope widened can upload but not rename.
-    /// Google answers 403 insufficientPermissions; this is the message.
-    static let reconnectHint = "Google needs a new permission for that \u{2014} in Settings \u{2192} YouTube, Disconnect and then Connect again."
+    static let reconnectHint = "Google needs a new permission for that. In Settings \u{2192} YouTube, sign in again."
     private static let refreshTokenKey = "youtubeRefreshToken"
+    /// Which Google app issued the stored token ("shared" / "own"); absent on
+    /// tokens from before the shared app (YouTubeRouteRules.tokenApp).
+    private static let tokenAppKey = "youtubeTokenApp"
 
     static var isConnected: Bool { !(SecretStore.get(refreshTokenKey) ?? "").isEmpty }
+
+    /// The app the stored token must be refreshed with.
+    static var tokenApp: YouTubeGoogleApp {
+        YouTubeRouteRules.tokenApp(issuedBy: UserDefaults.standard.string(forKey: tokenAppKey).flatMap(YouTubeGoogleApp.init))
+    }
 
     /// Short-lived access token, cached until a few minutes before expiry.
     private static var cachedAccess: (token: String, expiresAt: Date)?
 
-    // MARK: Connect
+    // MARK: Sign in
 
-    /// Opens the consent page and waits for Google's callback. Returns once
-    /// a refresh token is stored. Runs for as long as the teacher takes to
-    /// sign in, up to five minutes.
+    /// Opens Google's account chooser and consent page in the browser and
+    /// waits for its callback. Returns once a refresh token is stored. Runs
+    /// for as long as the person takes, up to five minutes. A token already
+    /// stored (Use another account) is revoked once the new one is in.
     @MainActor
-    static func connect(clientID: String, clientSecret: String) async throws {
+    static func connect(client: YouTubeOAuthClient, app: YouTubeGoogleApp) async throws {
         let verifier = randomToken(bytes: 48)
-        let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         let state = randomToken(bytes: 12)
 
         let listener = try LoopbackListener.start()
         defer { listener.stop() }
-        let redirectURI = "http://127.0.0.1:\(listener.port)"
-
-        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-        components.queryItems = [
-            URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "redirect_uri", value: redirectURI),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: scope),
-            URLQueryItem(name: "code_challenge", value: challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: state),
-            // offline + consent: the only combination that reliably returns a
-            // refresh token on every connect, including re-connects.
-            URLQueryItem(name: "access_type", value: "offline"),
-            URLQueryItem(name: "prompt", value: "consent"),
-        ]
-        NSWorkspace.shared.open(components.url!)
+        let redirectURI = YouTubeOAuth.redirectURI(port: listener.port)
+        NSWorkspace.shared.open(YouTubeOAuth.authURL(clientID: client.id, redirectURI: redirectURI,
+                                                     challenge: YouTubeOAuth.challenge(for: verifier), state: state))
 
         let code = try await listener.waitForCode(expectedState: state, timeout: 300)
 
@@ -91,20 +82,23 @@ enum YouTubeAuth {
         // succeeded, so it never says "connected" over a failure.
         let form = [
             "code": code,
-            "client_id": clientID,
-            "client_secret": clientSecret,
+            "client_id": client.id,
+            "client_secret": client.secret,
             "redirect_uri": redirectURI,
             "grant_type": "authorization_code",
             "code_verifier": verifier,
         ]
         do {
-            let json = try await postForm("https://oauth2.googleapis.com/token", form, failure: AuthError.tokenExchange)
+            let json = try await postForm(YouTubeOAuth.tokenEndpoint, form, failure: AuthError.tokenExchange)
             guard let refresh = json["refresh_token"] as? String, !refresh.isEmpty else {
                 throw AuthError.tokenExchange("no refresh token in the response")
             }
+            let previous = SecretStore.get(refreshTokenKey) ?? ""
             SecretStore.set(refresh, forKey: refreshTokenKey)
+            UserDefaults.standard.set(app.rawValue, forKey: tokenAppKey)
             cacheAccess(from: json)
             listener.reply(success: true, detail: "")
+            if !previous.isEmpty, previous != refresh { await revoke(previous) }
         } catch {
             listener.reply(success: false, detail: error.localizedDescription)
             throw error
@@ -114,20 +108,25 @@ enum YouTubeAuth {
     /// Forgets the account here and tells Google to revoke the grant. The
     /// revoke is best-effort: the local token is gone either way.
     static func disconnect() async {
-        if let refresh = SecretStore.get(refreshTokenKey), !refresh.isEmpty,
-           let url = URL(string: "https://oauth2.googleapis.com/revoke?token=\(refresh)") {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            _ = try? await URLSession.shared.data(for: request)
-        }
+        if let refresh = SecretStore.get(refreshTokenKey), !refresh.isEmpty { await revoke(refresh) }
         SecretStore.set("", forKey: refreshTokenKey)
+        UserDefaults.standard.removeObject(forKey: tokenAppKey)
         cachedAccess = nil
+    }
+
+    private static func revoke(_ token: String) async {
+        var request = URLRequest(url: URL(string: YouTubeOAuth.revokeEndpoint)!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = "token=\(formEncode(token))".data(using: .utf8)
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     // MARK: Access tokens
 
     /// A valid access token, renewed with the refresh token when needed.
-    static func accessToken(clientID: String, clientSecret: String) async throws -> String {
+    /// `client` must be the app that issued the token (`tokenApp`).
+    static func accessToken(client: YouTubeOAuthClient) async throws -> String {
         if let cached = cachedAccess, cached.expiresAt.timeIntervalSinceNow > 300 {
             return cached.token
         }
@@ -136,19 +135,20 @@ enum YouTubeAuth {
         }
         let form = [
             "refresh_token": refresh,
-            "client_id": clientID,
-            "client_secret": clientSecret,
+            "client_id": client.id,
+            "client_secret": client.secret,
             "grant_type": "refresh_token",
         ]
         let json: [String: Any]
         do {
-            json = try await postForm("https://oauth2.googleapis.com/token", form,
+            json = try await postForm(YouTubeOAuth.tokenEndpoint, form,
                                       failure: AuthError.refreshFailed, invalidGrant: .signInExpired)
         } catch AuthError.signInExpired {
             // invalid_grant means this refresh token is dead (expired or
             // revoked). Forget it so the app stops believing it is connected;
             // no revoke call, Google has already ended it.
             SecretStore.set("", forKey: refreshTokenKey)
+            UserDefaults.standard.removeObject(forKey: tokenAppKey)
             cachedAccess = nil
             throw AuthError.signInExpired
         }
@@ -156,6 +156,22 @@ enum YouTubeAuth {
             throw AuthError.refreshFailed("no access token in the response")
         }
         return token
+    }
+
+    // MARK: The channel
+
+    /// The signed-in account's channel (channels.list mine=true, 1 quota
+    /// unit), or nil when the account has none.
+    static func channel(token: String) async throws -> YouTubeChannel? {
+        var request = URLRequest(url: URL(string: "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let parsed = YouTubeErrorRules.parse(data)
+            throw YouTubeUploader.UploadError.api(status: status, reason: parsed.reason, message: parsed.message ?? "HTTP \(status)")
+        }
+        return YouTubeUploadRules.channel(fromChannelsList: data)
     }
 
     @discardableResult
@@ -199,14 +215,7 @@ enum YouTubeAuth {
     private static func randomToken(bytes count: Int) -> String {
         var bytes = [UInt8](repeating: 0, count: count)
         _ = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
-        return base64URL(Data(bytes))
-    }
-
-    private static func base64URL(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        return YouTubeOAuth.base64URL(Data(bytes))
     }
 }
 

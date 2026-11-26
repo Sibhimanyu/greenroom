@@ -449,6 +449,8 @@ struct SessionInspectorModel {
     /// The selected take has a video the editor can open.
     var canEdit: Bool = false
     var youtubeConnected: Bool = false
+    /// The last upload of this take did not go through: plain words and buttons.
+    var youtubeProblem: YouTubeProblem?
 
     /// The line under the page's title: "Today 2:05 PM \u{00B7} 48 min \u{00B7} Class".
     var headerMeta: String {
@@ -482,4 +484,6 @@ struct SessionInspectorActions {
     var edit: () -> Void = {}
     /// Opens Settings on the YouTube tab.
     var connectYouTube: () -> Void = {}
+    /// A button under an upload problem.
+    var youtubeAction: (YouTubeAction) -> Void = { _ in }
 }

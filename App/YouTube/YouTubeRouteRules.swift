@@ -47,6 +47,12 @@ enum YouTubeRoute: Equatable {
     case shared, own
     case none(YouTubeRouteGap)
 
+    /// Why sign-in can't run, in words; nil when it can.
+    var noneMessage: String? {
+        if case .none(let gap) = self { return gap.message }
+        return nil
+    }
+
     var app: YouTubeGoogleApp? {
         switch self {
         case .shared: return .shared

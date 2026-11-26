@@ -166,9 +166,9 @@
 </nav>
 
 <header class="wrap page-hero">
-  <span class="eyebrow">Advanced · your own Zoom apps</span>
+  <span class="eyebrow">Setup · your own Zoom apps</span>
   <h1>Connect Greenroom to your own Zoom apps</h1>
-  <p class="lede">Most people just use Sign in with Zoom. Follow this page only if you want your own Marketplace apps instead.</p>
+  <p class="lede">This is how everyone connects Greenroom to Zoom for now. Sign in with Zoom is coming soon, once Zoom approves Greenroom's Zoom app.</p>
 </header>
 
 <main class="wrap narrow">
@@ -177,11 +177,10 @@
   <div class="kicker">Before you start</div>
   <h2>Who needs this</h2>
   <ul class="plain">
-    <li>The default is <strong>Sign in with Zoom</strong> (Settings → Zoom). It needs no apps and nothing to paste.</li>
-    <li>Use your own apps if you cannot sign in that way, or want your own Client IDs.</li>
+    <li>Everyone, for now. <strong>Sign in with Zoom</strong> shows as Coming soon until Zoom approves Greenroom's Zoom app: today it can only start meetings on the account that owns that app.</li>
+    <li>The setup guide's <strong>Connect Zoom</strong> step walks through the same steps as this page; Settings → Zoom → <strong>Set up…</strong> opens it.</li>
     <li>You need a Zoom account that may build apps and add admin scopes. Ask your Zoom admin if those options are missing.</li>
     <li>Both apps must belong to the <strong>same Zoom account</strong>. About ten minutes.</li>
-    <li>Own apps are used only while you are signed out of Sign in with Zoom.</li>
   </ul>
   <p class="note">Official Zoom docs: <a href="https://developers.zoom.us/docs/meeting-sdk/get-credentials/" target="_blank" rel="noopener noreferrer">Meeting SDK credentials</a> · <a href="https://developers.zoom.us/docs/internal-apps/s2s-oauth/" target="_blank" rel="noopener noreferrer">Server-to-Server OAuth</a>. Zoom may rename its screens.</p>
 </section>
@@ -205,7 +204,7 @@
       <p>Open the app's credentials. Copy the <strong>Client ID</strong> and <strong>Client Secret</strong>.</p>
     </li>
     <li>
-      <p>In Greenroom, open <strong>Settings → Zoom → Use your own Zoom apps (advanced) → Meeting SDK</strong>. Paste both values.</p>
+      <p>In Greenroom, open the setup guide's <strong>Connect Zoom → 1 · Meeting app</strong> (Settings → Zoom → <strong>Set up…</strong>). Paste both values.</p>
       <p>The setup guide's Zoom step (the ? on the main window) has the same fields under <strong>Meeting and chat</strong>.</p>
     </li>
   </ol>
@@ -228,7 +227,7 @@
       <p>On <strong>App Credentials</strong>, copy the <strong>Account ID</strong>, <strong>Client ID</strong> and <strong>Client Secret</strong>.</p>
     </li>
     <li>
-      <p>In Greenroom, open <strong>Settings → Zoom → Use your own Zoom apps (advanced) → Server-to-Server</strong>. Paste all three.</p>
+      <p>In Greenroom, open the setup guide's <strong>Connect Zoom → 2 · Hosting app</strong>. Paste all three.</p>
       <p>The setup guide has them under <strong>Create and host meetings</strong>.</p>
     </li>
     <li>
@@ -296,7 +295,7 @@
   <div class="kicker">Connect</div>
   <h2>Check Zoom setup</h2>
   <ol class="steps">
-    <li><p>Paste the credentials in <strong>Settings → Zoom</strong>, or in the setup guide's credentials step (the ? on the main window).</p></li>
+    <li><p>Paste the credentials in the setup guide's <strong>Connect Zoom</strong> step (the ? on the main window, or Settings → Zoom → <strong>Edit setup…</strong>).</p></li>
     <li><p>In the setup guide, press <strong>Check Zoom setup</strong>. End any running session first.</p></li>
     <li><p>Read the results. Press <strong>Check again</strong> after each fix.</p></li>
   </ol>
@@ -331,7 +330,6 @@
     <li><strong>Secret changed or expired.</strong> If you regenerated a secret or deactivated the app, hosting fails. Paste the new value.</li>
     <li><strong>"Zoom details changed during the check."</strong> You edited a field mid-check. Press Check again.</li>
     <li><strong>Check button is disabled.</strong> A session is running. End it first.</li>
-    <li><strong>Sign in with Zoom is on.</strong> It wins over your apps. Sign out to use your own.</li>
   </ul>
 </section>
 
@@ -343,7 +341,7 @@
     <li>They are <strong>not encrypted</strong>. Someone using your Mac account could read them.</li>
     <li>They go only to Zoom, to sign in and call its API.</li>
     <li>An exported settings file (Settings → Transfer → Export) carries these secrets in plain text. Greenroom asks before it writes one. Share it carefully.</li>
-    <li>Sign in with Zoom is different. Its refresh token sits in the Keychain, and no secret is pasted. See the <a href="privacy.html">privacy policy</a>.</li>
+    <li>Sign in with Zoom (coming soon) is different. Its refresh token sits in the Keychain, and no secret is pasted. See the <a href="privacy.html">privacy policy</a>.</li>
   </ul>
 </section>
 

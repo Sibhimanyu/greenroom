@@ -14,7 +14,7 @@ final class ZoomRefusalRulesTests: XCTestCase {
                        "Zoom refused to start this meeting on your account. "
                        + "Greenroom\u{2019}s Zoom app can only start meetings on the Zoom account that made it, "
                        + "and Zoom has not opened it to other accounts yet. Your account (Sibhi -8A) is a different one. "
-                       + "To host from Greenroom now, use your own Zoom apps: Settings \u{2192} Zoom \u{2192} Use your own Zoom apps (advanced)."
+                       + "To host from Greenroom now, use your own Zoom apps: Settings \u{2192} Zoom \u{2192} Your own Zoom apps."
                        + "\n\nStart uses: your Zoom account (Sibhi -8A), through Greenroom\u{2019}s Zoom app.")
         XCTAssertEqual(failure.fix, .openOwnZoomApps)
     }
@@ -64,7 +64,7 @@ final class ZoomRefusalRulesTests: XCTestCase {
 
     func testSettingsExplainsTheRememberedRefusal() {
         XCTAssertEqual(ZoomRefusalRules.settingsNote(route: greenroom, accountID: "acctB", refused: ["acctB"]),
-                       "Zoom refused the last Start with this account. Greenroom\u{2019}s Zoom app can\u{2019}t start meetings on it yet, so use your own Zoom apps below.")
+                       "Zoom refused the last Start with this account. Greenroom\u{2019}s Zoom app can\u{2019}t start meetings on it yet, so choose Your own Zoom apps above.")
         XCTAssertNil(ZoomRefusalRules.settingsNote(route: own, accountID: "acctB", refused: ["acctB"]))
     }
 

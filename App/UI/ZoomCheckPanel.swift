@@ -120,12 +120,33 @@ struct ZoomSignInCheckRow: View {
     static let footnote = "Tries what Start needs from your sign-in, in Start\u{2019}s order. No meeting is created or started."
 
     var body: some View {
-        ZoomCheckButtonRow(title: "Check sign-in", lines: checker.lines, isRunning: checker.isRunning,
+        ZoomCheckButtonRow(title: ZoomRouteCheck.signIn.title, lines: checker.lines, isRunning: checker.isRunning,
                            onCheck: { checker.showing = true; if !checker.isRunning { onRun() } },
                            onView: { checker.showing = true })
             .sheet(isPresented: $checker.showing) {
                 ZoomCheckPanel(subject: "Zoom sign-in", lines: checker.lines, isRunning: checker.isRunning,
                                footnote: Self.footnote, onAgain: onRun, onDone: { checker.showing = false })
+            }
+    }
+}
+
+/// "Check Zoom setup" in Settings -> Zoom: the same button, row and panel as
+/// Check sign-in, fed by the coordinator's one `ZoomSetupChecker` (the setup
+/// guide runs the same one).
+struct ZoomSetupCheckRow: View {
+    @ObservedObject var checker: ZoomSetupChecker
+    var disabled = false
+    let onRun: () -> Void
+
+    var body: some View {
+        ZoomCheckButtonRow(title: ZoomRouteCheck.setup.title, lines: checker.lines, isRunning: checker.isRunning,
+                           disabled: disabled,
+                           onCheck: { checker.showing = true; if !checker.isRunning { onRun() } },
+                           onView: { checker.showing = true })
+            .sheet(isPresented: $checker.showing) {
+                ZoomCheckPanel(subject: "Zoom setup", lines: checker.lines, isRunning: checker.isRunning,
+                               footnote: ZoomSetupChecker.footnote, againDisabled: disabled,
+                               onAgain: onRun, onDone: { checker.showing = false })
             }
     }
 }

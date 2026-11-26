@@ -180,7 +180,7 @@ final class MenuBarStatusItem: NSObject {
             let sdk = !coordinator.zoomSDKReady
             let host = !coordinator.zoomHostingReady
             if mode == .create ? (sdk || host) : sdk {
-                out.append(MenuBarProblem(fix: .zoomSettings, text: "Zoom: sign in"))
+                out.append(MenuBarProblem(fix: .zoomSettings, text: ZoomRouteWords.homeProblem(coordinator.zoomRoute) ?? "Zoom: sign in"))
             } else if let attention = coordinator.zoomRouteAttention {
                 out.append(MenuBarProblem(fix: .zoomSettings, text: attention))
             }

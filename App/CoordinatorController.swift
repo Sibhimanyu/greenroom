@@ -565,14 +565,16 @@ final class CoordinatorController: ObservableObject {
     // MARK: Where Zoom credentials come from. THE one place that decides.
     // `ZoomRouteRules.route` picks ONE route and Start takes both halves from
     // it: signed in with Zoom (REST as the person, the JWT from the signing
-    // function) or your own Zoom apps (the pasted S2S app and SDK keys). When
-    // both work, `zoomPrefersSignIn` (Settings' switch) picks; off, your
-    // own Zoom apps win (they start meetings on any account; owner, 2026-11-26). Settings, Home, Start and the session
-    // log all read `zoomRoute`, so none of them can disagree with Start.
+    // function) or your own Zoom apps (the pasted S2S app and SDK keys).
+    // `zoomPrefersSignIn` is Settings' choice between them, and the choice IS
+    // the route (owner, 2026-11-26): a chosen way that is not ready makes Start
+    // say what is missing, never fall back to the other. Settings, Home, Start
+    // and the session log all read `zoomRoute`, so none of them can disagree with Start.
 
     let zoomUser = ZoomUserAuth()
 
-    /// Settings' switch: with both routes set up, use the sign-in instead of your own Zoom apps.
+    /// Settings' choice: true = Sign in with Zoom, false = your own Zoom apps. Set at launch by
+    /// `ZoomRouteChoiceRules.initialPrefersSignIn` (a saved choice carries over).
     @Published var zoomPrefersSignIn: Bool = false {
         didSet {
             guard zoomPrefersSignIn != oldValue else { return }
@@ -596,6 +598,7 @@ final class CoordinatorController: ObservableObject {
     private var ownSDKKeysPresent: Bool {
         !sdkClientID.isEmpty && secretPresent(sdkClientSecret, key: "zoomSDKClientSecret")
     }
+    private var ownAppsComplete: Bool { ownSDKKeysPresent && ownS2SComplete }
 
     var zoomRouteFacts: ZoomRouteFacts {
         ZoomRouteFacts(signedIn: zoomUser.isSignedIn,
@@ -610,15 +613,24 @@ final class CoordinatorController: ObservableObject {
 
     /// The route Start will use right now.
     var zoomRoute: ZoomRoute { ZoomRouteRules.route(zoomRouteFacts) }
-    /// Both routes work: Settings says which wins and offers the switch.
-    var zoomRoutesBothSetUp: Bool { ZoomRouteRules.bothSetUp(zoomRouteFacts) }
+    /// What Settings -> Zoom shows for the chosen way (`ZoomRouteChoiceRules`).
+    var zoomRouteChoice: ZoomRouteChoice {
+        ZoomRouteChoiceRules.choice(ZoomRouteChoiceFacts(
+            route: zoomRouteFacts,
+            ownSDKStarted: !sdkClientID.isEmpty || secretPresent(sdkClientSecret, key: "zoomSDKClientSecret"),
+            ownS2SStarted: !s2sAccountID.isEmpty || !s2sClientID.isEmpty
+                || secretPresent(s2sClientSecret, key: "zoomS2SClientSecret"),
+            signingIn: zoomSigningIn))
+    }
 
-    /// REST follows the route. With no usable route the old rule still
-    /// answers, so a half set-up account can be listed and tested.
+    /// REST follows the route. With no usable route the chosen way still
+    /// answers if its REST half works, so a half set-up account can be listed
+    /// and tested, but never the way that is not chosen.
     var zoomRESTSource: ZoomCredentialRules.RESTSource {
         let route = zoomRoute
         if route.isUsable { return ZoomRouteRules.restSource(route) }
-        return ZoomCredentialRules.restSource(signedIn: zoomUser.isSignedIn, ownS2SComplete: ownS2SComplete)
+        if zoomPrefersSignIn { return zoomUser.isSignedIn ? .signedIn : .none }
+        return ownS2SComplete ? .ownApps : .none
     }
 
     /// nil when neither a Zoom sign-in nor pasted S2S credentials exist.
@@ -661,10 +673,7 @@ final class CoordinatorController: ObservableObject {
 
     /// Why Start can't run, in the route's words.
     private var zoomRouteMissingText: String {
-        switch zoomRoute {
-        case .none(.ownAppsIncomplete): return ZoomRouteWords.line(zoomRoute) + " Settings (\u{2318},) \u{2192} Zoom."
-        default: return "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
-        }
+        ZoomRouteWords.line(zoomRoute) + " Settings (\u{2318},) \u{2192} Zoom."
     }
 
     /// The route the running (or last) start took.
@@ -687,7 +696,7 @@ final class CoordinatorController: ObservableObject {
         if route.usesGreenroomApp && zoomNeedsMorePermission { return zoomAttentionTitle }
         return ZoomRefusalRules.homeWarning(route: route, accountID: zoomAccountID, refused: zoomRefusedAccounts)
     }
-    /// Settings' note under "Start uses" when Zoom refused this account before.
+    /// Settings' note under the sign-in's status when Zoom refused this account before.
     var zoomRouteNote: String? {
         ZoomRefusalRules.settingsNote(route: zoomRoute, accountID: zoomAccountID, refused: zoomRefusedAccounts)
     }
@@ -709,19 +718,26 @@ final class CoordinatorController: ObservableObject {
 
     /// "Check sign-in": what Start needs from Sign in with Zoom, step by step.
     let zoomSignInChecker = ZoomSignInChecker()
+    /// "Check Zoom setup": your own Zoom apps. One checker for the setup guide and Settings.
+    let zoomSetupChecker = ZoomSetupChecker()
+    var zoomSetupCredentials: ZoomSetupChecker.Credentials {
+        [sdkClientID, sdkClientSecret, s2sAccountID, s2sClientID, s2sClientSecret]
+    }
+    func checkZoomSetup() {
+        guard !phase.isInMeeting else { return }
+        loadSecretsIfNeeded()
+        zoomSetupChecker.run(client: zoomChatClient) { [weak self] in self?.zoomSetupCredentials ?? [] }
+    }
     func checkZoomSignIn() {
         zoomSignInChecker.run(user: zoomUser, endpoint: ZoomOAuth.sdkSignatureEndpoint, refused: zoomRefusedAccounts)
     }
 
-    /// Asks Settings -> Zoom to unfold "Use your own Zoom apps (advanced)".
-    @Published var zoomOwnAppsRequested = false
-
-    /// The failure card's Open Settings: Settings -> Zoom, own apps unfolded.
+    /// The failure card's Open Settings (error 63): Settings -> Zoom with your own Zoom apps chosen.
     func openZoomOwnApps() {
+        zoomPrefersSignIn = false
         NSApp.activate(ignoringOtherApps: true)
         if let open = SwiftUIActions.openSettings { open() }
         else { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
-        zoomOwnAppsRequested = true
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .showSettingsTab, object: "zoom")
         }
@@ -730,7 +746,14 @@ final class CoordinatorController: ObservableObject {
     var zoomSignInError: String? { zoomUser.lastError }
 
     func signInWithZoom() {
-        Task { try? await zoomUser.signIn() }
+        Task {
+            try? await zoomUser.signIn()
+            // Signing in is choosing it, unless your own Zoom apps already work.
+            if zoomUser.isSignedIn {
+                zoomPrefersSignIn = ZoomRouteChoiceRules.prefersSignInAfterSigningIn(
+                    current: zoomPrefersSignIn, ownAppsComplete: ownAppsComplete)
+            }
+        }
     }
     func cancelZoomSignIn() { zoomUser.cancelSignIn() }
     /// Returns true when Zoom confirmed the revoke, false when only the local copy was deleted.
@@ -1541,11 +1564,23 @@ final class CoordinatorController: ObservableObject {
         meetingPresets = Self.loadPresets(from: defaults)
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
-        zoomPrefersSignIn = defaults.bool(forKey: Self.zoomPrefersSignInKey)
         sdkClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
         s2sAccountID = defaults.string(forKey: "zoomS2SAccountID") ?? ""
         s2sClientID = defaults.string(forKey: "zoomS2SClientID") ?? ""
         s2sClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
+        // The choice between the two ways is explicit; with none saved (a fresh
+        // install, or the first launch after it became explicit), pick and save one.
+        // Read from storage: this runs before init finishes (the secrets load lazily later).
+        let savedChoice = defaults.object(forKey: Self.zoomPrefersSignInKey) as? Bool
+        let store = defaults
+        let storedOwnAppsComplete = ["zoomSDKClientID", "zoomS2SAccountID", "zoomS2SClientID"]
+            .allSatisfy { !(store.string(forKey: $0) ?? "").isEmpty }
+            && !(SecretStore.get("zoomSDKClientSecret") ?? "").isEmpty
+            && !(SecretStore.get("zoomS2SClientSecret") ?? "").isEmpty
+        let initialChoice = ZoomRouteChoiceRules.initialPrefersSignIn(
+            saved: savedChoice, signedIn: zoomUser.isSignedIn, ownAppsComplete: storedOwnAppsComplete)
+        zoomPrefersSignIn = initialChoice
+        if savedChoice == nil { defaults.set(initialChoice, forKey: Self.zoomPrefersSignInKey) }
         userDisplayName = defaults.string(forKey: "userDisplayName") ?? NSFullUserName()
         // Default OFF (show self): the teacher's own tile belongs in the
         // extended display's participant grid alongside the students
@@ -1582,6 +1617,10 @@ final class CoordinatorController: ObservableObject {
 
         // Sign in with Zoom changes (signing in, signed in, out) redraw whatever shows the coordinator.
         zoomUser.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        // So does "Check Zoom setup" (the setup guide reads it through the coordinator).
+        zoomSetupChecker.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
@@ -1975,7 +2014,7 @@ final class CoordinatorController: ObservableObject {
             return
         case .create:
             guard zoomHostingReady else {
-                refuseStart("Can't create a meeting yet \u{2014} sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom.")
+                refuseStart("Can't create a meeting yet \u{2014} \(zoomRouteMissingText)")
                 return
             }
         case .join:

@@ -93,7 +93,7 @@ enum ZoomSignInCheckRules {
         return ZoomCheckLine(id: step.rawValue, title: step.title, status: status, detail: detail)
     }
 
-    private static let ownAppsAdvice = "Settings \u{2192} Zoom \u{2192} Use your own Zoom apps (advanced)."
+    private static let ownAppsAdvice = "Settings \u{2192} Zoom \u{2192} Your own Zoom apps."
     private static let onlyItsAccount = "Greenroom\u{2019}s Zoom app can only start meetings on the account that made it, and Zoom has not opened it to other accounts yet. Start will fail until then. Use your own Zoom apps instead: "
 
     private static func words(_ step: ZoomSignInCheckStep, _ fact: ZoomSignInCheckFact) -> (ZoomCheckStatus, String) {

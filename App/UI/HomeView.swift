@@ -1035,7 +1035,7 @@ struct HomeView: View {
             let sdk = !coordinator.zoomSDKReady
             let host = !coordinator.zoomHostingReady
             let missing = mode == .create ? (sdk || host) : sdk
-            items.append(ReadinessItem(id: "zoom", title: "Zoom", problem: missing ? "Zoom: sign in" : coordinator.zoomRouteAttention))
+            items.append(ReadinessItem(id: "zoom", title: "Zoom", problem: missing ? (ZoomRouteWords.homeProblem(coordinator.zoomRoute) ?? "Zoom: sign in") : coordinator.zoomRouteAttention))
         }
         if !coordinator.cameraIsOff {
             let blocked = cameraAccess == .denied || cameraAccess == .restricted

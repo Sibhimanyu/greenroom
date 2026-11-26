@@ -298,7 +298,7 @@ enum ZoomCredentialRules {
         return signedIn ? .notFinished : .missingKeys
     }
 
-    static let notFinishedText = "Sign in with Zoom isn\u{2019}t finished setting up yet. Use your own Zoom apps (advanced) in Settings \u{2192} Zoom for now."
+    static let notFinishedText = "Sign in with Zoom isn\u{2019}t finished setting up yet. Choose Your own Zoom apps in Settings \u{2192} Zoom for now."
 }
 
 // MARK: - Plain words for failures

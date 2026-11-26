@@ -390,6 +390,7 @@ targets:
       - path: App/Zoom/HandsUpOrdering.swift
       - path: App/Zoom/ZoomUserAuthRules.swift
       - path: App/Zoom/ZoomRouteRules.swift
+      - path: App/Zoom/ZoomRouteChoiceRules.swift
       - path: App/Zoom/ZoomSetupCheckRules.swift
       - path: App/UI/MeetingViewsMenu.swift
       - path: App/UI/SessionSelection.swift

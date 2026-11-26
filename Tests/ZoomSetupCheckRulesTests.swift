@@ -38,11 +38,11 @@ final class ZoomSetupCheckRulesTests: XCTestCase {
             (.create, .atStart, .atStart, "Checked at Start: Zoom has no dry run for creating a meeting, so this check doesn\u{2019}t make one."),
             (.account, .sameAsApp, .passed, "This is the account that owns Greenroom\u{2019}s Zoom app, so Start can host here."),
             (.account, .refused(account: "Sample Host"), .failed,
-             "Zoom refused a Start with this account (Sample Host). Greenroom\u{2019}s Zoom app can only start meetings on the account that made it, and Zoom has not opened it to other accounts yet. Start will fail until then. Use your own Zoom apps instead: Settings \u{2192} Zoom \u{2192} Use your own Zoom apps (advanced)."),
+             "Zoom refused a Start with this account (Sample Host). Greenroom\u{2019}s Zoom app can only start meetings on the account that made it, and Zoom has not opened it to other accounts yet. Start will fail until then. Use your own Zoom apps instead: Settings \u{2192} Zoom \u{2192} Your own Zoom apps."),
             (.account, .otherThanApp(account: "Sample Host"), .failed,
-             "This account (Sample Host) is not the one that owns Greenroom\u{2019}s Zoom app. Greenroom\u{2019}s Zoom app can only start meetings on the account that made it, and Zoom has not opened it to other accounts yet. Start will fail until then. Use your own Zoom apps instead: Settings \u{2192} Zoom \u{2192} Use your own Zoom apps (advanced)."),
+             "This account (Sample Host) is not the one that owns Greenroom\u{2019}s Zoom app. Greenroom\u{2019}s Zoom app can only start meetings on the account that made it, and Zoom has not opened it to other accounts yet. Start will fail until then. Use your own Zoom apps instead: Settings \u{2192} Zoom \u{2192} Your own Zoom apps."),
             (.account, .ownerUnknown(account: "Sample Host"), .warned,
-             "Greenroom can\u{2019}t tell from here whether this account (Sample Host) owns Greenroom\u{2019}s Zoom app. If it doesn\u{2019}t, Start will fail until Zoom opens the app to other accounts. To be sure, use your own Zoom apps: Settings \u{2192} Zoom \u{2192} Use your own Zoom apps (advanced)."),
+             "Greenroom can\u{2019}t tell from here whether this account (Sample Host) owns Greenroom\u{2019}s Zoom app. If it doesn\u{2019}t, Start will fail until Zoom opens the app to other accounts. To be sure, use your own Zoom apps: Settings \u{2192} Zoom \u{2192} Your own Zoom apps."),
             (.zak, .skipped, .skipped, "Not checked: an earlier step failed. Fix it, then check again."),
         ]
         for (step, fact, status, detail) in table {

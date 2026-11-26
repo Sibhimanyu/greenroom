@@ -2,32 +2,24 @@
 //  ZoomSettingsTab.swift
 //  Greenroom
 //
-//  Settings -> Zoom: Sign in with Zoom, the two Marketplace apps (advanced,
-//  folded away) and how the meeting appears.
+//  Settings -> Zoom: how Greenroom connects to Zoom, as one choice of two,
+//  then how the meeting appears.
 //
-//  Both Zoom Marketplace apps on one page.
+//  The choice (owner, 2026-11-26: "it should be visible by what we use"):
+//  "Your own Zoom apps" or "Sign in with Zoom", one segmented control at the
+//  top, bound to `zoomPrefersSignIn`. What is chosen IS what Start uses, and
+//  only the chosen way's section shows; the other folds away. The words
+//  (status line, check, button, what Start does) come from
+//  `ZoomRouteChoiceRules`; Home, the menu bar and the log say the same thing
+//  through `ZoomRouteWords`.
 //
-//  They were two tabs, Meeting Chat and Start Meeting, named after what each
-//  credential unlocks rather than after what it is. Both are Zoom tokens, both
-//  come from the same account, and the second tab's own footer had to say "on
-//  the same Zoom account as Meeting Chat" - a sentence that exists only
-//  because the two were apart. Setting Greenroom up means pasting six values
-//  from one place, and it should be one page.
+//  Your own Zoom apps are two Marketplace apps, kept as two blocks because
+//  they really are two: Zoom's headless token grant is exclusive to the
+//  Server-to-Server type and the Meeting SDK embed to the General App type,
+//  so nobody can consolidate them (Vendor/README.md records the attempt).
 //
-//  Two sections, kept separate, because they really are two different
-//  Marketplace apps and pretending otherwise would be the opposite mistake:
-//  Zoom's headless token grant is exclusive to the Server-to-Server type and
-//  the Meeting SDK embed is exclusive to the General App type, so nobody can
-//  consolidate them into one set of credentials. Vendor/README.md records the
-//  attempt.
-//
-//  The page opens on a picture of the two apps side by side: what each one
-//  powers, drawn as small glyphs, and whether its keys are all in. Where to
-//  find them in the Marketplace is hover help on each card; the scope list is
-//  a copyable block under the second app's fields.
-//
-//  `ZoomPageContent` takes plain bindings, so it can be rendered off screen
-//  with sample values. `ZoomSettingsTab` feeds it from the coordinator.
+//  `ZoomPageContent` takes plain values and bindings, so it can be rendered
+//  off screen with sample values. `ZoomSettingsTab` feeds it from the coordinator.
 //
 import AppKit
 import SwiftUI
@@ -46,10 +38,18 @@ struct ZoomSettingsTab: View {
             s2sClientSecret: $coordinator.s2sClientSecret,
             displayName: $coordinator.userDisplayName,
             hideSelfView: $coordinator.hideSelfView,
-            signIn: ZoomSignInSection.live(coordinator),
-            route: ZoomRouteRow.live(coordinator),
-            showGuide: { coordinator.presentOnboarding() },
-            ownAppsRequest: $coordinator.zoomOwnAppsRequested)
+            prefersSignIn: $coordinator.zoomPrefersSignIn,
+            choice: coordinator.zoomRouteChoice,
+            signIn: ZoomSignInSection.live(coordinator, compact: true),
+            setupCheck: ZoomSetupCheckRow(checker: coordinator.zoomSetupChecker,
+                                          disabled: coordinator.phase.isInMeeting,
+                                          onRun: { coordinator.checkZoomSetup() }),
+            refusedNote: coordinator.zoomRouteNote,
+            onSignIn: { coordinator.signInWithZoom() },
+            onCancelSignIn: { coordinator.cancelZoomSignIn() },
+            showGuide: { coordinator.presentOnboarding() })
+            .onAppear { coordinator.loadSecretsIfNeeded() }
+            .onChange(of: coordinator.zoomSetupCredentials) { _, _ in coordinator.zoomSetupChecker.credentialsChanged() }
     }
 }
 
@@ -63,17 +63,22 @@ struct ZoomPageContent: View {
     @Binding var s2sClientSecret: String
     @Binding var displayName: String
     @Binding var hideSelfView: Bool
+    /// The choice: true = Sign in with Zoom, false = your own Zoom apps. It is what Start uses.
+    @Binding var prefersSignIn: Bool
+    /// What the chosen way's section says (`ZoomRouteChoiceRules`).
+    let choice: ZoomRouteChoice
+    /// The sign-in's own controls (compact): Check sign-in, Sign out, errors.
     let signIn: ZoomSignInSection
-    /// "Start uses: ...": which of the two ways Start takes right now.
-    let route: ZoomRouteRow
+    /// "Check Zoom setup" for your own Zoom apps. Nil hides it.
+    var setupCheck: ZoomSetupCheckRow? = nil
+    /// Zoom refused this account before (error 63): why, and what to do.
+    var refusedNote: String? = nil
+    var onSignIn: () -> Void = {}
+    var onCancelSignIn: () -> Void = {}
     /// Opens the setup guide. Nil in the off-screen render, which hides the button.
     var showGuide: (() -> Void)? = nil
-    /// Starts with "Use your own Zoom apps" open; for the off-screen render only.
-    var ownAppsOpen = false
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
-    /// The failure card's Open Settings unfolds "Use your own Zoom apps".
-    var ownAppsRequest: Binding<Bool>? = nil
 
     // "During the meeting" (moved from the Layout tab; keys unchanged).
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
@@ -90,49 +95,20 @@ struct ZoomPageContent: View {
                          ("Client Secret", s2sClientSecret)])
     }
 
+    /// The segmented control's value; a pick animates the sections' fold.
+    private var option: Binding<ZoomRouteOption> {
+        Binding(get: { prefersSignIn ? .signIn : .ownApps },
+                set: { picked in Collapse.animate { prefersSignIn = (picked == .signIn) } })
+    }
+
     var body: some View {
         Form {
             Section {
-                route
-            }
-
-            Section {
-                signIn
+                ZoomRouteChoiceRow(option: option, choice: choice)
+                Collapsible(hidden: prefersSignIn) { ownAppsSection }
+                Collapsible(hidden: !prefersSignIn) { signInSection }
             } header: {
-                Text("Zoom account")
-                    .help("Signs in with your own Zoom account. Greenroom starts, lists and ends meetings as you.")
-            }
-
-            Section {
-                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: ownAppsOpen, openRequest: ownAppsRequest) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Meeting SDK").font(.headline)
-                                Spacer()
-                                sdkState.badge
-                            }
-                            .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
-                            TextField("Client ID", text: $sdkClientID)
-                            SecureField("Client Secret", text: $sdkClientSecret)
-                            MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.sdkSteps, showGuide: showGuide)
-                        }
-                        Divider()
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Server-to-Server").font(.headline)
-                                Spacer()
-                                s2sState.badge
-                            }
-                            .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result. Used when Start uses your own Zoom apps (see the line at the top).")
-                            TextField("Account ID", text: $s2sAccountID)
-                            TextField("Client ID", text: $s2sClientID)
-                            SecureField("Client Secret", text: $s2sClientSecret)
-                            ScopeList(scopes: Self.scopes, open: scopesOpen)
-                            MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.s2sSteps, showGuide: showGuide)
-                        }
-                    }
-                }
+                Text("How Greenroom connects to Zoom")
             }
 
             Section("Meeting") {
@@ -152,49 +128,137 @@ struct ZoomPageContent: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
     }
+
+    /// Your own Zoom apps: one status line and the check first, then both apps' keys and guides.
+    private var ownAppsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                ZoomRouteStatusLine(choice: choice)
+                if choice.check == .setup, let setupCheck { setupCheck }
+                ZoomRouteStartNote(choice: choice)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Meeting SDK").font(.headline)
+                    Spacer()
+                    sdkState.badge
+                }
+                .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
+                TextField("Client ID", text: $sdkClientID)
+                SecureField("Client Secret", text: $sdkClientSecret)
+                MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.sdkSteps, showGuide: showGuide)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Server-to-Server").font(.headline)
+                    Spacer()
+                    s2sState.badge
+                }
+                .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result.")
+                TextField("Account ID", text: $s2sAccountID)
+                TextField("Client ID", text: $s2sClientID)
+                SecureField("Client Secret", text: $s2sClientSecret)
+                ScopeList(scopes: Self.scopes, open: scopesOpen)
+                MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.s2sSteps, showGuide: showGuide)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    /// Sign in with Zoom: who is signed in (or Sign in), the check and Sign out.
+    private var signInSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                ZoomRouteStatusLine(choice: choice)
+                Spacer(minLength: 8)
+                switch choice.action {
+                case .signIn:
+                    Button(action: onSignIn) {
+                        Label("Sign in with Zoom", systemImage: "person.crop.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Brand.buttonFill)
+                case .cancelSignIn:
+                    ProgressView().controlSize(.small)
+                    Button("Cancel", action: onCancelSignIn)
+                case nil:
+                    EmptyView()
+                }
+            }
+            signIn
+            if let refusedNote {
+                StatusBadge(text: refusedNote, tone: .problem)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ZoomRouteStartNote(choice: choice)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
 }
 
 // MARK: - Pieces
 
-/// The page's first line: the route Start will use (`ZoomRouteRules`), and,
-/// when both ways are set up, which one wins with a one-click switch.
-struct ZoomRouteRow: View {
-    let route: ZoomRoute
-    let bothSetUp: Bool
-    /// Zoom refused this account before (error 63): why, and what to do.
-    var note: String? = nil
-    let onSwitch: () -> Void
+/// The choice at the top: the two ways as one segmented control, and the
+/// chosen one's line on who it is for. Its tooltip and accessibility value are
+/// the "Start uses: ..." sentence, the same words Home and the log use.
+struct ZoomRouteChoiceRow: View {
+    @Binding var option: ZoomRouteOption
+    let choice: ZoomRouteChoice
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                StatusBadge(text: ZoomRouteWords.line(route), tone: route.isUsable ? .good : .waiting)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                if bothSetUp, let title = ZoomRouteWords.switchTitle(route) {
-                    Button(title, action: onSwitch)
-                        .help("Start takes the meeting and the video from the same place. This switches both.")
-                }
-            }
-            if let note {
-                StatusBadge(text: note, tone: .problem)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if bothSetUp, let note = ZoomRouteWords.bothNote(route) {
-                Text(note).font(.caption).foregroundStyle(.secondary)
-            }
+            GreenroomSegmented("How Greenroom connects to Zoom", selection: $option,
+                               options: ZoomRouteOption.allCases) { Text($0.title) }
+                .segmentHelp { $0.note }
+            Text(option.note)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(choice.startLine)
         .accessibilityElement(children: .contain)
+        .accessibilityValue(choice.startLine)
     }
 }
 
-extension ZoomRouteRow {
-    @MainActor
-    static func live(_ coordinator: CoordinatorController) -> ZoomRouteRow {
-        ZoomRouteRow(route: coordinator.zoomRoute, bothSetUp: coordinator.zoomRoutesBothSetUp,
-                     note: coordinator.zoomRouteNote,
-                     onSwitch: { coordinator.zoomPrefersSignIn.toggle() })
+/// The chosen way's one status line: green only when it is ready.
+struct ZoomRouteStatusLine: View {
+    let choice: ZoomRouteChoice
+
+    var body: some View {
+        StatusBadge(text: choice.status, tone: tone)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .help(choice.startLine)
+    }
+
+    private var tone: StatusBadge.Tone {
+        switch choice.tone {
+        case .good: return .good
+        case .waiting: return .waiting
+        case .problem: return .problem
+        }
+    }
+}
+
+/// When the chosen way can't start a meeting yet but the other one could:
+/// say so. (What is missing is the status line itself; Start's own words are
+/// the status line's tooltip, so the page does not say it twice.)
+struct ZoomRouteStartNote: View {
+    let choice: ZoomRouteChoice
+
+    var body: some View {
+        if let hint = choice.otherHint {
+            Text(hint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

@@ -3,7 +3,9 @@
 //  Greenroom
 //
 //  The "Sign in with Zoom" block shared by Settings -> Zoom and the setup
-//  guide's Zoom step, and the folding "Use your own Zoom apps (advanced)" row.
+//  guide's Zoom step, and the folding row the setup guide's own-apps block uses.
+//  In Settings it is `compact`: the page's status line already says who is
+//  signed in and carries Sign in / Cancel, so the block holds the rest.
 //  Plain values and closures only, so it renders off screen with sample data;
 //  `ZoomSignInSection.live` feeds it from the coordinator.
 //
@@ -34,23 +36,22 @@ struct ZoomSignInSection: View {
     let onCancel: () -> Void
     /// Returns true when Zoom confirmed the revoke, false when only the local copy was removed.
     let onSignOut: () async -> Bool
+    /// Settings -> Zoom: no account line, Sign in or waiting row (the status line has them).
+    var compact = false
 
     @State private var signOutNote: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let signedIn {
+            if compact {
+                compactBody
+            } else if let signedIn {
                 HStack(spacing: 12) {
                     Label("Signed in as \(signedIn.line)", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(Brand.text)
                         .lineLimit(2)
                     Spacer(minLength: 8)
-                    Button("Sign out") {
-                        Task {
-                            let revoked = await onSignOut()
-                            signOutNote = revoked ? nil : "Signed out here. Zoom did not confirm the revoke, so the app is still listed in your Zoom account\u{2019}s connected apps."
-                        }
-                    }
+                    signOutButton
                 }
                 if let check { check }
                 if let setupNote { StatusBadge(text: setupNote, tone: .problem) }
@@ -80,8 +81,41 @@ struct ZoomSignInSection: View {
                 }
             }
             if let error, signedIn == nil || !signingIn { StatusBadge(text: error, tone: .problem) }
-            if let signOutNote, signedIn == nil {
+            if let signOutNote, signedIn == nil, compact {
                 Text(signOutNote).font(.caption).foregroundStyle(.secondary)
+            }
+            if let signOutNote, signedIn == nil, !compact {
+                Text(signOutNote).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var compactBody: some View {
+        if signedIn != nil {
+            HStack(spacing: 12) {
+                if let check { check }
+                Spacer(minLength: 8)
+                signOutButton
+            }
+            if needsMorePermission {
+                VStack(alignment: .leading, spacing: 6) {
+                    StatusBadge(text: attentionTitle, tone: .waiting)
+                    Text(attentionDetail).font(.caption).foregroundStyle(.secondary)
+                    Button("Sign in again", action: onSignIn)
+                }
+            }
+        } else if !signingIn {
+            Text("Opens your browser. Greenroom never sees your Zoom password.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var signOutButton: some View {
+        Button("Sign out") {
+            Task {
+                let revoked = await onSignOut()
+                signOutNote = revoked ? nil : "Signed out here. Zoom did not confirm the revoke, so the app is still listed in your Zoom account\u{2019}s connected apps."
             }
         }
     }
@@ -90,7 +124,7 @@ struct ZoomSignInSection: View {
 extension ZoomSignInSection {
     /// Fed from the coordinator.
     @MainActor
-    static func live(_ coordinator: CoordinatorController) -> ZoomSignInSection {
+    static func live(_ coordinator: CoordinatorController, compact: Bool = false) -> ZoomSignInSection {
         ZoomSignInSection(
             signedIn: coordinator.zoomSignedInAs.map { ZoomSignInInfo(name: $0.name, email: $0.email) },
             signingIn: coordinator.zoomSigningIn,
@@ -102,7 +136,8 @@ extension ZoomSignInSection {
             check: ZoomSignInCheckRow(checker: coordinator.zoomSignInChecker, onRun: { coordinator.checkZoomSignIn() }),
             onSignIn: { coordinator.signInWithZoom() },
             onCancel: { coordinator.cancelZoomSignIn() },
-            onSignOut: { await coordinator.signOutOfZoom() })
+            onSignOut: { await coordinator.signOutOfZoom() },
+            compact: compact)
     }
 }
 

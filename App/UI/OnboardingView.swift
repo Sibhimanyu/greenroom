@@ -21,9 +21,6 @@ struct OnboardingView: View {
     @State private var refreshTick = 0 // bumped by a timer so detected state stays live
     @State private var importStatus = ""
     @State private var importStatusIsError = false
-    @State private var isTesting = false
-    @State private var testResults: [ZoomCheckLine] = []
-    @State private var showZoomChecks = false
     @State private var copiedScope: String?
     @State private var connectingYouTube = false
     @State private var editCredentials = false
@@ -109,9 +106,9 @@ struct OnboardingView: View {
         .onReceive(timer) { _ in refreshTick += 1 }
         .onAppear { coordinator.loadSecretsIfNeeded() }
         .onChange(of: zoomCredentials) { _, _ in
-            if !isTesting { testResults = [] }
+            setupChecker.credentialsChanged()
         }
-        .sheet(isPresented: $showZoomChecks) { zoomCheckPanel }
+        .sheet(isPresented: showZoomChecks) { zoomCheckPanel }
     }
 
     @ViewBuilder
@@ -145,27 +142,14 @@ struct OnboardingView: View {
         }
     }
 
-    private enum ZoomCheck: String, CaseIterable {
-        case sdk, account, create, list, details, update, delete, host, end, meetings, hostToken
-        var title: String {
-            switch self {
-            case .sdk: "Meeting and chat credentials"
-            case .account: "Hosting credentials and app activation"
-            case .create: "Permission to create meetings"
-            case .list: "Permission to list meetings"
-            case .details: "Permission to read meeting details"
-            case .update: "Permission to edit scheduled meetings"
-            case .delete: "Permission to delete scheduled meetings"
-            case .host: "Permission to get the hosting token"
-            case .end: "Permission to end meetings"
-            case .meetings: "Scheduled meetings API"
-            case .hostToken: "Hosting token API"
-            }
-        }
+    // "Check Zoom setup": the coordinator's one checker, shared with Settings -> Zoom.
+    private var setupChecker: ZoomSetupChecker { coordinator.zoomSetupChecker }
+    private var isTesting: Bool { setupChecker.isRunning }
+    private var testResults: [ZoomCheckLine] { setupChecker.lines }
+    private var showZoomChecks: Binding<Bool> {
+        Binding(get: { setupChecker.showing }, set: { setupChecker.showing = $0 })
     }
-
-    // One line per check: the shared model and look (ZoomCheckPanel), the same as "Check sign-in".
-    private typealias CheckStatus = ZoomCheckStatus
+    private func runConnectionTest() { coordinator.checkZoomSetup() }
 
     private static let zoomBuilder = ZoomMarketplaceGuide.builderURL
     private static let requiredScopes = ZoomScopes.all
@@ -177,7 +161,7 @@ struct OnboardingView: View {
                 stepHeader("Connect your Zoom account", "Sign in with your Zoom account. Greenroom then starts and hosts your meetings as you.")
                 ZoomSignInSection.live(coordinator)
                 Divider()
-                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: zoomAppsOpen) {
+                AdvancedDisclosure("Use your own Zoom apps", open: zoomAppsOpen) {
                   VStack(alignment: .leading, spacing: 20) {
                 Text("Have a settings file from a teammate? Import it to fill in the connection details.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -203,8 +187,8 @@ struct OnboardingView: View {
                 }
                 ZoomCheckButtonRow(title: "Check Zoom setup", lines: testResults, isRunning: isTesting,
                                    disabled: coordinator.phase.isInMeeting,
-                                   onCheck: { showZoomChecks = true; if !isTesting { runConnectionTest() } },
-                                   onView: { showZoomChecks = true })
+                                   onCheck: { setupChecker.showing = true; if !isTesting { runConnectionTest() } },
+                                   onView: { setupChecker.showing = true })
                 Text(coordinator.phase.isInMeeting
                      ? "End the current session before checking Zoom."
                      : "Checks both Zoom apps, all \(ZoomScopes.countWord) hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
@@ -241,7 +225,7 @@ struct OnboardingView: View {
 
     private var zoomCheckButton: some View {
         Button(isTesting ? "View checks in progress…" : "Check Zoom setup") {
-            showZoomChecks = true
+            setupChecker.showing = true
             if !isTesting { runConnectionTest() }
         }
         .disabled(coordinator.phase.isInMeeting)
@@ -317,87 +301,9 @@ struct OnboardingView: View {
 
     private var zoomCheckPanel: some View {
         ZoomCheckPanel(subject: "Zoom setup", lines: testResults, isRunning: isTesting,
-                       footnote: "Scope checks read Zoom\u{2019}s granted permissions. Creating, joining and ending a real meeting are still tested when you start a meeting.",
+                       footnote: ZoomSetupChecker.footnote,
                        againDisabled: coordinator.phase.isInMeeting,
-                       onAgain: { runConnectionTest() }, onDone: { showZoomChecks = false })
-    }
-
-    private func updateCheck(_ check: ZoomCheck, _ status: CheckStatus, _ detail: String) {
-        guard let index = testResults.firstIndex(where: { $0.id == check.rawValue }) else { return }
-        testResults[index].status = status
-        testResults[index].detail = detail
-    }
-
-    private func runConnectionTest() {
-        guard !isTesting && !coordinator.phase.isInMeeting else { return }
-        coordinator.loadSecretsIfNeeded()
-        isTesting = true
-        testResults = ZoomCheck.allCases.map { ZoomCheckLine(id: $0.rawValue, title: $0.title) }
-        let credentials = zoomCredentials
-        let (sdkID, sdkSecret, account, client, secret) = (credentials[0], credentials[1], credentials[2], credentials[3], credentials[4])
-        Task { @MainActor in
-            defer {
-                isTesting = false
-                // Edits through Settings while a check was running invalidate it, too.
-                if zoomCredentials != credentials {
-                    for check in ZoomCheck.allCases {
-                        updateCheck(check, .skipped, "Zoom details changed during the check. Check again to verify the new values.")
-                    }
-                }
-            }
-            if sdkID.isEmpty || sdkSecret.isEmpty {
-                updateCheck(.sdk, .failed, "Add both General App values under Meeting and chat.")
-            } else {
-                updateCheck(.sdk, .running, "Authenticating with the Zoom Meeting SDK…")
-                do {
-                    try await coordinator.zoomChatClient.ensureReady(clientID: sdkID, clientSecret: sdkSecret, forceAuthentication: true)
-                    updateCheck(.sdk, .passed, "Zoom accepted the General App credentials.")
-                } catch {
-                    updateCheck(.sdk, .failed, "\(error.localizedDescription) Check the General App credentials and that Meeting SDK is enabled.")
-                }
-            }
-            guard !account.isEmpty && !client.isEmpty && !secret.isEmpty else {
-                updateCheck(.account, .failed, "Add all three Server-to-Server app values under Create and host meetings.")
-                skipHostingChecks("Add hosting credentials, then check again.")
-                return
-            }
-            updateCheck(.account, .running, "Checking the Server-to-Server app with Zoom…")
-            do {
-                let scopes = try await ZoomServerToServerClient.grantedScopes(accountID: account, clientID: client, clientSecret: secret)
-                updateCheck(.account, .passed, "Zoom issued an access token. The hosting app is active.")
-                for scope in Self.requiredScopes {
-                    let granted = ZoomScopes.isGranted(scope, in: scopes)
-                    guard let check = ZoomCheck(rawValue: scope.key.rawValue) else { continue }
-                    updateCheck(check, granted ? .passed : .failed,
-                                granted ? "Granted by Zoom." : "Missing \(scope.name). Add it in the Server-to-Server app’s Scopes page, save, and check again.")
-                }
-            } catch {
-                updateCheck(.account, .failed, "\(error.localizedDescription) Check the three hosting values and activate the app in Zoom.")
-                skipHostingChecks("Hosting authentication failed. Fix it, then check again.")
-                return
-            }
-            updateCheck(.meetings, .running, "Loading scheduled meetings…")
-            do {
-                let list = try await ZoomServerToServerClient.listScheduledMeetings(accountID: account, clientID: client, clientSecret: secret)
-                if let warning = list.warning {
-                    updateCheck(.meetings, .failed, warning)
-                } else {
-                    updateCheck(.meetings, .passed, "Zoom returned \(list.meetings.count) scheduled meeting(s).")
-                }
-            } catch { updateCheck(.meetings, .failed, error.localizedDescription) }
-            updateCheck(.hostToken, .running, "Requesting the hosting token…")
-            do {
-                let token = try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: client, clientSecret: secret)
-                updateCheck(.hostToken, token.isEmpty ? .failed : .passed,
-                            token.isEmpty ? "Zoom returned an empty hosting token." : "Zoom returned a hosting token. No meeting was started.")
-            } catch { updateCheck(.hostToken, .failed, error.localizedDescription) }
-        }
-    }
-
-    private func skipHostingChecks(_ reason: String) {
-        for check in ZoomCheck.allCases where check != .sdk && check != .account {
-            updateCheck(check, .skipped, reason)
-        }
+                       onAgain: { runConnectionTest() }, onDone: { setupChecker.showing = false })
     }
 
     // MARK: "Your setup" - the choices that actually differ per person,

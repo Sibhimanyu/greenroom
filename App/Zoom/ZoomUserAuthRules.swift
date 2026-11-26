@@ -67,6 +67,12 @@ enum ZoomOAuth {
     /// https://<project>.catalystserverless.com/server/sdk_signature/execute/signature
     static let sdkSignatureEndpoint = "https://greenroom-60083782173.development.catalystserverless.in/server/sdk_signature/execute/signature"
 
+    /// The Zoom account ID that owns Greenroom's Zoom app. Empty: not known to
+    /// the app (the JWT carries only the client ID), so the sign-in check says
+    /// it can't tell. The owner can fill it in (Zoom web portal, Account
+    /// Profile) to make the check exact; nothing else reads it.
+    static let appOwnerAccountID = ""
+
     static func redirectURI(port: UInt16) -> String { "http://127.0.0.1:\(port)\(callbackPath)" }
 }
 

@@ -703,6 +703,12 @@ final class CoordinatorController: ObservableObject {
         defaults.set(ZoomRefusalRules.encode(next), forKey: Self.zoomRefusedAccountsKey)
     }
 
+    /// "Check sign-in": what Start needs from Sign in with Zoom, step by step.
+    let zoomSignInChecker = ZoomSignInChecker()
+    func checkZoomSignIn() {
+        zoomSignInChecker.run(user: zoomUser, endpoint: ZoomOAuth.sdkSignatureEndpoint, refused: zoomRefusedAccounts)
+    }
+
     /// Asks Settings -> Zoom to unfold "Use your own Zoom apps (advanced)".
     @Published var zoomOwnAppsRequested = false
 

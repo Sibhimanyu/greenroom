@@ -77,4 +77,23 @@ MainActor.assumeIsolated {
                    ownAppsOpen: true, note: refused),
               "6-refused-own-apps-open-\(tag)", dark: dark, height: 1100)
     }
+    // The sign-in check: the shared button row and results panel, every step outcome kind.
+    let lines: [ZoomCheckLine] = [
+        ZoomSignInCheckRules.line(.token, .ok("")),
+        ZoomSignInCheckRules.line(.profile, .ok("Sample Host \u{00B7} host@example.com")),
+        ZoomSignInCheckRules.line(.scopes, .ok("")),
+        ZoomSignInCheckRules.line(.zak, .ok("")),
+        ZoomSignInCheckRules.line(.signature, .ok("\u{2026}9z7Q")),
+        ZoomSignInCheckRules.line(.create, .atStart),
+        ZoomSignInCheckRules.line(.account, .refused(account: "Sample Host")),
+    ]
+    for dark in [false, true] {
+        let tag = dark ? "dark" : "light"
+        shoot(ZoomCheckPanel(subject: "Zoom sign-in", lines: lines, isRunning: false,
+                             footnote: "Tries what Start needs from your sign-in, in Start\u{2019}s order. No meeting is created or started.",
+                             onAgain: {}, onDone: {}),
+              "7-sign-in-check-\(tag)", dark: dark, width: 580, height: 640)
+        shoot(ZoomCheckButtonRow(title: "Check sign-in", lines: lines, isRunning: false, onCheck: {}, onView: {}).padding(20),
+              "8-sign-in-check-row-\(tag)", dark: dark, width: 580, height: 80)
+    }
 }

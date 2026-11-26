@@ -28,6 +28,8 @@ struct ZoomSignInSection: View {
     var needsMorePermission = false
     var attentionTitle = ZoomScopeCheck.promptTitle
     var attentionDetail = ZoomScopeCheck.promptDetail
+    /// "Check sign-in" under Signed in as (nil hides it, e.g. in an off-screen render).
+    var check: ZoomSignInCheckRow? = nil
     let onSignIn: () -> Void
     let onCancel: () -> Void
     /// Returns true when Zoom confirmed the revoke, false when only the local copy was removed.
@@ -50,6 +52,7 @@ struct ZoomSignInSection: View {
                         }
                     }
                 }
+                if let check { check }
                 if let setupNote { StatusBadge(text: setupNote, tone: .problem) }
                 if needsMorePermission {
                     VStack(alignment: .leading, spacing: 6) {
@@ -96,6 +99,7 @@ extension ZoomSignInSection {
             needsMorePermission: coordinator.zoomNeedsMorePermission,
             attentionTitle: coordinator.zoomAttentionTitle,
             attentionDetail: coordinator.zoomAttentionDetail,
+            check: ZoomSignInCheckRow(checker: coordinator.zoomSignInChecker, onRun: { coordinator.checkZoomSignIn() }),
             onSignIn: { coordinator.signInWithZoom() },
             onCancel: { coordinator.cancelZoomSignIn() },
             onSignOut: { await coordinator.signOutOfZoom() })

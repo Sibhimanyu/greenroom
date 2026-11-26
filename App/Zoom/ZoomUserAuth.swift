@@ -114,6 +114,18 @@ final class ZoomUserAuth: ObservableObject {
     }
 
     var isSignedIn: Bool { phase == .signedIn }
+
+    /// The scopes Zoom said it granted, nil when it never said.
+    var grantedScopes: Set<String>? {
+        defaults.string(forKey: Self.scopesKey).map(ZoomScopeCheck.parse)
+    }
+
+    /// Renews the access token now (the sign-in check's first step), so a
+    /// dead refresh token shows up here and not at Start.
+    func renewTokenNow() async throws {
+        tokens = nil
+        _ = try await accessToken()
+    }
     private var refreshToken: String? {
         let value = ZoomKeychain.get(Self.refreshKey) ?? ""
         return value.isEmpty ? nil : value

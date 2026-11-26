@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Sibhimanyu/heresay-swift",
       "state" : {
-        "revision" : "b3d1e4a68b7742f691644f0266744476edf39947",
-        "version" : "0.2.54"
+        "revision" : "f8b5ced939461c697cdef1a5d90447615d46ae08",
+        "version" : "0.2.55"
       }
     },
     {

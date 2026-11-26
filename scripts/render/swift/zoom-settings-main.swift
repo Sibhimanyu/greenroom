@@ -37,6 +37,8 @@ struct Page: View {
     let ownReady: Bool
     let signInReady: Bool
     var note: String? = nil
+    var missing: [String] = []
+    var scopesOpen = false
     @State var prefersSignIn: Bool
     @State var sdkID = ""
     @State var sdkSecret = ""
@@ -48,8 +50,9 @@ struct Page: View {
 
     /// `sdk`/`s2s`: that app's keys are all in; `sdkHalf`: only the Meeting SDK's Client ID.
     init(prefersSignIn: Bool, signedIn: Bool = false, endpointSet: Bool = true, signingIn: Bool = false,
-         sdk: Bool = false, s2s: Bool = false, sdkHalf: Bool = false, note: String? = nil) {
-        self.signedIn = signedIn; self.note = note
+         sdk: Bool = false, s2s: Bool = false, sdkHalf: Bool = false, note: String? = nil,
+         missing: [String] = [], scopesOpen: Bool = false) {
+        self.signedIn = signedIn; self.note = note; self.missing = missing; self.scopesOpen = scopesOpen
         ownReady = sdk && s2s; signInReady = signedIn && endpointSet
         _prefersSignIn = State(initialValue: prefersSignIn)
         if sdk || sdkHalf { _sdkID = State(initialValue: "SampleClientID9z7Q") }
@@ -76,7 +79,8 @@ struct Page: View {
                 check: signedIn ? ZoomSignInCheckRow(lines: signInReady ? signInLines : []) : nil,
                 onSignIn: {}, onCancel: {}, onSignOut: { true }, compact: true),
             setupCheck: ZoomSetupCheckRow(lines: ownReady ? setupLines : []),
-            refusedNote: note)
+            missingScopes: missing,
+            refusedNote: note, scopesOpen: scopesOpen)
     }
 }
 
@@ -124,5 +128,75 @@ MainActor.assumeIsolated {
               "11-sign-in-check-\(tag)", dark: dark, width: 580, height: 640)
         shoot(ZoomCheckButtonRow(title: "Check sign-in", lines: lines, isRunning: false, onCheck: {}, onView: {}).padding(20),
               "12-sign-in-check-row-\(tag)", dark: dark, width: 580, height: 80)
+    }
+    // Check Zoom setup with failures: every line's buttons and the fix bar.
+    let ids = ZoomCheckActionContext(sdkClientID: "SampleClientID9z7Q", s2sClientID: "SampleS2Sk3Rw")
+    func own(_ id: String, _ title: String, _ status: ZoomCheckStatus, _ detail: String,
+             _ problem: ZoomCheckProblem = .nothing) -> ZoomCheckLine {
+        ZoomCheckLine(id: id, title: title, status: status, detail: detail,
+                      actions: ZoomCheckActionRules.buttons(.ownApps, check: id, status: status, problem: problem, ids: ids))
+    }
+    func missingScope(_ id: String, _ title: String, _ scope: String) -> ZoomCheckLine {
+        own(id, title, .failed, "Missing \(scope). Add it in the Server-to-Server app\u{2019}s Scopes page, save, and check again.",
+            .missingScopes([scope]))
+    }
+    let scopesMissing: [ZoomCheckLine] = [
+        own("sdk", "Meeting and chat credentials", .passed, ""),
+        own("account", "Hosting credentials and app activation", .passed, ""),
+        own("create", "Permission to create meetings", .passed, ""),
+        own("list", "Permission to list meetings", .passed, ""),
+        own("details", "Permission to read meeting details", .passed, ""),
+        missingScope("update", "Permission to edit scheduled meetings", "meeting:update:meeting:admin"),
+        missingScope("delete", "Permission to delete scheduled meetings", "meeting:delete:meeting:admin"),
+        own("host", "Permission to get the hosting token", .passed, ""),
+        own("end", "Permission to end meetings", .passed, ""),
+        own("meetings", "Scheduled meetings API", .passed, ""),
+        own("hostToken", "Hosting token API", .passed, ""),
+    ]
+    let skip = "Hosting authentication failed. Fix it, then check again."
+    let badKeys: [ZoomCheckLine] = [
+        own("sdk", "Meeting and chat credentials", .failed,
+            "Zoom rejected the key. Check the General App credentials and that Meeting SDK is enabled.", .badCredentials),
+        own("account", "Hosting credentials and app activation", .failed,
+            "Couldn\u{2019}t get a Zoom API token: This app is not activated. Check the three hosting values and activate the app in Zoom.", .notActivated),
+        own("create", "Permission to create meetings", .skipped, skip),
+        own("list", "Permission to list meetings", .skipped, skip),
+        own("meetings", "Scheduled meetings API", .skipped, skip),
+        own("hostToken", "Hosting token API", .skipped, skip),
+    ]
+    let offline: [ZoomCheckLine] = [
+        own("sdk", "Meeting and chat credentials", .passed, ""),
+        own("account", "Hosting credentials and app activation", .failed,
+            "The Internet connection appears to be offline. Check the three hosting values and activate the app in Zoom.", .network),
+        own("create", "Permission to create meetings", .skipped, skip),
+    ]
+    let footnote = "Scope checks read Zoom\u{2019}s granted permissions. Creating, joining and ending a real meeting are still tested when you start a meeting."
+    let signInBad: [ZoomCheckLine] = [
+        ZoomSignInCheckRules.line(.token, .ok("")),
+        ZoomSignInCheckRules.line(.profile, .ok("Sample Host \u{00B7} host@example.com")),
+        ZoomSignInCheckRules.line(.scopes, .missingScopes(["meeting:update:meeting"])),
+        ZoomSignInCheckRules.line(.zak, .failed("The request timed out."), error: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)),
+        ZoomSignInCheckRules.line(.signature, .ok("\u{2026}9z7Q")),
+        ZoomSignInCheckRules.line(.create, .atStart),
+        ZoomSignInCheckRules.line(.account, .ownerUnknown(account: "Sample Host")),
+    ]
+    for dark in [false, true] {
+        let tag = dark ? "dark" : "light"
+        shoot(ZoomCheckPanel(subject: "Zoom setup", lines: scopesMissing, isRunning: false, footnote: footnote, ids: ids,
+                             onAgain: {}, onDone: {}),
+              "13-setup-check-missing-scopes-\(tag)", dark: dark, width: 580, height: 640)
+        shoot(ZoomCheckPanel(subject: "Zoom setup", lines: badKeys, isRunning: false, footnote: footnote, ids: ids,
+                             onAgain: {}, onDone: {}),
+              "14-setup-check-bad-keys-\(tag)", dark: dark, width: 580, height: 640)
+        shoot(ZoomCheckPanel(subject: "Zoom setup", lines: offline, isRunning: false, footnote: footnote, ids: ids,
+                             onAgain: {}, onDone: {}),
+              "15-setup-check-offline-\(tag)", dark: dark, width: 580, height: 640)
+        shoot(ZoomCheckPanel(subject: "Zoom sign-in", lines: signInBad, isRunning: false,
+                             footnote: "Tries what Start needs from your sign-in, in Start\u{2019}s order. No meeting is created or started.",
+                             onAgain: {}, onDone: {}),
+              "16-sign-in-check-failures-\(tag)", dark: dark, width: 580, height: 640)
+        shoot(Page(prefersSignIn: false, sdk: true, s2s: true,
+                   missing: ["meeting:update:meeting:admin", "meeting:delete:meeting:admin"], scopesOpen: true),
+              "17-scope-list-missing-\(tag)", dark: dark, height: 1380)
     }
 }

@@ -53,6 +53,7 @@ final class ZoomSetupChecker: ObservableObject {
         lines = Check.allCases.map { ZoomCheckLine(id: $0.rawValue, title: $0.title) }
         let credentials = current()
         let (sdkID, sdkSecret, account, clientID, secret) = (credentials[0], credentials[1], credentials[2], credentials[3], credentials[4])
+        ids = ZoomCheckActionContext(sdkClientID: sdkID, s2sClientID: clientID)
         Task { @MainActor in
             defer {
                 isRunning = false
@@ -63,18 +64,19 @@ final class ZoomSetupChecker: ObservableObject {
                 }
             }
             if sdkID.isEmpty || sdkSecret.isEmpty {
-                update(.sdk, .failed, "Add both General App values under Meeting and chat.")
+                update(.sdk, .failed, "Add both General App values under Meeting and chat.", .badCredentials)
             } else {
                 update(.sdk, .running, "Authenticating with the Zoom Meeting SDK\u{2026}")
                 do {
                     try await client.ensureReady(clientID: sdkID, clientSecret: sdkSecret, forceAuthentication: true)
                     update(.sdk, .passed, "Zoom accepted the General App credentials.")
                 } catch {
-                    update(.sdk, .failed, "\(error.localizedDescription) Check the General App credentials and that Meeting SDK is enabled.")
+                    update(.sdk, .failed, "\(error.localizedDescription) Check the General App credentials and that Meeting SDK is enabled.",
+                           Self.sdkProblem(error))
                 }
             }
             guard !account.isEmpty && !clientID.isEmpty && !secret.isEmpty else {
-                update(.account, .failed, "Add all three Server-to-Server app values under Create and host meetings.")
+                update(.account, .failed, "Add all three Server-to-Server app values under Create and host meetings.", .badCredentials)
                 skipHosting("Add hosting credentials, then check again.")
                 return
             }
@@ -86,10 +88,12 @@ final class ZoomSetupChecker: ObservableObject {
                     let granted = ZoomScopes.isGranted(scope, in: scopes)
                     guard let check = Check(rawValue: scope.key.rawValue) else { continue }
                     update(check, granted ? .passed : .failed,
-                           granted ? "Granted by Zoom." : "Missing \(scope.name). Add it in the Server-to-Server app\u{2019}s Scopes page, save, and check again.")
+                           granted ? "Granted by Zoom." : "Missing \(scope.name). Add it in the Server-to-Server app\u{2019}s Scopes page, save, and check again.",
+                           granted ? .nothing : .missingScopes([scope.name]))
                 }
             } catch {
-                update(.account, .failed, "\(error.localizedDescription) Check the three hosting values and activate the app in Zoom.")
+                update(.account, .failed, "\(error.localizedDescription) Check the three hosting values and activate the app in Zoom.",
+                       ZoomCheckActionRules.problem(error.localizedDescription, ZoomCheckActionRules.isNetwork(error)))
                 skipHosting("Hosting authentication failed. Fix it, then check again.")
                 return
             }
@@ -101,20 +105,43 @@ final class ZoomSetupChecker: ObservableObject {
                 } else {
                     update(.meetings, .passed, "Zoom returned \(list.meetings.count) scheduled meeting(s).")
                 }
-            } catch { update(.meetings, .failed, error.localizedDescription) }
+            } catch { update(.meetings, .failed, error.localizedDescription, Self.callProblem(error)) }
             update(.hostToken, .running, "Requesting the hosting token\u{2026}")
             do {
                 let token = try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: clientID, clientSecret: secret)
                 update(.hostToken, token.isEmpty ? .failed : .passed,
                        token.isEmpty ? "Zoom returned an empty hosting token." : "Zoom returned a hosting token. No meeting was started.")
-            } catch { update(.hostToken, .failed, error.localizedDescription) }
+            } catch { update(.hostToken, .failed, error.localizedDescription, Self.callProblem(error)) }
         }
     }
 
-    private func update(_ check: Check, _ status: ZoomCheckStatus, _ detail: String) {
+    /// The client IDs the buttons' tooltips name the apps by.
+    private var ids = ZoomCheckActionContext()
+
+    private func update(_ check: Check, _ status: ZoomCheckStatus, _ detail: String,
+                        _ problem: ZoomCheckProblem = .nothing) {
         guard let i = lines.firstIndex(where: { $0.id == check.rawValue }) else { return }
         lines[i].status = status
         lines[i].detail = detail
+        lines[i].actions = ZoomCheckActionRules.buttons(.ownApps, check: check.rawValue, status: status,
+                                                        problem: problem, ids: ids)
+    }
+
+    /// The Meeting SDK said no: offline or no answer is the network; else the keys.
+    private static func sdkProblem(_ error: Error) -> ZoomCheckProblem {
+        if ZoomCheckActionRules.isNetwork(error) { return .network }
+        if case ZoomMeetingSDKError.timedOut = error { return .network }
+        return .badCredentials
+    }
+
+    /// A REST call after the token: only an outage has a button (Check again);
+    /// a missing scope already has its own line.
+    private static func callProblem(_ error: Error) -> ZoomCheckProblem {
+        switch ZoomCheckActionRules.problem(error.localizedDescription, ZoomCheckActionRules.isNetwork(error)) {
+        case .network: return .network
+        case .zoomDown: return .zoomDown
+        default: return .other
+        }
     }
 
     private func skipHosting(_ reason: String) {

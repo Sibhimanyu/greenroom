@@ -524,6 +524,10 @@ final class CoordinatorController: ObservableObject {
         showOnboarding = true
     }
 
+    /// Where a check's "Show me where" asked the setup guide to open; the
+    /// guide jumps there and clears it.
+    @Published var zoomGuideSpot: ZoomGuideSpot?
+
     func completeOnboarding() {
         showOnboarding = false
         defaults.set(true, forKey: "hasCompletedOnboarding")

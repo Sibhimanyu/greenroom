@@ -26,6 +26,9 @@ struct OnboardingView: View {
     @State private var editCredentials = false
     @State private var youtubeHelpExpanded = false
     @State private var permissionDetailsExpanded = false
+    /// A check's "Show me where": unfolds "Use your own Zoom apps" and scrolls to the step.
+    @State private var openOwnApps = false
+    @State private var scrollToSpot: ZoomGuideSpot?
 
     private enum SetupPage: Int, CaseIterable, Identifiable {
         case welcome, zoom, layout, permissions, youtube, cues, ready
@@ -108,6 +111,8 @@ struct OnboardingView: View {
         .onChange(of: zoomCredentials) { _, _ in
             setupChecker.credentialsChanged()
         }
+        .onAppear { goToGuideSpot() }
+        .onChange(of: coordinator.zoomGuideSpot) { _, _ in goToGuideSpot() }
         .sheet(isPresented: showZoomChecks) { zoomCheckPanel }
     }
 
@@ -151,17 +156,30 @@ struct OnboardingView: View {
     }
     private func runConnectionTest() { coordinator.checkZoomSetup() }
 
+    /// "Show me where" from a check line: the Zoom step, own apps and the
+    /// manual setup unfolded, scrolled to the asked part.
+    private func goToGuideSpot() {
+        guard let spot = coordinator.zoomGuideSpot else { return }
+        coordinator.zoomGuideSpot = nil
+        step = .zoom
+        openOwnApps = true
+        editCredentials = true
+        // After the folds open, so the anchor exists.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { scrollToSpot = spot }
+    }
+
     private static let zoomBuilder = ZoomMarketplaceGuide.builderURL
     private static let requiredScopes = ZoomScopes.all
 
     private var credentialsStep: some View {
         // Keep native disclosure chevrons and focus rings inside the scroll clip.
+        ScrollViewReader { reader in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 stepHeader("Connect your Zoom account", "Sign in with your Zoom account. Greenroom then starts and hosts your meetings as you.")
                 ZoomSignInSection.live(coordinator)
                 Divider()
-                AdvancedDisclosure("Use your own Zoom apps", open: zoomAppsOpen) {
+                AdvancedDisclosure("Use your own Zoom apps", open: zoomAppsOpen, openRequest: $openOwnApps) {
                   VStack(alignment: .leading, spacing: 20) {
                 Text("Have a settings file from a teammate? Import it to fill in the connection details.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -203,6 +221,12 @@ struct OnboardingView: View {
                 }
             }
             .padding(.horizontal, 8)
+        }
+        .onChange(of: scrollToSpot) { _, spot in
+            guard let spot else { return }
+            withAnimation(.snappy(duration: 0.25)) { reader.scrollTo(spot, anchor: .top) }
+            scrollToSpot = nil
+        }
         }
         .id(SetupPage.zoom)
     }
@@ -247,22 +271,26 @@ struct OnboardingView: View {
                 }
                 .padding(12)
             } label: { Text("1 · Meeting and chat").font(.headline) }
+            .id(ZoomGuideSpot.sdkCredentials)
             GroupBox {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("In Zoom, choose Build App → Server-to-Server OAuth. Copy the three values from App Credentials.")
                         .font(.callout)
+                        .id(ZoomGuideSpot.s2sCredentials)
                     zoomBuilderLink
                     credentialField("Account ID", text: $coordinator.s2sAccountID)
                     credentialField("Client ID", text: $coordinator.s2sClientID)
                     credentialField("Client Secret", text: $coordinator.s2sClientSecret, secure: true)
                     Divider()
                     Text("Add permissions, one at a time").font(.headline)
+                        .id(ZoomGuideSpot.s2sScopes)
                     Text("In Zoom’s Scopes → Add Scopes, copy one name below, paste it into the search field and select the matching permission. Repeat for all \(ZoomScopes.countWord), then save.")
                         .font(.callout).foregroundStyle(.secondary)
                     scopesList
                     Divider()
                     Label("Finish Information, then open Activation and activate the app in Zoom. Return here to check your setup.", systemImage: "checkmark.circle")
                         .font(.callout)
+                        .id(ZoomGuideSpot.s2sActivation)
                     zoomCheckButton
                 }
                 .padding(12)
@@ -302,8 +330,9 @@ struct OnboardingView: View {
     private var zoomCheckPanel: some View {
         ZoomCheckPanel(subject: "Zoom setup", lines: testResults, isRunning: isTesting,
                        footnote: ZoomSetupChecker.footnote,
-                       againDisabled: coordinator.phase.isInMeeting,
-                       onAgain: { runConnectionTest() }, onDone: { setupChecker.showing = false })
+                       againDisabled: coordinator.phase.isInMeeting, ids: coordinator.zoomCheckIDs,
+                       onAgain: { runConnectionTest() }, onDone: { setupChecker.showing = false },
+                       onAction: { coordinator.performZoomCheckAction($0, kind: .ownApps) })
     }
 
     // MARK: "Your setup" - the choices that actually differ per person,

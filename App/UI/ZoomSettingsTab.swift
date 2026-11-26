@@ -43,7 +43,10 @@ struct ZoomSettingsTab: View {
             signIn: ZoomSignInSection.live(coordinator, compact: true),
             setupCheck: ZoomSetupCheckRow(checker: coordinator.zoomSetupChecker,
                                           disabled: coordinator.phase.isInMeeting,
-                                          onRun: { coordinator.checkZoomSetup() }),
+                                          ids: coordinator.zoomCheckIDs,
+                                          onRun: { coordinator.checkZoomSetup() },
+                                          onAction: { coordinator.performZoomCheckAction($0, kind: .ownApps) }),
+            missingScopes: ZoomCheckSummary.missingScopes(coordinator.zoomSetupChecker.lines),
             refusedNote: coordinator.zoomRouteNote,
             onSignIn: { coordinator.signInWithZoom() },
             onCancelSignIn: { coordinator.cancelZoomSignIn() },
@@ -71,6 +74,8 @@ struct ZoomPageContent: View {
     let signIn: ZoomSignInSection
     /// "Check Zoom setup" for your own Zoom apps. Nil hides it.
     var setupCheck: ZoomSetupCheckRow? = nil
+    /// The scopes the last Check Zoom setup found missing; the scope list marks them.
+    var missingScopes: [String] = []
     /// Zoom refused this account before (error 63): why, and what to do.
     var refusedNote: String? = nil
     var onSignIn: () -> Void = {}
@@ -160,7 +165,7 @@ struct ZoomPageContent: View {
                 TextField("Account ID", text: $s2sAccountID)
                 TextField("Client ID", text: $s2sClientID)
                 SecureField("Client Secret", text: $s2sClientSecret)
-                ScopeList(scopes: Self.scopes, open: scopesOpen)
+                ScopeList(scopes: Self.scopes, missing: missingScopes, open: scopesOpen)
                 MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.s2sSteps, showGuide: showGuide)
             }
         }
@@ -314,47 +319,79 @@ private struct MarketplaceGuideBlock: View {
 }
 
 /// The scopes the Server-to-Server app needs: folded away, one click to
-/// copy, selectable when open.
+/// copy, selectable when open. After a check, the missing ones are marked
+/// (count in the label, "Missing" beside each) and can be copied on their own.
 private struct ScopeList: View {
     let scopes: [String]
+    /// From the last Check Zoom setup; empty when it found none (or has not run).
+    let missing: [String]
     @State private var open: Bool
-    @State private var copied = false
+    @State private var copied: String?
 
-    init(scopes: [String], open: Bool) {
+    init(scopes: [String], missing: [String] = [], open: Bool) {
         self.scopes = scopes
+        self.missing = missing
         _open = State(initialValue: open)
     }
 
     var body: some View {
         DisclosureGroup(isExpanded: $open) {
-            Text(scopes.joined(separator: "\n"))
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.08)))
-                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(scopes, id: \.self) { scope in
+                    HStack(spacing: 8) {
+                        Text(scope)
+                            .font(.system(.callout, design: .monospaced))
+                            .textSelection(.enabled)
+                        if missing.contains(scope) {
+                            Label("Missing", systemImage: "exclamationmark.triangle.fill")
+                                .labelStyle(.titleAndIcon)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                                .accessibilityLabel("\(scope) is missing")
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.08)))
+            .padding(.top, 4)
         } label: {
             HStack {
                 Text("Scopes")
                 Text("\(scopes.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(scopes.joined(separator: "\n"), forType: .string)
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
-                } label: {
-                    Label(copied ? "Copied" : "Copy scopes", systemImage: copied ? "checkmark" : "doc.on.doc")
+                if !missing.isEmpty {
+                    Text("\(missing.count) missing")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(Brand.text)
-                .help("Copy all \(scopes.count) scopes, one per line")
+                Spacer()
+                if !missing.isEmpty {
+                    copyButton(missing, key: "missing", title: "Copy missing",
+                               help: "Copy the \(missing.count) missing scope\(missing.count == 1 ? "" : "s"), one per line")
+                }
+                copyButton(scopes, key: "all", title: "Copy scopes",
+                           help: missing.isEmpty ? "Copy all \(scopes.count) scopes, one per line"
+                                 : "Copy all \(scopes.count) scopes, one per line. Missing after the last check: \(missing.joined(separator: ", "))")
             }
         }
-        .help(scopes.joined(separator: "\n"))
+        .help(scopes.map { missing.contains($0) ? "\($0) (missing)" : $0 }.joined(separator: "\n"))
+    }
+
+    private func copyButton(_ list: [String], key: String, title: String, help: String) -> some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(list.joined(separator: "\n"), forType: .string)
+            copied = key
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied == key { copied = nil } }
+        } label: {
+            Label(copied == key ? "Copied" : title, systemImage: copied == key ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(Brand.text)
+        .help(help)
     }
 }

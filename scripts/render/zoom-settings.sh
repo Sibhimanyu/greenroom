@@ -2,7 +2,9 @@
 # Settings -> Zoom, off screen, sample data (no real names or keys): the choice between your own
 # Zoom apps and Sign in with Zoom, with only the chosen way's section showing, for every route
 # state (both set up either way, only one, neither, half filled, sign-in not finished, the
-# refused account), plus the check button row and results panel; light and dark. The tab struct,
+# refused account), plus the check button row and results panels, with failures and their
+# buttons (missing scopes, bad keys, the sign-in) and the scope list marking what is missing;
+# light and dark. The tab struct,
 # the coordinator-fed `live` helper and the two coordinator-fed check rows are cut out (stand-ins
 # draw the same shared ZoomCheckButtonRow); ZoomPageContent and its pieces are what render.
 # Usage: scripts/render/zoom-settings.sh [outdir]   (default $TMPDIR/greenroom-render/zoom-settings)
@@ -32,6 +34,6 @@ SWIFT
 printf 'enum SessionNotes { static let enabledKey = "sessionNotesEnabled" }\nenum CoordinatorController { static let copyInviteOnStartKey = "copyInviteOnStart" }\n' > "$STAGE/Stub.swift"
 render zoom-settings-render zoom-settings-main.swift "$STAGE/ZoomSettingsTab.swift" "$STAGE/ZoomSignInSection.swift" \
   "$STAGE/Brand.swift" "$STAGE/Stub.swift" App/UI/SettingsKit.swift App/UI/Segmented.swift App/UI/SegmentedMath.swift App/UI/Tiles.swift App/UI/TileAppearance.swift App/UI/Glass.swift App/Zoom/ZoomScopes.swift App/Zoom/ZoomMarketplaceGuide.swift \
-  App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSetupCheckRules.swift \
+  App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift \
   "$STAGE/ZoomCheckPanel.swift" "$STAGE/CheckRowStub.swift"
 finish

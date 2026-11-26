@@ -25,6 +25,8 @@ struct ZoomCheckLine: Identifiable, Equatable {
     var title: String
     var status: ZoomCheckStatus = .waiting
     var detail: String = "Waiting to check"
+    /// What to click to fix it (`ZoomCheckActionRules`); empty when nothing helps.
+    var actions: [ZoomCheckButton] = []
 
     var ok: Bool { status == .passed }
 }
@@ -88,9 +90,29 @@ enum ZoomSignInCheckFact: Equatable {
 }
 
 enum ZoomSignInCheckRules {
-    static func line(_ step: ZoomSignInCheckStep, _ fact: ZoomSignInCheckFact) -> ZoomCheckLine {
+    /// `error` is what was thrown when the fact is `.failed`; it tells a
+    /// network or Zoom outage (Check again) from a sign-in problem (Sign in again).
+    static func line(_ step: ZoomSignInCheckStep, _ fact: ZoomSignInCheckFact,
+                     error: Error? = nil) -> ZoomCheckLine {
         let (status, detail) = words(step, fact)
-        return ZoomCheckLine(id: step.rawValue, title: step.title, status: status, detail: detail)
+        let buttons = ZoomCheckActionRules.buttons(.signIn, check: step.rawValue, status: status,
+                                                   problem: problem(fact, error: error), ids: ZoomCheckActionContext())
+        return ZoomCheckLine(id: step.rawValue, title: step.title, status: status, detail: detail, actions: buttons)
+    }
+
+    static func problem(_ fact: ZoomSignInCheckFact, error: Error?) -> ZoomCheckProblem {
+        switch fact {
+        case .ok, .atStart, .skipped, .sameAsApp: return .nothing
+        case .missingScopes(let names): return .missingScopes(names)
+        case .unknown: return .other
+        case .refused, .otherThanApp, .ownerUnknown: return .otherAccount
+        case .failed(let why):
+            switch ZoomCheckActionRules.problem(error?.localizedDescription ?? why, ZoomCheckActionRules.isNetwork(error)) {
+            case .network: return .network
+            case .zoomDown: return .zoomDown
+            default: return .signIn
+            }
+        }
     }
 
     private static let ownAppsAdvice = "Settings \u{2192} Zoom \u{2192} Your own Zoom apps."

@@ -392,6 +392,7 @@ targets:
       - path: App/Zoom/ZoomRouteRules.swift
       - path: App/Zoom/ZoomRouteChoiceRules.swift
       - path: App/Zoom/ZoomSetupCheckRules.swift
+      - path: App/Zoom/ZoomCheckActionRules.swift
       - path: App/UI/MeetingViewsMenu.swift
       - path: App/UI/SessionSelection.swift
       - path: App/UI/MeetingVideo/MeetingViewRules.swift

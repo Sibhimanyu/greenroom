@@ -201,16 +201,17 @@ targets:
           fi
       # The shared Google desktop client's secret (YouTube sign-in). Not in the repo
       # (public; GitHub push protection): read from ~/.greenroom-google-oauth-secret
-      # and written into the built Info.plist before code signing. Release fails
-      # without it; Debug only warns (Sign in with Google then says not available).
+      # into Contents/Resources/GoogleOAuth.plist (a file of its own: Xcode rewrites
+      # Info.plist late in Release, which wiped a key written there in 1.10.5).
+      # Release fails without it; Debug only warns.
       - name: Embed the Google client secret
-        basedOnDependencyAnalysis: false
         script: |
+          set -eu
           SECRET_FILE="${HOME}/.greenroom-google-oauth-secret"
-          PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
-          /usr/libexec/PlistBuddy -c "Delete :GreenroomGoogleClientSecret" "$PLIST" 2>/dev/null || true
+          OUT="${CODESIGNING_FOLDER_PATH}/Contents/Resources/GoogleOAuth.plist"
+          rm -f "$OUT"
           if [ -s "$SECRET_FILE" ]; then
-            /usr/libexec/PlistBuddy -c "Add :GreenroomGoogleClientSecret string $(tr -d '\n' < "$SECRET_FILE")" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Add :ClientSecret string $(tr -d '\n' < "$SECRET_FILE")" "$OUT" >/dev/null
           elif [ "${CONFIGURATION}" = "Release" ]; then
             echo "error: missing $SECRET_FILE (the Google desktop client secret); Release builds need it."; exit 1
           else

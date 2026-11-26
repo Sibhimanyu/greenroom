@@ -60,7 +60,7 @@ final class SourceScanTests: XCTestCase {
     /// applied in one file. Nothing else assigns `sharingType`.
     /// Client secrets never go into the public repo (GitHub push protection blocked 1.10.5's
     /// first push, 2026-11-26). The Google desktop secret comes from ~/.greenroom-google-oauth-secret
-    /// at build time (project.yml, "Embed the Google client secret").
+    /// at build time into Contents/Resources/GoogleOAuth.plist (project.yml).
     func testNoGoogleClientSecretInSources() throws {
         let rule = try NSRegularExpression(pattern: "GOCSPX-[A-Za-z0-9_-]{10,}")
         for dir in ["App", "Tests", "scripts", "docs"] {

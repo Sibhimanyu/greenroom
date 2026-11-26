@@ -68,12 +68,19 @@ struct ElementWatch {
         refusedUntil = nil
     }
 
-    /// Ask again on this same element (its one patient retry). The resolution
-    /// already in force stays; only the subscribe goes in again.
+    /// Ask again on this same element (its one patient retry), repeating the
+    /// request that was refused. After an explicit subscribe the resolution in
+    /// force stays and only the subscribe goes in again. On an element
+    /// subscribed by `userid` the only request made was setResolution, and that
+    /// is what Zoom refused (2026-11-26 02:14Z), so it is asked again.
     mutating func readyToRetry() {
         retried = true
         subscribed = false
         refusedUntil = nil
+        if subscribedByUserID {
+            resolutionSet = false
+            resolutionTries = 0
+        }
     }
 
     /// The subscribe on screen found the element already subscribed by
@@ -149,16 +156,21 @@ enum ElementRecovery {
     /// Only a refusal retires an element. There is no reliable "drawing"
     /// signal to judge by: the view's layer tree grows to four sublayers
     /// before any subscribe (2026-11-16 17:27:55), so it is logged, never used.
+    /// The data type is no such signal either: it follows the person's camera.
+    /// 2026-11-26 02:14-02:15Z, four Active speaker elements in a row reported
+    /// Video after a code-7 refusal, were kept as "showing despite the
+    /// refusal", and every one stayed a dark tile with only the name. The
+    /// elements that drew (2026-11-25 20:20-20:22Z, the stage at 02:15:01Z)
+    /// were never refused.
     ///
-    /// Code 7 means "slow down", not "broken": the 2026-11-23 06:19 log shows
-    /// video rendering one second after a code-7 refusal, and the old rule
-    /// retired four working elements. `rendering` is true for any data type but
-    /// None (video, or avatar: the camera is off and a fresh element would show
-    /// the same). Such an element is NEVER retried or retired. One still at None
-    /// gets one patient retry on the same element, and only then a fresh one.
-    static func decide(watch: ElementWatch, now: Date, rebuilds: Int, rendering: Bool = false) -> Action {
+    /// Code 7 means "slow down": the refusal is waited out (`refusalGrace`)
+    /// before anything is done. An avatar (`showing == .avatar`: the camera is
+    /// off, a fresh element would draw the same) forgets the refusal. Video or
+    /// None gets one patient retry on the same element (`readyToRetry` repeats
+    /// the refused request), and only then a fresh one.
+    static func decide(watch: ElementWatch, now: Date, rebuilds: Int, showing: RenderedKind = .none) -> Action {
         guard let until = watch.refusedUntil else { return .fine }
-        if rendering { return .recovered }
+        if showing == .avatar { return .recovered }
         guard now >= until else { return .wait }
         if !watch.retried { return .retry }
         return rebuilds >= maxRebuilds ? .giveUp : .rebuild

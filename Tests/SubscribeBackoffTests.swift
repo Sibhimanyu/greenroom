@@ -49,13 +49,15 @@ final class SubscribeBackoffTests: XCTestCase {
         XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(20), rebuilds: 0), .rebuild)
     }
 
-    func testRenderingElementIsNeverRetired() {
+    /// An avatar means the camera is off: a fresh element would draw the same
+    /// avatar, so a refusal there is forgotten, never retried or rebuilt.
+    func testAvatarElementIsNeverRetired() {
         var w = ElementWatch()
         let now = Date()
         w.refusedUntil = now
         w.retried = true
         for rebuilds in 0...ElementRecovery.maxRebuilds {
-            XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(60), rebuilds: rebuilds, rendering: true),
+            XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(60), rebuilds: rebuilds, showing: .avatar),
                            .recovered)
         }
         w.recoveredByVideo()
@@ -63,19 +65,67 @@ final class SubscribeBackoffTests: XCTestCase {
         XCTAssertEqual(ElementRecovery.decide(watch: w, now: now, rebuilds: 0), .fine)
     }
 
-    /// `rendering` is "data type is not None": an avatar (camera off) counts,
-    /// so a refusal there is never retried or rebuilt, even once the grace has
-    /// passed. Only a non-rendering element goes on to retry and rebuild.
-    func testAvatarCountsAsRenderingSoRefusalNeverRetriesOrRebuilds() {
+    /// 2026-11-26 02:14-02:15Z: four Active speaker elements in a row reported
+    /// data type Video, setResolution(720p) on them was refused with code 7, and
+    /// "video is showing despite the refusal" kept each one. The owner saw a
+    /// dark tile with only the name every time. The data type follows the
+    /// person's camera, not the frames reaching the element, so it is no proof
+    /// of drawing: a refused element that reports Video waits out the grace,
+    /// then gets its one retry, then a fresh element.
+    func testVideoDataTypeIsNotRecoveryFromARefusal() {
+        var w = ElementWatch()
+        let now = Date()
+        w.noteSubscribedByUserID(showing: .video)
+        w.refusedUntil = now.addingTimeInterval(8)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(1), rebuilds: 0, showing: .video), .wait)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(8), rebuilds: 0, showing: .video), .retry)
+        w.readyToRetry()
+        w.refusedUntil = now.addingTimeInterval(20)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(20), rebuilds: 0, showing: .video), .rebuild)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(20),
+                                              rebuilds: ElementRecovery.maxRebuilds, showing: .video), .giveUp)
+    }
+
+    /// On an element subscribed by `userid` the only request the pass made is
+    /// setResolution, and that is what Zoom refused (every code 7 in the log
+    /// follows a setResolution that returned 0; none follows one that returned
+    /// 1). The retry asks for the resolution again, after the slow-down.
+    func testRetryOnAUseridSubscribeAsksForTheResolutionAgain() {
+        var w = ElementWatch()
+        w.resolutionSet = true
+        w.resolutionTries = 1
+        w.noteSubscribedByUserID(showing: .video)
+        w.refusedUntil = Date()
+        w.readyToRetry()
+        XCTAssertFalse(w.resolutionSet)
+        XCTAssertEqual(w.resolutionTries, 0)
+        XCTAssertTrue(ElementRecovery.mayAsk(watch: w, gaveUp: false, now: Date()))
+    }
+
+    /// An explicit subscribe (asked at None) retries the subscribe only; the
+    /// resolution already in force stays.
+    func testRetryOnAnExplicitSubscribeKeepsTheResolution() {
+        var w = ElementWatch()
+        w.resolutionSet = true
+        w.refusedUntil = Date()
+        w.readyToRetry()
+        XCTAssertTrue(w.resolutionSet)
+    }
+
+    /// Only an element with no picture at all (None) or video goes on to retry
+    /// and rebuild; an avatar is forgotten even once the grace has passed.
+    func testAvatarRecoversButNoneAndVideoRetryThenRebuild() {
         var w = ElementWatch()
         let now = Date()
         w.refusedUntil = now
         let later = now.addingTimeInterval(60)
-        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: true), .recovered)
-        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: false), .retry)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, showing: .avatar), .recovered)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, showing: .none), .retry)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, showing: .video), .retry)
         w.retried = true
-        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: false), .rebuild)
-        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: true), .recovered)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, showing: .none), .rebuild)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, showing: .video), .rebuild)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, showing: .avatar), .recovered)
     }
 
     func testRefusalIsWaitedOutAtLeastTheGrace() {

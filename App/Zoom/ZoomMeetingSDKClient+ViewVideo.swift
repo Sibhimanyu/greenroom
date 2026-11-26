@@ -165,12 +165,14 @@ extension ZoomMeetingSDKClient {
         case .recovered:
             entry.watch.recoveredByVideo()
             viewVideo.backoffs[key]?.reset()
-            Self.viewLog("video is showing despite the refusal - keeping this element key=\(key.text) \(Self.tag(entry.element))")
+            Self.viewLog("camera is off (avatar) - forgetting the refusal, keeping this element key=\(key.text) \(Self.tag(entry.element))")
         case .retry:
             entry.watch.readyToRetry()
-            Self.viewLog("no video after the wait - one more ask on the same element key=\(key.text) \(Self.tag(entry.element))")
+            Self.viewLog("refused, wait over (dataType=\(entry.element.getDataType().rawValue)) - one more ask on the same element"
+                + " (resolution again: \(!entry.watch.resolutionSet)) key=\(key.text) \(Self.tag(entry.element)) \(Self.layerProbe(entry.element))")
         case .rebuild:
             viewVideo.rebuilds[key] = rebuilds + 1
+            Self.viewLog("before retiring key=\(key.text) \(Self.tag(entry.element)) \(Self.layerProbe(entry.element))")
             retireViewElement(entry, why: "refused; fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
             viewVideo.retiredAt[key] = now
             return makeViewElement(key, userID: entry.userID, frame: frame, tier: tier)
@@ -235,7 +237,7 @@ extension ZoomMeetingSDKClient {
             entry.gotVideo = false
             Self.viewLog((implicit ? "subscribed by userid (no explicit ask) key=" : "subscribed key=")
                 + "\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element))"
-                + " tier=\(tier.rawValue)p setResolution=\(setCode) others=\(others)")
+                + " tier=\(tier.rawValue)p setResolution=\(setCode) others=\(others) \(Self.layerProbe(entry.element))")
         } else {
             Self.viewLog("FAILED step=subscribeVideo code=\(sub.rawValue) key=\(entry.key.text) user=\(entry.userID)")
             backOff(entry, at: now)
@@ -287,7 +289,8 @@ extension ZoomMeetingSDKClient {
             return true
         }
         let step = backOff(entry, at: now)
-        Self.viewLog(head + " others=\(others) - code 7 means slow down: waiting \(Int(ElementRecovery.refusalWait(step.delay)))s for video before doing anything to this element"
+        Self.viewLog(head + " others=\(others) dataType=\(element.getDataType().rawValue) \(Self.layerProbe(element))"
+            + " - code 7 means slow down: waiting \(Int(ElementRecovery.refusalWait(step.delay)))s, then the refused request is asked again"
             + " (refusal \(step.attempts), fresh elements so far \(viewVideo.rebuilds[entry.key] ?? 0)/\(ElementRecovery.maxRebuilds))")
         return true
     }

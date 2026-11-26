@@ -191,6 +191,28 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         element.getVideoView().layer?.sublayers?.count ?? -1
     }
 
+    /// What is actually inside an element's view, for the refusal lines: the
+    /// layers below the top-level backing layers and how many carry contents,
+    /// with a signature of those contents. Two lines for one element whose
+    /// signature never changes mean no new frames reached it. A log line only.
+    static func layerProbe(_ element: ZoomSDKVideoElement) -> String {
+        var layers = 0, withContents = 0, sig = 0
+        var kinds = Set<String>()
+        func walk(_ layer: CALayer, depth: Int) {
+            guard depth < 8 else { return }
+            layers += 1
+            kinds.insert(String(describing: Swift.type(of: layer)))
+            if let contents = layer.contents {
+                withContents += 1
+                sig = sig &* 31 &+ ObjectIdentifier(contents as AnyObject).hashValue
+            }
+            for sub in layer.sublayers ?? [] { walk(sub, depth: depth + 1) }
+        }
+        if let root = element.getVideoView().layer { walk(root, depth: 0) }
+        return "probe layers=\(layers) withContents=\(withContents) sig=\(String(UInt(bitPattern: sig) & 0xFFFFFF, radix: 16))"
+            + " kinds=[\(kinds.sorted().joined(separator: ","))]"
+    }
+
     /// Logs the view's layer tree when it changes. A log line only: it is NOT
     /// a drawing signal (four sublayers appear before any subscribe,
     /// 2026-11-16 17:27:55), and the SDK has no first-frame callback.
@@ -269,12 +291,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return (watch.resolutionCode, element.subscribeVideo(true), false)
     }
 
-    /// The decision for an element. "Rendering" is any data type but None
-    /// (video, or avatar for a camera that is off): such an element is never
-    /// retried or rebuilt, a fresh one would show the same.
+    /// The decision for an element. An avatar (camera off) is never retried or
+    /// rebuilt, a fresh one would show the same. Video is not proof of frames:
+    /// a refused element that reports it is retried, then rebuilt.
     func recoveryAction(_ element: ZoomSDKNormalVideoElement, watch: ElementWatch, now: Date, rebuilds: Int) -> ElementRecovery.Action {
         ElementRecovery.decide(watch: watch, now: now, rebuilds: rebuilds,
-                               rendering: element.getDataType() != VideoRenderDataType_None)
+                               showing: Self.renderedKind(element.getDataType()))
     }
 
     /// A view rendering one participant, reused across layout passes. Made
@@ -302,10 +324,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         switch recoveryAction(existing, watch: watch, now: now, rebuilds: rebuilds) {
         case .recovered:
             watch.recoveredByVideo()
-            Self.videoLog("tile user=\(userID) \(Self.tag(existing)) video is showing despite the refusal - keeping this element")
+            Self.videoLog("tile user=\(userID) \(Self.tag(existing)) camera is off (avatar) - forgetting the refusal, keeping this element")
         case .retry:
             watch.readyToRetry()
-            Self.videoLog("tile user=\(userID) \(Self.tag(existing)) no video after the wait - one more ask on the same element")
+            Self.videoLog("tile user=\(userID) \(Self.tag(existing)) refused, wait over (dataType=\(existing.getDataType().rawValue)) - one more ask on the same element \(Self.layerProbe(existing))")
         case .rebuild:
             tileRebuilds[userID] = rebuilds + 1
             retireTile(userID, why: "refused; fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
@@ -486,10 +508,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         case .recovered:
             stageWatch.recoveredByVideo()
             stageBackoff.reset()
-            Self.videoLog("\(label) \(Self.tag(element)) video is showing despite the refusal - keeping this element")
+            Self.videoLog("\(label) \(Self.tag(element)) camera is off (avatar) - forgetting the refusal, keeping this element")
         case .retry:
             stageWatch.readyToRetry()
-            Self.videoLog("\(label) \(Self.tag(element)) no video after the wait - one more ask on the same element")
+            Self.videoLog("\(label) \(Self.tag(element)) refused, wait over (dataType=\(element.getDataType().rawValue)) - one more ask on the same element \(Self.layerProbe(element))")
         case .rebuild:
             stageRebuilds += 1
             let person = stageUserID ?? userID

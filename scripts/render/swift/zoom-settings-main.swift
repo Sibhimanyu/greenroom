@@ -1,4 +1,4 @@
-// Off-screen render of Settings -> Zoom's top: the choice and the chosen way's section, per route state. Staged data only.
+// Off-screen render of Settings -> Zoom: the choice (Sign in with Zoom Coming soon) and the own-apps summary, per route state. Staged data only.
 import SwiftUI
 import AppKit
 
@@ -36,43 +36,31 @@ struct Page: View {
     /// Sample results only where the sample setup would pass them.
     let ownReady: Bool
     let signInReady: Bool
+    let entry: ZoomSetupEntry
     var note: String? = nil
-    var missing: [String] = []
-    var scopesOpen = false
     @State var prefersSignIn: Bool
-    @State var sdkID = ""
-    @State var sdkSecret = ""
-    @State var acct = ""
-    @State var s2sID = ""
-    @State var s2sSecret = ""
     @State var name = "Sample Host"
     @State var hide = false
 
     /// `sdk`/`s2s`: that app's keys are all in; `sdkHalf`: only the Meeting SDK's Client ID.
     init(prefersSignIn: Bool, signedIn: Bool = false, endpointSet: Bool = true, signingIn: Bool = false,
-         sdk: Bool = false, s2s: Bool = false, sdkHalf: Bool = false, note: String? = nil,
-         missing: [String] = [], scopesOpen: Bool = false) {
-        self.signedIn = signedIn; self.note = note; self.missing = missing; self.scopesOpen = scopesOpen
+         sdk: Bool = false, s2s: Bool = false, sdkHalf: Bool = false, note: String? = nil, comingSoon: Bool = true) {
+        self.signedIn = signedIn; self.note = note
         ownReady = sdk && s2s; signInReady = signedIn && endpointSet
         _prefersSignIn = State(initialValue: prefersSignIn)
-        if sdk || sdkHalf { _sdkID = State(initialValue: "SampleClientID9z7Q") }
-        if sdk { _sdkSecret = State(initialValue: "secret") }
-        if s2s {
-            _acct = State(initialValue: "SampleAccount"); _s2sID = State(initialValue: "SampleS2S")
-            _s2sSecret = State(initialValue: "secret")
-        }
         choice = ZoomRouteChoiceRules.choice(ZoomRouteChoiceFacts(
             route: ZoomRouteFacts(signedIn: signedIn, accountName: "Sample Host", accountEmail: "host@example.com",
                                   endpointSet: endpointSet, ownSDKComplete: sdk, ownS2SComplete: s2s,
                                   sdkClientID: "SampleClientID9z7Q", prefersSignIn: prefersSignIn,
-                                  signInComingSoon: false),
+                                  signInComingSoon: comingSoon),
             ownSDKStarted: sdk || sdkHalf, ownS2SStarted: s2s, signingIn: signingIn))
+        entry = ZoomGuideFlowRules.setupEntry(ZoomGuideFlowFacts(sdkFilled: sdk ? 2 : (sdkHalf ? 1 : 0),
+                                                                 s2sFilled: s2s ? 3 : 0, check: ownReady ? .passed : .notRun))
     }
 
     var body: some View {
         ZoomPageContent(
-            sdkClientID: $sdkID, sdkClientSecret: $sdkSecret, s2sAccountID: $acct, s2sClientID: $s2sID,
-            s2sClientSecret: $s2sSecret, displayName: $name, hideSelfView: $hide,
+            displayName: $name, hideSelfView: $hide,
             prefersSignIn: $prefersSignIn, choice: choice,
             signIn: ZoomSignInSection(
                 signedIn: signedIn ? ZoomSignInInfo(name: "Sample Host", email: "host@example.com") : nil,
@@ -80,36 +68,29 @@ struct Page: View {
                 check: signedIn ? ZoomSignInCheckRow(lines: signInReady ? signInLines : []) : nil,
                 onSignIn: {}, onCancel: {}, onSignOut: { true }, compact: true),
             setupCheck: ZoomSetupCheckRow(lines: ownReady ? setupLines : []),
-            missingScopes: missing,
-            refusedNote: note, scopesOpen: scopesOpen)
+            setupEntry: entry,
+            refusedNote: note)
     }
 }
 
 MainActor.assumeIsolated {
-    let tall: CGFloat = 1180, short: CGFloat = 600
+    let h: CGFloat = 600
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
-        shoot(Page(prefersSignIn: false, signedIn: true, sdk: true, s2s: true),
-              "1-both-own-apps-in-use-\(tag)", dark: dark, height: tall)
+        // Sign in with Zoom coming soon (the shipped switch).
+        shoot(Page(prefersSignIn: false), "1-no-own-apps-\(tag)", dark: dark, height: h)
+        shoot(Page(prefersSignIn: false, sdkHalf: true), "2-own-apps-half-set-up-\(tag)", dark: dark, height: h)
+        shoot(Page(prefersSignIn: false, sdk: true, s2s: true), "3-own-apps-ready-\(tag)", dark: dark, height: h)
+        shoot(Page(prefersSignIn: true, signedIn: true), "4-signed-in-before-no-own-apps-\(tag)", dark: dark, height: h)
         shoot(Page(prefersSignIn: true, signedIn: true, sdk: true, s2s: true),
-              "2-both-sign-in-in-use-\(tag)", dark: dark, height: short)
-        shoot(Page(prefersSignIn: true, signedIn: true),
-              "3-only-sign-in-\(tag)", dark: dark, height: short)
-        shoot(Page(prefersSignIn: false, sdk: true, s2s: true),
-              "4-only-own-apps-\(tag)", dark: dark, height: tall)
-        shoot(Page(prefersSignIn: false),
-              "5-neither-own-apps-chosen-\(tag)", dark: dark, height: tall)
-        shoot(Page(prefersSignIn: true),
-              "6-neither-sign-in-chosen-\(tag)", dark: dark, height: short)
-        shoot(Page(prefersSignIn: false, signedIn: true),
-              "7-only-sign-in-but-own-apps-chosen-\(tag)", dark: dark, height: tall)
-        shoot(Page(prefersSignIn: false, sdk: true),
-              "8-own-apps-half-filled-\(tag)", dark: dark, height: tall)
-        shoot(Page(prefersSignIn: true, signedIn: true, endpointSet: false),
-              "9-sign-in-not-finished-\(tag)", dark: dark, height: short)
+              "5-signed-in-before-own-apps-ready-\(tag)", dark: dark, height: h)
+        // The switch off (after Zoom approves, or the DEBUG override): both ways open.
+        shoot(Page(prefersSignIn: true, signedIn: true, comingSoon: false), "6-open-sign-in-chosen-\(tag)", dark: dark, height: h)
+        shoot(Page(prefersSignIn: false, signedIn: true, comingSoon: false),
+              "7-open-own-apps-chosen-signed-in-\(tag)", dark: dark, height: h)
         let refused = ZoomRefusalRules.settingsNote(route: .greenroomApp(account: "Sample Host"), accountID: "b", refused: ["b"])
-        shoot(Page(prefersSignIn: true, signedIn: true, note: refused),
-              "10-sign-in-refused-\(tag)", dark: dark, height: short)
+        shoot(Page(prefersSignIn: true, signedIn: true, note: refused, comingSoon: false),
+              "10-open-sign-in-refused-\(tag)", dark: dark, height: h)
     }
     // The sign-in check: the shared button row and results panel, every step outcome kind.
     let lines: [ZoomCheckLine] = [
@@ -196,8 +177,5 @@ MainActor.assumeIsolated {
                              footnote: "Tries what Start needs from your sign-in, in Start\u{2019}s order. No meeting is created or started.",
                              onAgain: {}, onDone: {}),
               "16-sign-in-check-failures-\(tag)", dark: dark, width: 580, height: 640)
-        shoot(Page(prefersSignIn: false, sdk: true, s2s: true,
-                   missing: ["meeting:update:meeting:admin", "meeting:delete:meeting:admin"], scopesOpen: true),
-              "17-scope-list-missing-\(tag)", dark: dark, height: 1380)
     }
 }

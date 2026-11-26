@@ -691,8 +691,19 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// The setup guide's Zoom step, at your own Zoom apps.
-    func openZoomSetupGuide(at spot: ZoomGuideSpot = .sdkCredentials) {
+    /// Where the guide's flow stands, from the keys and the last check.
+    var zoomGuideFacts: ZoomGuideFlowFacts {
+        ZoomGuideFlowRules.facts(sdkFields: [sdkClientID, secretPresent(sdkClientSecret, key: "zoomSDKClientSecret") ? "x" : ""],
+                                 s2sFields: [s2sAccountID, s2sClientID,
+                                             secretPresent(s2sClientSecret, key: "zoomS2SClientSecret") ? "x" : ""],
+                                 lines: zoomSetupChecker.lines, running: zoomSetupChecker.isRunning)
+    }
+    /// Settings' one button into the guide: "Set up…" or "Edit setup…", and where it lands.
+    var zoomSetupEntry: ZoomSetupEntry { ZoomGuideFlowRules.setupEntry(zoomGuideFacts) }
+
+    /// The setup guide's Zoom step, at a spot (by default the first part that isn't done).
+    func openZoomSetupGuide(at spot: ZoomGuideSpot? = nil) {
+        let spot = spot ?? zoomSetupEntry.spot
         NSApp.activate(ignoringOtherApps: true)
         zoomGuideSpot = spot
         presentOnboarding()

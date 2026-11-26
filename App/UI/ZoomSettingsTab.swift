@@ -13,10 +13,13 @@
 //  `ZoomRouteChoiceRules`; Home, the menu bar and the log say the same thing
 //  through `ZoomRouteWords`.
 //
-//  Your own Zoom apps are two Marketplace apps, kept as two blocks because
-//  they really are two: Zoom's headless token grant is exclusive to the
-//  Server-to-Server type and the Meeting SDK embed to the General App type,
-//  so nobody can consolidate them (Vendor/README.md records the attempt).
+//  Your own Zoom apps are a compact summary here (owner, 2026-11-26: "no
+//  setup stuff like copy scopes and all should be available in the settings;
+//  a button should take us to the setup guide"): the status line, Check Zoom
+//  setup and its results, and ONE button, "Set up…" or "Edit setup…", that
+//  opens the setup guide's Zoom step at the first part that isn't done
+//  (`ZoomGuideFlowRules.setupEntry`). Every key field, the scopes and the
+//  Marketplace steps live only in the guide (`ZoomGuideStep`).
 //
 //  `ZoomPageContent` takes plain values and bindings, so it can be rendered
 //  off screen with sample values. `ZoomSettingsTab` feeds it from the coordinator.
@@ -31,11 +34,6 @@ struct ZoomSettingsTab: View {
 
     var body: some View {
         ZoomPageContent(
-            sdkClientID: $coordinator.sdkClientID,
-            sdkClientSecret: $coordinator.sdkClientSecret,
-            s2sAccountID: $coordinator.s2sAccountID,
-            s2sClientID: $coordinator.s2sClientID,
-            s2sClientSecret: $coordinator.s2sClientSecret,
             displayName: $coordinator.userDisplayName,
             hideSelfView: $coordinator.hideSelfView,
             prefersSignIn: $coordinator.zoomPrefersSignIn,
@@ -46,11 +44,11 @@ struct ZoomSettingsTab: View {
                                           ids: coordinator.zoomCheckIDs,
                                           onRun: { coordinator.checkZoomSetup() },
                                           onAction: { coordinator.performZoomCheckAction($0, kind: .ownApps) }),
-            missingScopes: ZoomCheckSummary.missingScopes(coordinator.zoomSetupChecker.lines),
+            setupEntry: coordinator.zoomSetupEntry,
             refusedNote: coordinator.zoomRouteNote,
             onSignIn: { coordinator.signInWithZoom() },
             onCancelSignIn: { coordinator.cancelZoomSignIn() },
-            showGuide: { coordinator.presentOnboarding() },
+            openGuide: { _ in coordinator.openZoomSetupGuide() },
             debugRows: debugRows)
             .onAppear { coordinator.loadSecretsIfNeeded() }
             .onChange(of: coordinator.zoomSetupCredentials) { _, _ in coordinator.zoomSetupChecker.credentialsChanged() }
@@ -72,11 +70,6 @@ struct ZoomSettingsTab: View {
 // MARK: - The page
 
 struct ZoomPageContent: View {
-    @Binding var sdkClientID: String
-    @Binding var sdkClientSecret: String
-    @Binding var s2sAccountID: String
-    @Binding var s2sClientID: String
-    @Binding var s2sClientSecret: String
     @Binding var displayName: String
     @Binding var hideSelfView: Bool
     /// The choice: true = Sign in with Zoom, false = your own Zoom apps. It is what Start uses.
@@ -87,33 +80,20 @@ struct ZoomPageContent: View {
     let signIn: ZoomSignInSection
     /// "Check Zoom setup" for your own Zoom apps. Nil hides it.
     var setupCheck: ZoomSetupCheckRow? = nil
-    /// The scopes the last Check Zoom setup found missing; the scope list marks them.
-    var missingScopes: [String] = []
+    /// The one button into the setup guide: its words and where it lands.
+    var setupEntry = ZoomSetupEntry(title: "Set up\u{2026}", spot: .sdkCredentials)
     /// Zoom refused this account before (error 63): why, and what to do.
     var refusedNote: String? = nil
     var onSignIn: () -> Void = {}
     var onCancelSignIn: () -> Void = {}
-    /// Opens the setup guide. Nil in the off-screen render, which hides the button.
-    var showGuide: (() -> Void)? = nil
-    /// Starts with the scope list open; for the off-screen render only.
-    var scopesOpen = false
+    /// Opens the setup guide's Zoom step at a spot.
+    var openGuide: (ZoomGuideSpot) -> Void = { _ in }
     /// A DEBUG build's extra rows (the sign-in override); nil in Release and in renders.
     var debugRows: AnyView? = nil
 
     // "During the meeting" (moved from the Layout tab; keys unchanged).
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
     @AppStorage(CoordinatorController.copyInviteOnStartKey) private var copyInviteOnStart = true
-
-    static let scopes = ZoomScopes.names
-
-    private var sdkState: CredentialState {
-        CredentialState([("Client ID", sdkClientID), ("Client Secret", sdkClientSecret)])
-    }
-
-    private var s2sState: CredentialState {
-        CredentialState([("Account ID", s2sAccountID), ("Client ID", s2sClientID),
-                         ("Client Secret", s2sClientSecret)])
-    }
 
     /// The segmented control's value: what the rules say is shown (always your
     /// own Zoom apps while the sign-in is coming soon, whatever was saved). A
@@ -160,40 +140,16 @@ struct ZoomPageContent: View {
         .scrollContentBackground(.hidden)
     }
 
-    /// Your own Zoom apps: one status line and the check first, then both apps' keys and guides.
+    /// Your own Zoom apps, as a summary: the status line, the check and its
+    /// results, and one button into the setup guide, where the keys live.
     private var ownAppsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                ZoomRouteStatusLine(choice: choice)
-                if choice.check == .setup, let setupCheck { setupCheck }
-                ZoomRouteStartNote(choice: choice)
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Meeting SDK").font(.headline)
-                    Spacer()
-                    sdkState.badge
-                }
-                .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
-                TextField("Client ID", text: $sdkClientID)
-                SecureField("Client Secret", text: $sdkClientSecret)
-                MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.sdkSteps, showGuide: showGuide)
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Server-to-Server").font(.headline)
-                    Spacer()
-                    s2sState.badge
-                }
-                .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result.")
-                TextField("Account ID", text: $s2sAccountID)
-                TextField("Client ID", text: $s2sClientID)
-                SecureField("Client Secret", text: $s2sClientSecret)
-                ScopeList(scopes: Self.scopes, missing: missingScopes, open: scopesOpen)
-                MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.s2sSteps, showGuide: showGuide)
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            ZoomRouteStatusLine(choice: choice)
+            if choice.check == .setup, let setupCheck { setupCheck }
+            ZoomRouteStartNote(choice: choice)
+            Button(setupEntry.title) { openGuide(setupEntry.spot) }
+                .help("Opens the setup guide\u{2019}s Zoom step, where the keys, scopes and the step-by-step setup live.")
+                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
@@ -306,134 +262,5 @@ struct ZoomRouteStartNote: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-/// Whether a set of keys is all in, none in, or part way.
-private struct CredentialState {
-    let missing: [String]
-    let total: Int
-
-    init(_ fields: [(name: String, value: String)]) {
-        missing = fields.filter { $0.value.trimmingCharacters(in: .whitespaces).isEmpty }.map(\.name)
-        total = fields.count
-    }
-
-    var badge: StatusBadge {
-        if missing.isEmpty { return StatusBadge(text: "Ready", tone: .good) }
-        if missing.count == total { return StatusBadge(text: "Not set up", tone: .waiting) }
-        return StatusBadge(text: "Needs \(missing.joined(separator: ", "))", tone: .problem)
-    }
-}
-
-/// The "where do I get these" help under a block: the Marketplace link,
-/// numbered steps, and a button that opens the setup guide.
-private struct MarketplaceGuideBlock: View {
-    let steps: [String]
-    let showGuide: (() -> Void)?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Link(destination: ZoomMarketplaceGuide.builderURL) {
-                Label(ZoomMarketplaceGuide.linkTitle, systemImage: "arrow.up.right")
-            }
-            .foregroundStyle(Brand.green)
-            .help(ZoomMarketplaceGuide.builderURL.absoluteString)
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(index + 1).").monospacedDigit()
-                        Text(step)
-                    }
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            if let showGuide {
-                Button(ZoomMarketplaceGuide.guideButtonTitle, action: showGuide)
-                    .buttonStyle(.link)
-                    .foregroundStyle(Brand.green)
-                    .font(.caption)
-            }
-        }
-        .padding(.top, 4)
-    }
-}
-
-/// The scopes the Server-to-Server app needs: folded away, one click to
-/// copy, selectable when open. After a check, the missing ones are marked
-/// (count in the label, "Missing" beside each) and can be copied on their own.
-private struct ScopeList: View {
-    let scopes: [String]
-    /// From the last Check Zoom setup; empty when it found none (or has not run).
-    let missing: [String]
-    @State private var open: Bool
-    @State private var copied: String?
-
-    init(scopes: [String], missing: [String] = [], open: Bool) {
-        self.scopes = scopes
-        self.missing = missing
-        _open = State(initialValue: open)
-    }
-
-    var body: some View {
-        DisclosureGroup(isExpanded: $open) {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(scopes, id: \.self) { scope in
-                    HStack(spacing: 8) {
-                        Text(scope)
-                            .font(.system(.callout, design: .monospaced))
-                            .textSelection(.enabled)
-                        if missing.contains(scope) {
-                            Label("Missing", systemImage: "exclamationmark.triangle.fill")
-                                .labelStyle(.titleAndIcon)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.red)
-                                .accessibilityLabel("\(scope) is missing")
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(RoundedRectangle(cornerRadius: 6)
-                .fill(Color.secondary.opacity(0.08)))
-            .padding(.top, 4)
-        } label: {
-            HStack {
-                Text("Scopes")
-                Text("\(scopes.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if !missing.isEmpty {
-                    Text("\(missing.count) missing")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                }
-                Spacer()
-                if !missing.isEmpty {
-                    copyButton(missing, key: "missing", title: "Copy missing",
-                               help: "Copy the \(missing.count) missing scope\(missing.count == 1 ? "" : "s"), one per line")
-                }
-                copyButton(scopes, key: "all", title: "Copy scopes",
-                           help: missing.isEmpty ? "Copy all \(scopes.count) scopes, one per line"
-                                 : "Copy all \(scopes.count) scopes, one per line. Missing after the last check: \(missing.joined(separator: ", "))")
-            }
-        }
-        .help(scopes.map { missing.contains($0) ? "\($0) (missing)" : $0 }.joined(separator: "\n"))
-    }
-
-    private func copyButton(_ list: [String], key: String, title: String, help: String) -> some View {
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(list.joined(separator: "\n"), forType: .string)
-            copied = key
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied == key { copied = nil } }
-        } label: {
-            Label(copied == key ? "Copied" : title, systemImage: copied == key ? "checkmark" : "doc.on.doc")
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(Brand.text)
-        .help(help)
     }
 }

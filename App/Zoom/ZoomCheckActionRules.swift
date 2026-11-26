@@ -17,9 +17,9 @@ enum ZoomCheckKind: Equatable { case ownApps, signIn }
 /// One of your own two Zoom apps.
 enum ZoomOwnApp: Equatable, Hashable { case sdk, s2s }
 
-/// A place in the setup guide's Zoom step.
+/// A place in the setup guide's Zoom step. `zoomStep` is the step's top.
 enum ZoomGuideSpot: String, Equatable, Hashable {
-    case sdkCredentials, s2sCredentials, s2sScopes, s2sActivation
+    case zoomStep, sdkCredentials, s2sCredentials, s2sScopes, s2sActivation
 }
 
 /// What went wrong on a line, in the kinds the buttons follow from.
@@ -109,7 +109,8 @@ enum ZoomCheckActionRules {
             let app: ZoomOwnApp = check == "sdk" ? .sdk : .s2s
             switch problem {
             case .missingScopes(let names):
-                return names.map { .copyScope($0) } + [.openScopesPage]
+                // Show me where: the guide's scope list, which marks what the check found missing.
+                return names.map { .copyScope($0) } + [.openScopesPage, .showGuide(.s2sScopes)]
             case .badCredentials:
                 return [.openAppCredentials(app), .showGuide(app == .sdk ? .sdkCredentials : .s2sCredentials)]
             case .notActivated:

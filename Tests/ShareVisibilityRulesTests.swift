@@ -61,7 +61,9 @@ final class ShareVisibilityRulesTests: XCTestCase {
                 if line.contains("SecureField(") { secretFields += 1 }
             }
         }
-        XCTAssertGreaterThanOrEqual(secretFields, 4) // Zoom SDK, S2S, YouTube, the guide's own field
+        // The Zoom keys moved out of Settings into the setup guide (2026-11-26): the guide's Zoom field
+        // helper (both Zoom secrets), the guide's own field helper (YouTube) and YouTube Settings.
+        XCTAssertGreaterThanOrEqual(secretFields, 3)
     }
 
     func testSwitchStateHiddenByDefault() {

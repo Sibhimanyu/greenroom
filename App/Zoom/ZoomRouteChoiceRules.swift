@@ -123,7 +123,7 @@ enum ZoomRouteChoiceRules {
         } else if ownWorks {
             (status, tone) = ("Ready", .good)
         } else if !f.ownSDKStarted && !f.ownS2SStarted && !r.ownSDKComplete && !r.ownS2SComplete {
-            (status, tone) = ("Not set up yet. Paste the keys from your two Zoom apps below.", .waiting)
+            (status, tone) = ("Not set up yet", .waiting)
         } else {
             let needs = [r.ownSDKComplete ? nil : "Meeting SDK", r.ownS2SComplete ? nil : "Server-to-Server"].compactMap { $0 }
             (status, tone) = ("Needs the \(needs.joined(separator: " and ")) keys", .problem)

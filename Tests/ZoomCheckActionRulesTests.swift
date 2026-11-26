@@ -22,8 +22,8 @@ final class ZoomCheckActionRulesTests: XCTestCase {
             (.ownApps, "account", .failed, .network, ["*Check again"]),
             (.ownApps, "account", .failed, .zoomDown, ["*Check again"]),
             // One scope per line.
-            (.ownApps, "update", .failed, .missingScopes(["meeting:update:meeting:admin"]), ["Copy scope", "*Open Scopes page"]),
-            (.ownApps, "delete", .failed, .missingScopes(["meeting:delete:meeting:admin"]), ["Copy scope", "*Open Scopes page"]),
+            (.ownApps, "update", .failed, .missingScopes(["meeting:update:meeting:admin"]), ["Copy scope", "*Open Scopes page", "Show me where"]),
+            (.ownApps, "delete", .failed, .missingScopes(["meeting:delete:meeting:admin"]), ["Copy scope", "*Open Scopes page", "Show me where"]),
             // The API calls after the token.
             (.ownApps, "meetings", .failed, .network, ["*Check again"]),
             (.ownApps, "hostToken", .failed, .zoomDown, ["*Check again"]),
@@ -56,7 +56,8 @@ final class ZoomCheckActionRulesTests: XCTestCase {
     func testButtonsCarryWhatTheyNeed() {
         let scope = ZoomCheckActionRules.buttons(.ownApps, check: "update", status: .failed,
                                                  problem: .missingScopes(["meeting:update:meeting:admin"]), ids: ids)
-        XCTAssertEqual(scope.map(\.action), [.copyScope("meeting:update:meeting:admin"), .openScopesPage])
+        // Show me where opens the guide's scope list, which marks what is missing.
+        XCTAssertEqual(scope.map(\.action), [.copyScope("meeting:update:meeting:admin"), .openScopesPage, .showGuide(.s2sScopes)])
         let sdk = ZoomCheckActionRules.buttons(.ownApps, check: "sdk", status: .failed, problem: .badCredentials, ids: ids)
         XCTAssertEqual(sdk.map(\.action), [.openAppCredentials(.sdk), .showGuide(.sdkCredentials)])
         let s2s = ZoomCheckActionRules.buttons(.ownApps, check: "account", status: .failed, problem: .badCredentials, ids: ids)

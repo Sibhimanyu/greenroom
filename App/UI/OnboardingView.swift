@@ -21,14 +21,11 @@ struct OnboardingView: View {
     @State private var refreshTick = 0 // bumped by a timer so detected state stays live
     @State private var importStatus = ""
     @State private var importStatusIsError = false
-    @State private var copiedScope: String?
     @State private var connectingYouTube = false
-    @State private var editCredentials = false
     @State private var youtubeHelpExpanded = false
     @State private var permissionDetailsExpanded = false
-    /// A check's "Show me where": unfolds "Use your own Zoom apps" and scrolls to the step.
-    @State private var openOwnApps = false
-    @State private var scrollToSpot: ZoomGuideSpot?
+    /// A deep link into the Zoom step, handed to `ZoomGuideStep`, which clears it.
+    @State private var zoomJump: ZoomGuideSpot?
 
     private enum SetupPage: Int, CaseIterable, Identifiable {
         case welcome, zoom, layout, permissions, youtube, cues, ready
@@ -156,84 +153,44 @@ struct OnboardingView: View {
     }
     private func runConnectionTest() { coordinator.checkZoomSetup() }
 
-    /// "Show me where" from a check line: the Zoom step, own apps and the
-    /// manual setup unfolded, scrolled to the asked part.
+    /// A deep link ("Show me where", Settings' Set up / Edit setup, Home's
+    /// pill): the Zoom step, which opens the asked part and scrolls to it.
     private func goToGuideSpot() {
         guard let spot = coordinator.zoomGuideSpot else { return }
         coordinator.zoomGuideSpot = nil
         step = .zoom
-        openOwnApps = true
-        editCredentials = true
-        // After the folds open, so the anchor exists.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { scrollToSpot = spot }
+        // The step may not exist yet; it reads the spot when it appears.
+        DispatchQueue.main.async { zoomJump = spot }
     }
 
-    private static let zoomBuilder = ZoomMarketplaceGuide.builderURL
-    private static let requiredScopes = ZoomScopes.all
-
     private var credentialsStep: some View {
-        // Keep native disclosure chevrons and focus rings inside the scroll clip.
-        ScrollViewReader { reader in
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                stepHeader("Connect your Zoom account", "Sign in with your Zoom account. Greenroom then starts and hosts your meetings as you.")
-                ZoomSignInSection.live(coordinator)
-                Divider()
-                AdvancedDisclosure("Use your own Zoom apps", open: zoomAppsOpen, openRequest: $openOwnApps) {
-                  VStack(alignment: .leading, spacing: 20) {
-                Text("Have a settings file from a teammate? Import it to fill in the connection details.")
-                    .font(.callout).foregroundStyle(.secondary)
-                HStack(spacing: 12) {
-                    Button("Import settings file…", systemImage: "square.and.arrow.down") { importSettingsFile() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isTesting)
-                    Text("The quickest way to get connected.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if !importStatus.isEmpty {
-                    Label(importStatus, systemImage: importStatusIsError ? "exclamationmark.triangle" : "checkmark.circle")
-                        .font(.callout)
-                        .foregroundStyle(importStatusIsError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                }
-                VStack(spacing: 12) {
-                    StatusRow(ok: chatConfigured, title: "Meeting and chat",
-                              detail: chatConfigured ? "Details saved. Used by the built-in meeting client." : "Needs the Client ID and Secret from a Zoom General App.",
-                              actionTitle: nil, action: {})
-                    StatusRow(ok: hostingConfigured, title: "Create and host meetings",
-                              detail: hostingConfigured ? "Details saved. Run the check below to verify the connection." : "Needs the Account ID, Client ID and Secret from a Server-to-Server app.",
-                              actionTitle: nil, action: {})
-                }
-                ZoomCheckButtonRow(title: "Check Zoom setup", lines: testResults, isRunning: isTesting,
-                                   disabled: coordinator.phase.isInMeeting,
-                                   onCheck: { setupChecker.showing = true; if !isTesting { runConnectionTest() } },
-                                   onView: { setupChecker.showing = true })
-                Text(coordinator.phase.isInMeeting
-                     ? "End the current session before checking Zoom."
-                     : "Checks both Zoom apps, all \(ZoomScopes.countWord) hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Divider()
-                DisclosureGroup(chatConfigured && hostingConfigured ? "Review or edit your Zoom apps" : "Set up Zoom without a settings file", isExpanded: $editCredentials) {
-                    manualZoomSetup
-                        .padding(.top, 16)
-                        .disabled(isTesting)
-                }
-                  }
-                }
-            }
-            .padding(.horizontal, 8)
-        }
-        .onChange(of: scrollToSpot) { _, spot in
-            guard let spot else { return }
-            withAnimation(.snappy(duration: 0.25)) { reader.scrollTo(spot, anchor: .top) }
-            scrollToSpot = nil
-        }
-        }
+        ZoomGuideStep(
+            sdkClientID: $coordinator.sdkClientID,
+            sdkClientSecret: $coordinator.sdkClientSecret,
+            s2sAccountID: $coordinator.s2sAccountID,
+            s2sClientID: $coordinator.s2sClientID,
+            s2sClientSecret: $coordinator.s2sClientSecret,
+            checkLines: testResults,
+            isChecking: isTesting,
+            checkDisabled: coordinator.phase.isInMeeting,
+            signInComingSoon: ZoomSignInAvailability.isComingSoon,
+            signIn: ZoomSignInAvailability.isComingSoon ? nil : AnyView(ZoomSignInSection.live(coordinator)),
+            importStatus: importStatus,
+            importFailed: importStatusIsError,
+            jump: $zoomJump,
+            onImport: { importSettingsFile() },
+            onCheck: { setupChecker.showing = true; runConnectionTest() },
+            onViewResults: { setupChecker.showing = true })
         .id(SetupPage.zoom)
     }
 
-    /// Starts open for people who already pasted their own apps and are not
-    /// signed in, so nothing they set up seems to have vanished.
-    private var zoomAppsOpen: Bool { coordinator.zoomSignedInAs == nil && (chatConfigured || hostingConfigured) }
+    /// The footer's plain note on the Zoom step while Zoom isn't connected yet.
+    private var zoomFooterNote: String? {
+        ZoomGuideFlowRules.flow(ZoomGuideFlowRules.facts(
+            sdkFields: [coordinator.sdkClientID, coordinator.sdkClientSecret],
+            s2sFields: [coordinator.s2sAccountID, coordinator.s2sClientID, coordinator.s2sClientSecret],
+            lines: testResults, running: isTesting)).footerNote
+    }
 
     private func credentialField(_ title: String, text: Binding<String>, secure: Bool = false) -> some View {
         LabeledContent(title) {
@@ -244,86 +201,6 @@ struct OnboardingView: View {
             .labelsHidden()
             .textFieldStyle(.greenroom)
             .frame(maxWidth: 360)
-        }
-    }
-
-    private var zoomCheckButton: some View {
-        Button(isTesting ? "View checks in progress…" : "Check Zoom setup") {
-            setupChecker.showing = true
-            if !isTesting { runConnectionTest() }
-        }
-        .disabled(coordinator.phase.isInMeeting)
-    }
-
-    private var manualZoomSetup: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("One-time setup · about 10 minutes")
-                .font(.headline)
-            Text("Use the same Zoom account for both apps. You need permission to build apps and add admin scopes; ask your Zoom account admin if those options are missing.")
-                .font(.callout).foregroundStyle(.secondary)
-            GroupBox {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("In Zoom, choose Build App → General App. Under Features → Embed, turn on Meeting SDK. Find the Client ID and Secret under Basic Information and paste them here.")
-                        .font(.callout)
-                    zoomBuilderLink
-                    credentialField("Client ID", text: $coordinator.sdkClientID)
-                    credentialField("Client Secret", text: $coordinator.sdkClientSecret, secure: true)
-                }
-                .padding(12)
-            } label: { Text("1 · Meeting and chat").font(.headline) }
-            .id(ZoomGuideSpot.sdkCredentials)
-            GroupBox {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("In Zoom, choose Build App → Server-to-Server OAuth. Copy the three values from App Credentials.")
-                        .font(.callout)
-                        .id(ZoomGuideSpot.s2sCredentials)
-                    zoomBuilderLink
-                    credentialField("Account ID", text: $coordinator.s2sAccountID)
-                    credentialField("Client ID", text: $coordinator.s2sClientID)
-                    credentialField("Client Secret", text: $coordinator.s2sClientSecret, secure: true)
-                    Divider()
-                    Text("Add permissions, one at a time").font(.headline)
-                        .id(ZoomGuideSpot.s2sScopes)
-                    Text("In Zoom’s Scopes → Add Scopes, copy one name below, paste it into the search field and select the matching permission. Repeat for all \(ZoomScopes.countWord), then save.")
-                        .font(.callout).foregroundStyle(.secondary)
-                    scopesList
-                    Divider()
-                    Label("Finish Information, then open Activation and activate the app in Zoom. Return here to check your setup.", systemImage: "checkmark.circle")
-                        .font(.callout)
-                        .id(ZoomGuideSpot.s2sActivation)
-                    zoomCheckButton
-                }
-                .padding(12)
-            } label: { Text("2 · Create and host meetings").font(.headline) }
-        }
-    }
-
-    private var zoomBuilderLink: some View {
-        Link(destination: Self.zoomBuilder) {
-            Label("Open Zoom app builder", systemImage: "arrow.up.right")
-        }
-        .help(Self.zoomBuilder.absoluteString)
-    }
-
-    private var scopesList: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ForEach(Self.requiredScopes) { scope in
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(scope.purpose).font(.callout.weight(.medium))
-                        Text(scope.name).font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    Spacer(minLength: 0)
-                    Button(copiedScope == scope.name ? "Copied" : "Copy", systemImage: copiedScope == scope.name ? "checkmark" : "doc.on.doc") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(scope.name, forType: .string)
-                        copiedScope = scope.name
-                    }
-                    .accessibilityLabel("Copy \(scope.name)")
-                    .accessibilityValue(copiedScope == scope.name ? "Copied" : "")
-                }
-            }
         }
     }
 
@@ -472,7 +349,7 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 stepHeader("Your setup, at a glance", "You can return to any step below. Everything you changed is already saved.")
-                summaryRow("Zoom", detail: coordinator.zoomSignedInAs != nil || (chatConfigured && hostingConfigured) ? "Connection details saved" : "Connection details still needed", page: .zoom)
+                summaryRow("Zoom", detail: chatConfigured && hostingConfigured ? "Connection details saved" : "Connection details still needed", page: .zoom)
                 if let failure = testResults.first(where: { $0.status == .failed }) {
                     Label(failure.detail, systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.red)
@@ -645,6 +522,10 @@ struct OnboardingView: View {
                 .disabled(step == .welcome)
                 if step.isOptional || step == .permissions {
                     Button("Skip optional features") { step = .ready }
+                } else if step == .zoom, let note = zoomFooterNote {
+                    Text(note).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Changes save automatically").font(.caption).foregroundStyle(.secondary)
                 }
@@ -659,11 +540,13 @@ struct OnboardingView: View {
         }
     }
 
-    private func importSettingsFile() {
+    /// Returns true when the file was imported.
+    @discardableResult
+    private func importSettingsFile() -> Bool {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
         // Never silent: a failed import with no message read as "nothing
         // happened" (Codex design audit #5).
         do {
@@ -671,9 +554,11 @@ struct OnboardingView: View {
             importStatus = (["Imported from \(url.lastPathComponent). You can delete that file now."] + report.notes)
                 .joined(separator: " ")
             importStatusIsError = false
+            return true
         } catch {
             importStatus = "Import failed: \(error.localizedDescription)"
             importStatusIsError = true
+            return false
         }
     }
 }

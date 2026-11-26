@@ -78,6 +78,24 @@ enum StartChoreography {
         case cancelled
     }
 
+    /// What the island does once the start's steps clear.
+    enum IslandEnd: Equatable {
+        /// The Live beat, then fold.
+        case live
+        /// The failed step in red with this reason, Try again and Close.
+        case failed(String)
+        /// Fold with no beat.
+        case fold
+    }
+
+    static func islandEnd(_ ending: Ending) -> IslandEnd {
+        switch ending {
+        case .live(let inMeeting): return inMeeting ? .live : .failed(meetingEndedWhileStarting)
+        case .failed(let reason): return .failed(reason)
+        case .cancelled: return .fold
+        }
+    }
+
     /// What a start that did not go live takes down.
     struct Teardown: Equatable {
         /// Greenroom's Meeting window, wherever it opened.
@@ -115,6 +133,34 @@ enum StartChoreography {
     static func islandCarriesReading(failed: Bool, arranged: Bool, layoutHasMeetingDisplay: Bool,
                                      meetingWindowOpen: Bool) -> Bool {
         true
+    }
+
+    /// Zoom said the meeting is over.
+    enum MeetingEndedAction: Equatable {
+        /// The start in flight reports it as its failure, in words.
+        case startReportsIt
+        /// A live meeting ended: wind the session down.
+        case endSession
+    }
+
+    static func meetingEnded(startInFlight: Bool) -> MeetingEndedAction {
+        startInFlight ? .startReportsIt : .endSession
+    }
+
+    /// The failure when a start reached its end but Zoom no longer has the meeting.
+    static let meetingEndedWhileStarting = "Zoom ended the meeting just as it started. Nothing was left running. Press Try again."
+
+    /// The Picture step fails, in words, when what it needs is not there.
+    /// `wantsScreen`: the share captures the screen; `screenRecordingGranted`: macOS says yes.
+    static func screenRecordingFailure(wantsScreen: Bool, screenRecordingGranted: Bool) -> String? {
+        guard wantsScreen, !screenRecordingGranted else { return nil }
+        return "Greenroom can\u{2019}t share your screen yet: Screen Recording is off. Turn Greenroom on in System Settings \u{2192} Privacy & Security \u{2192} Screen Recording, then press Try again. If it still says this, quit and reopen Greenroom first. To start with your camera only, set What\u{2019}s shared to Nothing or Whiteboard."
+    }
+
+    /// No composited frame at all came within the wait: the meeting would get nothing.
+    static func pictureFailure(gotFrame: Bool, waitedSeconds: Int) -> String? {
+        guard !gotFrame else { return nil }
+        return "Greenroom\u{2019}s picture did not come up in \(waitedSeconds) seconds, so the meeting would have had no video. Check that Greenroom may use the camera (System Settings \u{2192} Privacy & Security \u{2192} Camera), then press Try again."
     }
 
     // MARK: Geometry

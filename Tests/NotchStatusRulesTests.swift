@@ -97,13 +97,13 @@ final class NotchStatusRulesTests: XCTestCase {
 
     func testFinishedStartBecomesLive() {
         let working = NotchStatusRules.next(from: .hidden, input: NotchInput(steps: steps(done: 5, active: false)))
-        XCTAssertEqual(NotchStatusRules.next(from: working, input: NotchInput()), .live(recording: true))
+        XCTAssertEqual(NotchStatusRules.next(from: working, input: NotchInput(liveConfirmed: true)), .live(recording: true))
     }
 
     func testLiveWithoutRecordingWhenSkipped() {
         let working = NotchStatusRules.next(from: .hidden,
             input: NotchInput(steps: steps(done: 5, active: false, recordingSkipped: true)))
-        XCTAssertEqual(NotchStatusRules.next(from: working, input: NotchInput()), .live(recording: false))
+        XCTAssertEqual(NotchStatusRules.next(from: working, input: NotchInput(liveConfirmed: true)), .live(recording: false))
         XCTAssertEqual(NotchStatusRules.liveText(recording: false), "Live")
         XCTAssertEqual(NotchStatusRules.liveText(recording: true), "Live \u{00B7} Recording")
     }

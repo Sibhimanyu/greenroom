@@ -24,6 +24,9 @@ struct NotchInput: Equatable {
     var detail: String?
     /// A meeting start in flight: the island offers Cancel.
     var cancellable = false
+    /// Cleared steps mean success only with this set: Zoom reported InMeeting and the
+    /// start ran to its end. Cleared steps without it are a cancel or an abandon.
+    var liveConfirmed = false
 }
 
 struct NotchProgress: Equatable {
@@ -154,7 +157,9 @@ enum NotchStatusRules {
                                          cancellable: input.cancellable))
         }
         switch phase {
-        case .working(let progress) where progress.allSettled:
+        // Live only on the start's own word that Zoom has the meeting: steps that
+        // clear for any other reason (a cancel, an abandon) fold without the beat.
+        case .working(let progress) where progress.allSettled && input.liveConfirmed:
             return .live(recording: progress.recordingStarted)
         case .live(let recording):
             return .live(recording: recording)

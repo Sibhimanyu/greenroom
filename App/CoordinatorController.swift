@@ -274,11 +274,13 @@ final class CoordinatorController: ObservableObject {
 
     /// Ends the progress display. Clearing the steps makes `isLive` true, which
     /// is what returns the panel to its ordinary behaviour.
-    private func finishStartReadiness() {
+    private func finishStartReadiness(liveConfirmed: Bool = false) {
         startBarText = nil
         // Still "in the bar" while the steps clear, so the island does not
-        // flash its Live beat for a start it never showed.
+        // flash its Live beat for a start it never showed. Live is claimed only
+        // on the caller's confirmation (StartChoreography.islandEnd).
         startReadiness = .init()
+        startReadiness.liveConfirmed = liveConfirmed
         startInBar = false
     }
 
@@ -1615,6 +1617,12 @@ final class CoordinatorController: ObservableObject {
         // (When stop() itself triggered this observer, isStopping blocks
         // the re-entry.)
         guard !isStopping else { return }
+        // Still starting: the start sees Zoom's status itself and fails with words,
+        // rather than this winding it down as a silent cancel.
+        if StartChoreography.meetingEnded(startInFlight: startBarText != nil) == .startReportsIt {
+            log("Zoom ended the meeting while it was starting.")
+            return
+        }
         if phase.isInMeeting {
             log("Meeting over \u{2014} ending the session.")
             stop()
@@ -1979,6 +1987,11 @@ final class CoordinatorController: ObservableObject {
                 }
 
                 try Task.checkCancellation()
+                // Done only on Zoom's word: InMeeting, and still in it. A meeting Zoom
+                // ended while the last steps ran is this start's failure, in words.
+                if case .failed(let reason) = StartChoreography.islandEnd(.live(inMeeting: zoomChatClient.isJoined)) {
+                    throw NSError(domain: "Greenroom", code: 31, userInfo: [NSLocalizedDescriptionKey: reason])
+                }
                 mark(.meeting, .done)
                 // The island has carried the start since the click; the floating bar
                 // first appears now, live. It is the surface unless the layout places a
@@ -2026,7 +2039,7 @@ final class CoordinatorController: ObservableObject {
                 // Clearing the steps is what makes Readiness.isLive true, which
                 // hands the panel back to its ordinary behaviour: the class side
                 // returns to "waiting for students" and the controls come up.
-                finishStartReadiness()
+                finishStartReadiness(liveConfirmed: zoomChatClient.isJoined)
                 // A display was plugged or pulled while this was starting:
                 // anything placed before that settled is placed against a screen
                 // arrangement that no longer exists. Everything placed after it
@@ -3014,7 +3027,7 @@ final class CoordinatorController: ObservableObject {
                         action = flow.handle(.takeStarted)
                     case .finish:
                         // Every step settled: the island's "Live" beat, then it folds.
-                        finishStartReadiness()
+                        finishStartReadiness(liveConfirmed: isRecording)
                         break run
                     case .putAway:
                         log("Recording cancelled.")
@@ -4860,10 +4873,14 @@ final class CoordinatorController: ObservableObject {
         let configuration = makeStageConfiguration()
         let wantsScreen = configuration.share.kind.capturesScreen
 
-        if wantsScreen, !StageCompositor.screenRecordingGranted {
-            log("Greenroom needs Screen Recording permission to share your screen, and it isn\u{2019}t on yet. macOS is asking now (or open System Settings \u{2192} Privacy & Security \u{2192} Screen Recording and turn Greenroom on, then quit and reopen Greenroom). Until then the class sees your camera only.")
+        // A first Start on a new Mac: macOS asks now, and applies a yes only after a
+        // relaunch. The Picture step fails in words rather than reporting done for a
+        // meeting that would see no screen.
+        if let reason = StartChoreography.screenRecordingFailure(wantsScreen: wantsScreen,
+                                                                 screenRecordingGranted: StageCompositor.screenRecordingGranted) {
+            log("Screen Recording is off, so the screen can\u{2019}t be shared. macOS is asking now.")
             StageCompositor.requestScreenRecordingAccess()
-            watchForScreenPermission()
+            throw NSError(domain: "Greenroom", code: 11, userInfo: [NSLocalizedDescriptionKey: reason])
         }
 
         let recorder = SessionRecorder(source: stage, microphoneUID: micDeviceUID, log: { [weak self] line in
@@ -4899,6 +4916,10 @@ final class CoordinatorController: ObservableObject {
                !screenExpected || stage.status.screenLive,
                !wantsCamera || stage.status.camerasLive.first == true { break }
             try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        // Done only with a picture: no frame at all is a meeting with no video.
+        if let reason = StartChoreography.pictureFailure(gotFrame: probe.hasFrame, waitedSeconds: 8) {
+            throw NSError(domain: "Greenroom", code: 12, userInfo: [NSLocalizedDescriptionKey: reason])
         }
         reportStageStart(stage.status, configuration: configuration,
                          wantsScreen: screenExpected, wantsCamera: wantsCamera)

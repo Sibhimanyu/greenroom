@@ -64,6 +64,9 @@ enum ParticipantGridWindowController {
         /// The newest status line, shown under the steps. Without it the card
         /// says only which step is running, and a slow step reads as a hang.
         var detail: String?
+        /// Set only as the steps clear on a start that really went live (Zoom said
+        /// InMeeting, or the take is rolling): the one reading the island may call Live.
+        var liveConfirmed = false
 
         /// True once there is nothing left to wait for. An empty list counts as
         /// live so that anything not driving readiness - a panel
@@ -2741,7 +2744,8 @@ enum ReadinessHUDController {
             steps: readiness.steps.map { NotchStep(label: $0.label, state: NotchStepState($0.state)) },
             failure: readiness.failure,
             detail: readiness.detail,
-            cancellable: cancellable && readiness.failure == nil)
+            cancellable: cancellable && readiness.failure == nil,
+            liveConfirmed: readiness.liveConfirmed)
         // An empty reading is the end of the start: the island says Live and folds.
         let carrying = !readiness.steps.isEmpty || readiness.failure != nil
         if carrying, !isShowing { shownAt = Date() }

@@ -435,6 +435,7 @@ targets:
       - path: App/YouTube/YouTubeOAuth.swift
       - path: App/YouTube/YouTubeRouteRules.swift
       - path: App/YouTube/YouTubeAccountChoiceRules.swift
+      - path: App/YouTube/YouTubeGuideFlowRules.swift
       - path: App/YouTube/YouTubeUploadRules.swift
       - path: App/YouTube/YouTubeErrorRules.swift
     settings:

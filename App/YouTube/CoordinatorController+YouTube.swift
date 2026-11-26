@@ -22,20 +22,6 @@
 import AppKit
 import Foundation
 
-/// Settings → YouTube → "After a recording".
-enum YouTubeUploadMode: String, CaseIterable, Identifiable {
-    case off, ask, automatic
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .off: return "Do nothing"
-        case .ask: return "Ask whether to upload"
-        case .automatic: return "Upload automatically"
-        }
-    }
-}
-
 /// The upload sheet's starting values.
 struct YouTubeUploadDraft: Identifiable, Equatable {
     let id = UUID()
@@ -408,7 +394,9 @@ extension CoordinatorController {
         await YouTubeAuth.disconnect()
         youtubeConnected = false
         youtubeChannel = nil
-        youtubeStatus = "Signed out. Google has been told to remove Greenroom\u{2019}s access."
+        // A result, not a state: a toast, never a line left on the page.
+        youtubeStatus = ""
+        ToastController.show("Signed out of YouTube", detail: "Google has been told to remove Greenroom\u{2019}s access.")
         log("YouTube signed out.")
     }
 }

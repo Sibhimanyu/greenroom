@@ -163,12 +163,14 @@ enum YouTubeCloudGuide {
     static let url = URL(string: "https://console.cloud.google.com/apis/credentials")!
     static let linkTitle = "Open Google Cloud"
     static let steps = [
-        "Open Google Cloud and choose or create a project.",
+        "In Google Cloud, choose or create a project.",
         "In APIs & Services \u{2192} Library, turn on YouTube Data API v3.",
         "Set up the OAuth consent screen. While it is in Testing, add your Google account as a test user.",
         "In Credentials, create an OAuth client ID of type Desktop app.",
         "Paste its Client ID and Client Secret here, then sign in.",
     ]
-    /// The field's hover help, and the one detail people trip on.
+    /// Under the fields: the one detail people trip on.
+    static let testingNote = "While the Google project is in Testing, the sign-in lasts seven days. Publish it in the consent screen to keep it."
+    /// The field's hover help.
     static let clientHelp = "From a Google Cloud OAuth client of type \u{201C}Desktop app\u{201D} with YouTube Data API v3 turned on. While the Google project is in Testing, the sign-in lasts seven days."
 }

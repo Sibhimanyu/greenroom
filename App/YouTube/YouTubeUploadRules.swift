@@ -11,6 +11,20 @@
 //
 import Foundation
 
+/// Settings → YouTube → "After a recording" (and the setup guide's "After each recording").
+enum YouTubeUploadMode: String, CaseIterable, Identifiable {
+    case off, ask, automatic
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: return "Do nothing"
+        case .ask: return "Ask whether to upload"
+        case .automatic: return "Upload automatically"
+        }
+    }
+}
+
 /// What the person chose in the upload sheet (or Settings, for automatic uploads).
 struct YouTubeUploadDetails: Equatable {
     var title: String

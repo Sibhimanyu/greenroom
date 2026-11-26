@@ -21,9 +21,9 @@ cut_out App/UI/YouTubeUploadSheet.swift '// MARK: - The sheet' '// MARK: - The c
 # The fold shared with Settings -> Zoom, alone (the rest of that file is Zoom's).
 { echo "import SwiftUI"; awk '/^struct AdvancedDisclosure/{p=1} p{print} p&&/^}/{exit}' App/UI/ZoomSignInSection.swift; } > "$STAGE/AdvancedDisclosure.swift"
 grep -q AdvancedDisclosure "$STAGE/AdvancedDisclosure.swift" || { echo "render: AdvancedDisclosure moved" >&2; exit 1; }
-# The mode enum and the draft, out of the coordinator extension.
+# The draft, out of the coordinator extension (the mode enum is in YouTubeUploadRules).
 { echo "import Foundation"
-  awk '/^enum YouTubeUploadMode/{p=1} /^\/\/\/ An upload that did not go through/{exit} p{print}' App/YouTube/CoordinatorController+YouTube.swift
+  awk '/^\/\/\/ The upload sheet.s starting values/{p=1} /^\/\/\/ An upload that did not go through/{exit} p{print}' App/YouTube/CoordinatorController+YouTube.swift
 } > "$STAGE/YouTubeTypes.swift"
 render youtube-render youtube-main.swift "$STAGE/YouTubeSettingsTab.swift" "$STAGE/YouTubeUploadSheet.swift" \
   "$STAGE/AdvancedDisclosure.swift" "$STAGE/YouTubeTypes.swift" "$STAGE/Brand.swift" \

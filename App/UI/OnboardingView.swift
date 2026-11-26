@@ -21,7 +21,8 @@ struct OnboardingView: View {
     @State private var refreshTick = 0 // bumped by a timer so detected state stays live
     @State private var importStatus = ""
     @State private var importStatusIsError = false
-    @State private var youtubeHelpExpanded = false
+    /// A deep link into the YouTube step, handed to `YouTubeGuideStep`, which clears it.
+    @State private var youtubeJump: YouTubeGuideSpot?
     @State private var permissionDetailsExpanded = false
     /// A deep link into the Zoom step, handed to `ZoomGuideStep`, which clears it.
     @State private var zoomJump: ZoomGuideSpot?
@@ -170,7 +171,8 @@ struct OnboardingView: View {
         guard let spot = coordinator.youtubeGuideSpot else { return }
         coordinator.youtubeGuideSpot = nil
         step = .youtube
-        if spot == .ownApp { youtubeHelpExpanded = true }
+        // The step may not exist yet; it reads the spot when it appears.
+        DispatchQueue.main.async { youtubeJump = spot }
     }
 
     private var credentialsStep: some View {
@@ -391,72 +393,25 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: YouTube (optional) - the same controls as Settings → YouTube, in
-    // the flow, because a teacher who records wants to know the class can
-    // land on the channel before the first morning, not discover it later.
+    // MARK: YouTube (optional) - the same choice as Settings → YouTube, as
+    // a guided step (YouTubeGuideStep), because someone who records wants to
+    // know uploads can land on the channel before the first meeting.
 
     private var youtubeStep: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                stepHeader("Share recordings after the meeting", "Upload recordings to your YouTube channel as unlisted videos. You can leave this for later.")
-                Picker("After a recording", selection: $coordinator.youtubeUploadMode) {
-                    ForEach(YouTubeUploadMode.allCases) { mode in Text(mode.label).tag(mode) }
-                }
-                Text("Recordings stay in Documents/Greenroom. “Ask” lets you decide after each recording.")
-                    .font(.callout).foregroundStyle(.secondary)
-                if coordinator.youtubeUploadMode != .off {
-                    let route = coordinator.youtubeSignInRoute
-                    StatusRow(ok: coordinator.youtubeConnected, title: "YouTube account",
-                              detail: coordinator.youtubeConnected
-                                ? "Signed in as \(coordinator.youtubeChannel?.name ?? "your channel"). Uploads go there."
-                                : "Sign in with the Google account that owns your channel.",
-                              actionTitle: nil, action: {})
-                    if coordinator.youtubeConnected {
-                        HStack(spacing: 12) {
-                            Button("Use another account") { Task { await coordinator.signInToYouTube() } }
-                                .disabled(coordinator.youtubeSigningIn || route.app == nil)
-                            Button("Sign out") { Task { await coordinator.signOutOfYouTube() } }
-                        }
-                    } else {
-                        HStack(spacing: 12) {
-                            Button(coordinator.youtubeSigningIn ? "Waiting for Google…" : "Sign in with Google") {
-                                Task { await coordinator.signInToYouTube() }
-                            }
-                            .disabled(coordinator.youtubeSigningIn || route.app == nil)
-                            if coordinator.youtubeSigningIn { ProgressView().controlSize(.small) }
-                        }
-                        Text(route.app == .shared ? YouTubeSettingsWords.unverifiedNote
-                             : route.app == .own ? "Signs in through your own Google app." : (route.noneMessage ?? ""))
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    if !coordinator.youtubeStatus.isEmpty {
-                        Text(coordinator.youtubeStatus).font(.callout).foregroundStyle(.secondary)
-                    }
-                    DisclosureGroup("How Greenroom connects to YouTube", isExpanded: $youtubeHelpExpanded) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            YouTubeAppChoiceRow(usesOwnApp: $coordinator.youtubeUsesOwnApp)
-                            Collapsible(hidden: !coordinator.youtubeUsesOwnApp) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Link(YouTubeCloudGuide.linkTitle, destination: YouTubeCloudGuide.url)
-                                    ForEach(Array(YouTubeCloudGuide.steps.enumerated()), id: \.offset) { i, step in
-                                        Text("\(i + 1). \(step)").fixedSize(horizontal: false, vertical: true)
-                                    }
-                                    credentialField("Client ID", text: $coordinator.youtubeClientID)
-                                    credentialField("Client Secret", text: $coordinator.youtubeClientSecret, secure: true)
-                                    Text(YouTubeCloudGuide.clientHelp).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .font(.callout).padding(.top, 12)
-                    }
-                    Text("No sign-in needed for Upload in YouTube Studio, on every recording’s upload sheet.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Label("Uploading sends the recording to YouTube. With “Do nothing”, no recordings are uploaded.", systemImage: "arrow.up.right")
-                    .font(.callout).foregroundStyle(Brand.netText)
-            }
-            .padding(.horizontal, 8)
-        }
+        let status = coordinator.youtubeStatus
+        return YouTubeGuideStep(
+            usesOwnApp: $coordinator.youtubeUsesOwnApp,
+            clientID: $coordinator.youtubeClientID,
+            clientSecret: $coordinator.youtubeClientSecret,
+            uploadMode: $coordinator.youtubeUploadMode,
+            madeForKids: $coordinator.youtubeMadeForKids,
+            account: coordinator.youtubeAccountFacts,
+            channel: coordinator.youtubeChannel,
+            problem: !coordinator.youtubeConnected && !coordinator.youtubeSigningIn && status.hasPrefix("Not connected:")
+                ? String(status.dropFirst("Not connected: ".count)) : nil,
+            signIn: { Task { await coordinator.signInToYouTube() } },
+            signOut: { Task { await coordinator.signOutOfYouTube() } },
+            jump: $youtubeJump)
         .id(SetupPage.youtube)
     }
 

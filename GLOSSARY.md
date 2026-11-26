@@ -128,3 +128,19 @@ While a meeting is live, the controls are in exactly one place. Code:
 **Devices tab**: the Settings tab for camera devices, the microphone and recording options. It holds nothing about where things go.
 
 **What's shared**: what a layout gives everyone: the screen, an app, a window, the whiteboard, or nothing (just the camera). Saved per layout; changed live from Home during a meeting.
+
+## YouTube
+
+Code lives in `App/YouTube/`.
+
+**Sign in with Google**: the one way to connect a YouTube channel from Greenroom. Any Google account, chosen in Google's account chooser in the browser. _Avoid_: Connect Google account, Disconnect (say **Sign out**).
+
+**Greenroom's Google app**: the one shared Google OAuth client every copy of Greenroom signs in through (`YouTubeOAuth.sharedClient`). Unverified by Google on purpose, so Google warns "Google hasn't verified this app" and allows 100 people in total.
+
+**Your own Google app**: a Google Cloud OAuth client (Desktop app) the person made and pasted into Settings -> YouTube, for when Greenroom's Google app is full. Which of the two signs in is `YouTubeRouteRules`.
+
+**Upload sheet**: the sheet where a recording is sent to YouTube: title, description, visibility, **Made for kids**, YouTube's terms line, and the Upload button. Every upload from Greenroom starts here, except Upload automatically.
+
+**Made for kids**: YouTube's audience question, Yes or No, asked before every upload from the sheet and needed for Upload automatically. Sent as `status.selfDeclaredMadeForKids`.
+
+**Upload in YouTube Studio**: the way that needs no sign-in. Opens YouTube's upload page, shows the recording in Finder and copies the title and description. _Avoid_: manual upload, fallback (in UI text).

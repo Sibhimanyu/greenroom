@@ -580,9 +580,10 @@
         <div class="tab">YouTube <span>off until you say so</span></div>
         <div>
           <ul>
+            <li><strong>Sign in with Google</strong>: any Google account; your browser shows Google's account chooser. Google may show <em>“Google hasn’t verified this app”</em>: click <strong>Advanced</strong>, then <strong>Go to Greenroom</strong>. Signed in, the tab shows the channel's name and picture, with <strong>Use another account</strong> and <strong>Sign out</strong> (Google is told to remove Greenroom's access).</li>
             <li><strong>After a recording</strong>: Do nothing (default) · Ask whether to upload · Upload automatically. Link copied to the clipboard.</li>
-            <li><strong>Visibility</strong>: unlisted (anyone with the link) or private (the channel's account only).</li>
-            <li><strong>Connect Google account…</strong> after pasting the Client ID and Secret of a Google Cloud OAuth client (Desktop app) with the YouTube Data API on. Sign in once; Greenroom may upload, retitle and delete when you ask. The tab lists the clicks.</li>
+            <li><strong>Visibility</strong>: unlisted (default; anyone with the link) or private (the channel's account only). <strong>Made for kids</strong>: Yes or No, needed before Upload automatically can run.</li>
+            <li><strong>Use your own Google app</strong> (folded): for when Greenroom's Google app has reached Google's limit of 100 people. Paste the Client ID and Secret of a Google Cloud OAuth client (Desktop app) with the YouTube Data API on, and switch it on.</li>
           </ul>
           <p class="later">The only feature that sends class content off the Mac: the recording. <a href="how-it-works.html#data">Privacy &amp; safety</a> lists it as its own channel.</p>
         </div>
@@ -606,8 +607,8 @@
         <div>
           <ul>
             <li><strong>Import Settings…</strong> sets up a new Mac at once; <strong>Export Settings…</strong> saves <code>Greenroom Settings.json</code> to hand on.</li>
-            <li>Holds preferences and typed secrets (Zoom SDK and Server-to-Server credentials, YouTube client ID and secret) in plain text. Export confirms (<strong>Export Plaintext File</strong>).</li>
-            <li>Does <strong>not</strong> carry your Zoom sign-in (the refresh token is in the Keychain); whoever imports presses Sign in with Zoom.</li>
+            <li>Holds preferences and typed secrets (Zoom SDK and Server-to-Server credentials, your own YouTube client ID and secret) in plain text. Export confirms (<strong>Export Plaintext File</strong>).</li>
+            <li>Does <strong>not</strong> carry your Zoom or Google sign-in; whoever imports presses Sign in with Zoom and Sign in with Google.</li>
           </ul>
         </div>
       </div>
@@ -671,7 +672,10 @@
         <span class="tag warn">Leaves the Mac</span>
         <h3>YouTube upload</h3>
         <ul>
-          <li>Settings → YouTube on: a recording uploads when it stops (unlisted or private; a question card if <em>Ask</em>; menu-bar progress; link copied).</li>
+          <li><strong>Upload to YouTube…</strong> (the card after a meeting, or a session's page) opens one sheet: title and description from the session, unlisted or private, <strong>Made for kids</strong> (Yes or No, required), and YouTube's terms line above <strong>Upload</strong>. Menu-bar progress; link copied.</li>
+          <li><strong>Upload in YouTube Studio</strong>, on the same sheet, needs no sign-in: it opens YouTube's upload page, shows the recording in Finder to drag in, and copies the title and description.</li>
+          <li>Upload automatically: each recording uploads when it stops, with Settings' visibility and Made for kids answer.</li>
+          <li>If it fails, the session page says why in plain words with a button: sign in again, try again, or Upload in YouTube Studio (for example when Greenroom's daily YouTube upload limit is used up).</li>
           <li>In Sessions: Open / Copy / Rename / Delete. Rename retitles on YouTube; Delete removes it for good, after asking. Upload or re-upload any recording.</li>
           <li>Trashing a recording leaves its YouTube copy.</li>
         </ul>

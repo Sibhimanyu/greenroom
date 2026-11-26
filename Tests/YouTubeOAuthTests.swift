@@ -54,6 +54,6 @@ final class YouTubeOAuthTests: XCTestCase {
     }
 
     func testTheSharedClientIsTheDesktopKind() {
-        XCTAssertTrue(YouTubeOAuth.sharedClient.id.hasSuffix(".apps.googleusercontent.com"))
+        XCTAssertTrue(YouTubeOAuth.sharedClientID.hasSuffix(".apps.googleusercontent.com"))
     }
 }

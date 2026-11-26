@@ -32,11 +32,15 @@ enum YouTubeOAuth {
     /// THE shared client: the Desktop OAuth client of the owner's "Greenroom Youtube"
     /// Cloud project (published In production, unverified; owner, 2026-11-26). Nowhere
     /// else reads it. A desktop secret is not confidential (Google: desktop apps are
-    /// public clients). An id starting with "PLACEHOLDER" would make Sign in with Google
-    /// "not available yet" (`YouTubeRouteRules.sharedAvailable`).
-    static let sharedClient = YouTubeOAuthClient(
-        id: "586090482136-7v050te76etsgj9dk2nugtskciv3f5v3.apps.googleusercontent.com",
-        secret: "")
+    /// public clients), but it stays out of the public repo: the build embeds it in
+    /// Info.plist (`GreenroomGoogleClientSecret`) from ~/.greenroom-google-oauth-secret
+    /// (project.yml, "Embed the Google client secret"; Release fails without it). A build
+    /// without it reports Sign in with Google as "not available yet".
+    static let sharedClientID = "586090482136-7v050te76etsgj9dk2nugtskciv3f5v3.apps.googleusercontent.com"
+    static var sharedClient: YouTubeOAuthClient {
+        let secret = (Bundle.main.object(forInfoDictionaryKey: "GreenroomGoogleClientSecret") as? String) ?? ""
+        return YouTubeOAuthClient(id: secret.isEmpty ? "PLACEHOLDER.secret-not-embedded" : sharedClientID, secret: secret)
+    }
 
     /// Upload and edit the account's own videos. `youtube.upload` alone
     /// cannot change a title afterwards, and there is no Google scope between

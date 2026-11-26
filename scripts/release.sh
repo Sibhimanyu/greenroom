@@ -15,6 +15,7 @@
 set -euo pipefail
 
 VERSION="${1:?usage: release.sh <version> <notes-file>}"
+[ -s "$HOME/.greenroom-google-oauth-secret" ] || { echo "Missing ~/.greenroom-google-oauth-secret (Google desktop client secret for YouTube sign-in)"; exit 1; }
 NOTES="${2:?usage: release.sh <version> <notes-file>}"
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TOOLS="$REPO_DIR/.sparkle-tools"

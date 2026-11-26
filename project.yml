@@ -199,6 +199,23 @@ targets:
           if [ -f "${SRCROOT}/apptics-config.plist" ]; then
             cp "${SRCROOT}/apptics-config.plist" "${CODESIGNING_FOLDER_PATH}/Contents/Resources/apptics-config.plist"
           fi
+      # The shared Google desktop client's secret (YouTube sign-in). Not in the repo
+      # (public; GitHub push protection): read from ~/.greenroom-google-oauth-secret
+      # and written into the built Info.plist before code signing. Release fails
+      # without it; Debug only warns (Sign in with Google then says not available).
+      - name: Embed the Google client secret
+        basedOnDependencyAnalysis: false
+        script: |
+          SECRET_FILE="${HOME}/.greenroom-google-oauth-secret"
+          PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          /usr/libexec/PlistBuddy -c "Delete :GreenroomGoogleClientSecret" "$PLIST" 2>/dev/null || true
+          if [ -s "$SECRET_FILE" ]; then
+            /usr/libexec/PlistBuddy -c "Add :GreenroomGoogleClientSecret string $(tr -d '\n' < "$SECRET_FILE")" "$PLIST"
+          elif [ "${CONFIGURATION}" = "Release" ]; then
+            echo "error: missing $SECRET_FILE (the Google desktop client secret); Release builds need it."; exit 1
+          else
+            echo "warning: no $SECRET_FILE; Sign in with Google will say not available in this Debug build."
+          fi
       # Debug only: stamps "branch @ commit" into the built Info.plist so the
       # Home window can say which build it is (ContentView.homeSubtitle, behind
       # #if DEBUG). Release never gets the key, so the string is not in a

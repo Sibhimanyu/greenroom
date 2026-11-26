@@ -58,6 +58,23 @@ final class SourceScanTests: XCTestCase {
 
     /// What other apps' recorders see is decided by PresenceRecorderRules and
     /// applied in one file. Nothing else assigns `sharingType`.
+    /// Client secrets never go into the public repo (GitHub push protection blocked 1.10.5's
+    /// first push, 2026-11-26). The Google desktop secret comes from ~/.greenroom-google-oauth-secret
+    /// at build time (project.yml, "Embed the Google client secret").
+    func testNoGoogleClientSecretInSources() throws {
+        let rule = try NSRegularExpression(pattern: "GOCSPX-[A-Za-z0-9_-]{10,}")
+        for dir in ["App", "Tests", "scripts", "docs"] {
+            let base = Self.root.appendingPathComponent(dir)
+            guard let walk = FileManager.default.enumerator(at: base, includingPropertiesForKeys: nil) else { continue }
+            for case let url as URL in walk where ["swift", "sh", "plist", "html", "js", "md", "yml"].contains(url.pathExtension) {
+                guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                if rule.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
+                    XCTFail("a Google client secret is in \(url.path); it belongs in ~/.greenroom-google-oauth-secret")
+                }
+            }
+        }
+    }
+
     func testSharingTypeIsAssignedInOneFile() throws {
         let rule = try NSRegularExpression(pattern: #"\.sharingType\s*=(?!=)"#)
         let allowed: [Allowance] = [

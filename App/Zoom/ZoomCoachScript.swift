@@ -141,7 +141,15 @@ enum ZoomCoachScript {
           ui.spot.style.left = (r.left - pad) + 'px'; ui.spot.style.top = (r.top - pad) + 'px';
           ui.spot.style.width = (r.width + pad * 2) + 'px'; ui.spot.style.height = (r.height + pad * 2) + 'px';
           ui.ring.style.boxShadow = '0 0 0 2px ' + ring;
-          if (r.right + 16 + cw <= vw - 8) { left = r.right + 16 + pad; top = r.top; }
+          // Inside an open dialog the card sits beside the dialog, so it never covers the dialog's other buttons.
+          if (dlg) {
+            var gr = rectOf(dlg);
+            if (gr.right + 16 + cw <= vw - 8) { left = gr.right + 16; top = gr.top; }
+            else if (gr.left - 16 - cw >= 8) { left = gr.left - 16 - cw; top = gr.top; }
+            else if (gr.bottom + 16 + ch <= vh - 8) { left = gr.left; top = gr.bottom + 16; }
+            else { left = gr.left; top = Math.max(8, gr.top - 16 - ch); }
+          }
+          else if (r.right + 16 + cw <= vw - 8) { left = r.right + 16 + pad; top = r.top; }
           else if (r.left - 16 - cw >= 8) { left = r.left - 16 - cw - pad; top = r.top; }
           else if (r.bottom + 16 + ch <= vh - 8) { left = r.right - cw; top = r.bottom + 16 + pad; }
           else { left = r.right - cw; top = Math.max(8, r.top - 16 - ch - pad); }

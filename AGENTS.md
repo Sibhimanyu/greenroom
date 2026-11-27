@@ -15,7 +15,7 @@ Read `DESIGN.md` before any visual change.
 | File | Covers |
 |---|---|
 | [app-core.md](codemap/app-core.md) | `App/` root: `GreenroomApp`, `AppDelegate`, `CoordinatorController` (the orchestrator), shortcuts/hotkeys, pure `*Rules.swift` files, Account, Analytics, Audio, Browser, Chrome, Debug, YouTube |
-| [zoom.md](codemap/zoom.md) | `App/Zoom`: SDK wrapper, start-as-host flow, video/share subscription, chat, REST client (S2S OAuth, ZAK) |
+| [zoom.md](codemap/zoom.md) | `App/Zoom`: SDK wrapper, start-as-host flow, the setup flow (`ZoomSetupFlow`, `ZoomActor`, `SetupForMe`), video/share subscription, chat, REST client (S2S OAuth, ZAK) |
 | [stage.md](codemap/stage.md) | `App/Stage`: compositor, screen capture, cameras, cutout/presenter looks, frame sinks, camera director, presence bubble rules |
 | [layout.md](codemap/layout.md) | `App/Layout`: layout templates, resolving against displays, moving own and other apps' windows, display changes |
 | [recording.md](codemap/recording.md) | `App/Recording`: `SessionRecorder`, encoder, audio mix, pause, clip ring, session folder shape on disk |
@@ -33,6 +33,7 @@ Read `DESIGN.md` before any visual change.
 | Start/End a meeting, the Start sequence, quitting | app-core, zoom | `App/CoordinatorController.swift`, `App/StartChoreography.swift`, `App/LiveExitRules.swift` |
 | Keyboard shortcuts | app-core | `App/ShortcutModel.swift` → `ShortcutRuntime.swift` → `HotkeyManager.swift` |
 | Joining/hosting, Zoom auth, meeting list, ZAK | zoom | `App/Zoom/ZoomMeetingSDKClient*.swift`, `ZoomServerToServerClient` |
+| Zoom setup (Connect Zoom step, Set up for me, the Zoom window and its bar) | zoom, ui | `App/Zoom/ZoomSetupFlow.swift`, `SetupForMe.swift`, `App/UI/ZoomSetupAssist.swift` |
 | Other people's video, shares, chat, hands up | zoom, ui-meeting | `App/Zoom/` delegates, `App/UI/ParticipantGridWindow.swift` |
 | What the meeting sees as my camera, looks, backgrounds | stage | `App/Stage/StageCompositor.swift`, `StageRenderer` |
 | Camera bubble / presence | stage, ui | `App/CoordinatorController+Presence.swift`, `App/Stage/` presence rules, `PresenceBubble` |

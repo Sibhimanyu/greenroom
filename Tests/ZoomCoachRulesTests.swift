@@ -73,4 +73,26 @@ final class ZoomCoachRulesTests: XCTestCase {
             XCTAssertFalse(js.contains(banned), banned)
         }
     }
+
+    // The Greenroom mark on every card, so the tip is plainly Greenroom's.
+
+    func testTheMarkTravelsAsADataURIAndNeverAsAnAddress() {
+        let ok = "data:image/png;base64,iVBORw0KGgo+/="
+        XCTAssertEqual(ZoomCoachScript.safeMark(ok), ok)
+        XCTAssertNil(ZoomCoachScript.safeMark("https://example.com/mark.png"))
+        XCTAssertNil(ZoomCoachScript.safeMark("data:text/html;base64,AAAA"))
+        XCTAssertNil(ZoomCoachScript.safeMark("data:image/png;base64,AA'AA"))
+        XCTAssertNil(ZoomCoachScript.safeMark(""))
+        let call = ZoomCoachScript.call("null", ring: "rgb(1,2,3)", mark: ok)
+        XCTAssertTrue(call.contains(ok))
+        let bad = ZoomCoachScript.call("null", ring: "rgb(1,2,3)", mark: "https://example.com/mark.png")
+        XCTAssertFalse(bad.contains("example.com"))
+    }
+
+    func testTheCardHeaderIsMarkNameAndCounter() {
+        let js = ZoomCoachScript.source
+        XCTAssertTrue(js.contains("'Greenroom'"))
+        XCTAssertTrue(js.contains("font-weight:600"))
+        XCTAssertFalse(js.contains("http"), "no address anywhere in the script")
+    }
 }

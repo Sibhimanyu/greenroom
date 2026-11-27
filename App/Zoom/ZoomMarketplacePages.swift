@@ -45,6 +45,11 @@ enum ZoomMarketplacePages {
     static let idPattern = "^[A-Za-z0-9_-]{10,40}$"
     static let keyPattern = "^[A-Za-z0-9_-]{10,64}$"
 
+    /// The real Marketplace host over https (any path): the only place the page scripts run.
+    static func isMarketplace(_ url: URL) -> Bool {
+        url.scheme == "https" && url.user == nil && url.port == nil && url.host?.lowercased() == host
+    }
+
     static func isAppID(_ s: String) -> Bool { s.range(of: idPattern, options: .regularExpression) != nil }
     static func isKey(_ s: String) -> Bool { s.range(of: keyPattern, options: .regularExpression) != nil }
 

@@ -18,15 +18,24 @@
 import Foundation
 
 enum ZoomCoachScript {
-    /// `window.__grCoachSet(cfg, ring)`; cfg null clears the coach.
-    static func call(_ json: String?, ring: String) -> String {
-        "window.__grCoachSet && window.__grCoachSet(\(json ?? "null"), '\(ring)');"
+    /// The mark may only be a small PNG data URI (never an address).
+    static func safeMark(_ s: String) -> String? {
+        let prefix = "data:image/png;base64,"
+        guard s.hasPrefix(prefix), s.count > prefix.count,
+              s.dropFirst(prefix.count).allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+/=".contains($0)) }) else { return nil }
+        return s
+    }
+
+    /// `window.__grCoachSet(cfg, ring, mark)`; cfg null clears the coach.
+    static func call(_ json: String?, ring: String, mark: String? = nil) -> String {
+        let m = mark.flatMap(safeMark).map { "'\($0)'" } ?? "null"
+        return "window.__grCoachSet && window.__grCoachSet(\(json ?? "null"), '\(ring)', \(m));"
     }
 
     static let source = """
     (function () {
       if (window.__grCoachSet) return;
-      var host = null, root = null, ui = null, cfg = null, ring = '#5FA83C';
+      var host = null, root = null, ui = null, cfg = null, ring = 'currentColor', mark = null;
       var target = null, resizeObs = null, mutObs = null, timer = 0, pending = 0, dismissed = false;
       var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -117,7 +126,10 @@ enum ZoomCoachScript {
           ' font:13px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;',
           ' background:#fff;color:#1d1d1f;box-shadow:0 6px 24px rgba(0,0,0,.28),0 0 0 .5px rgba(0,0,0,.18);}',
           '.card.move{transition:left .2s ease,top .2s ease;}',
-          '.count{font-size:11px;font-weight:600;letter-spacing:.02em;color:#6e6e73;margin-bottom:4px;}',
+          '.head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}',
+          '.mark{width:16px;height:16px;border-radius:4px;flex:none;}',
+          '.name{font-weight:600;font-size:13px;}',
+          '.count{font-size:12px;font-weight:400;color:#6e6e73;}',
           '.text{font-weight:500;}',
           '.hide{display:inline-block;margin-top:8px;font-size:12px;color:#6e6e73;text-decoration:underline;cursor:pointer;pointer-events:auto;}',
           '@media (prefers-color-scheme: dark){.card{background:#2c2c2e;color:#f5f5f7;box-shadow:0 6px 24px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.18);}',
@@ -129,7 +141,11 @@ enum ZoomCoachScript {
         var ringEl = document.createElement('div'); ringEl.className = 'ring';
         spot.appendChild(ringEl);
         var card = document.createElement('div'); card.className = 'card';
-        var count = document.createElement('div'); count.className = 'count';
+        var head = document.createElement('div'); head.className = 'head';
+        var markEl = document.createElement('img'); markEl.className = 'mark'; markEl.alt = ''; markEl.style.display = 'none';
+        var name = document.createElement('span'); name.className = 'name'; name.textContent = 'Greenroom';
+        var count = document.createElement('span'); count.className = 'count';
+        head.appendChild(markEl); head.appendChild(name); head.appendChild(count);
         var text = document.createElement('div'); text.className = 'text';
         var hide = document.createElement('a'); hide.className = 'hide'; hide.textContent = 'Hide tips';
         hide.setAttribute('role', 'button'); hide.setAttribute('tabindex', '-1');
@@ -140,9 +156,9 @@ enum ZoomCoachScript {
           clear();
           try { window.webkit.messageHandlers.coach.postMessage('hide'); } catch (err) {}
         });
-        card.appendChild(count); card.appendChild(text); card.appendChild(hide);
+        card.appendChild(head); card.appendChild(text); card.appendChild(hide);
         root.appendChild(spot); root.appendChild(card);
-        ui = { spot: spot, ring: ringEl, card: card, count: count, text: text, placed: false };
+        ui = { spot: spot, ring: ringEl, card: card, count: count, markEl: markEl, text: text, placed: false };
         (document.documentElement || document.body).appendChild(host);
       }
 
@@ -161,8 +177,8 @@ enum ZoomCoachScript {
         if (!host) build();
         if (!host.isConnected) (document.documentElement || document.body).appendChild(host);
         var useSearch = cfg.searchText && target && target.tagName === 'INPUT';
-        ui.count.textContent = cfg.counter || '';
-        ui.count.style.display = cfg.counter ? 'block' : 'none';
+        ui.count.textContent = cfg.counter ? ' \\u00B7 ' + cfg.counter : '';
+        if (mark) { ui.markEl.src = mark; ui.markEl.style.display = 'block'; }
         ui.text.textContent = useSearch ? cfg.searchText : cfg.text;
         var animate = !reduce && ui.placed;
         ui.spot.className = 'spot' + (animate ? ' move' : '');
@@ -217,8 +233,9 @@ enum ZoomCoachScript {
         host = null; root = null; ui = null;
       }
 
-      window.__grCoachSet = function (next, color) {
+      window.__grCoachSet = function (next, color, markUri) {
         if (color) ring = color;
+        if (markUri) mark = markUri;
         if (!next) { dismissed = false; clear(); return; }
         dismissed = false;
         cfg = next; target = null;

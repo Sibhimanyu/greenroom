@@ -418,6 +418,9 @@ targets:
       - path: App/Zoom/ZoomGuideFollowRules.swift
       - path: App/Zoom/ZoomCoachRules.swift
       - path: App/Zoom/ZoomStartOverRules.swift
+      - path: App/Zoom/ZoomBarRules.swift
+      - path: App/Zoom/ZoomSignInStateRules.swift
+      - path: App/Zoom/ZoomSignInHeaderScript.swift
       - path: App/Zoom/ZoomCoachScript.swift
       - path: App/Zoom/ZoomKeyReaderScript.swift
       - path: App/UI/ZoomMarketplaceWindowPlacement.swift

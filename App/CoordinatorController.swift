@@ -1613,6 +1613,12 @@ final class CoordinatorController: ObservableObject {
         // The keys are set only after the save worked (R16.1); a failure is logged by `save` and retried next launch.
         library.migrateCameraAndShare(camera: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults),
                                       defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
+        // meeting-setup R1.2, once: the app-wide camera state goes into every layout that has none.
+        // The two old keys stay readable; nothing reads the layout's copy yet (P3).
+        library.migrateCameraState(
+            saved: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
+                             shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+            defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
         layoutLibrary = library
         let bubbleDefaults = StageLayout()
         bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction

@@ -138,6 +138,7 @@ extension CoordinatorController {
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }
+        if let value = transfer.cameraShownOnMyScreen { cameraShownOnMyScreen = value }   // import-only (R1.3)
         if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }
         if let value = transfer.bubbleRightInset { bubbleRightInset = value }
         if let value = transfer.bubbleBottomInset { bubbleBottomInset = value }
@@ -166,7 +167,10 @@ extension CoordinatorController {
         if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
         if let library = transfer.layoutLibrary {
             // Already cleaned of second displays that are not connected here.
-            layoutLibrary = library
+            // R1.3: an old file's layouts have no camera state; the file's app-wide one goes to each.
+            layoutLibrary = SettingsImportRules.applyingOldCameraState(
+                library, noCamera: transfer.cameraDirector?.noCamera,
+                shownOnMyScreen: transfer.cameraShownOnMyScreen, fallback: savedCameraState)
         } else if transfer.workspaceLayout != nil || transfer.chromeLayout != nil {
             // An older file: the old keys it carries (import-only now) laid over
             // this Mac's own, then built into one more template. Keys the file
@@ -191,6 +195,7 @@ extension CoordinatorController {
             if var imported = legacy.asTemplate().map({ SettingsImportRules.withLocalDisplays($0, connected: environment.connectedDisplayUUIDs) }) {
                 var library = layoutLibrary
                 if library.templates.contains(where: { $0.name == imported.name }) { imported.name = "Imported layout" }
+                imported.cameraState = savedCameraState
                 library.templates.append(imported)
                 if legacy.arrangeWindowsOnStart { library.select(imported.id) }
                 layoutLibrary = library

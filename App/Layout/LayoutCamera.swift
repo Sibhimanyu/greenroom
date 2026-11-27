@@ -137,6 +137,23 @@ extension LayoutLibrary {
     }
 }
 
+extension LayoutLibrary {
+    static let cameraStateMigratedKey = "layoutCameraStateMigrated"
+
+    /// meeting-setup R1.2, one time: every layout with no camera state gets the one saved for the
+    /// whole app (`saved`, from the two old keys; the keys stay readable). A built-in that ships with
+    /// one (Everyone & me) keeps it, like `migrateCameraAndShare`. The key is set only after `save`
+    /// worked, so a failed save runs again next launch. Returns whether it ran and saved.
+    @discardableResult
+    mutating func migrateCameraState(saved: CameraState, defaults: UserDefaults, save: (LayoutLibrary) -> Bool) -> Bool {
+        guard !defaults.bool(forKey: Self.cameraStateMigratedKey) else { return false }
+        for i in templates.indices where templates[i].cameraState == nil { templates[i].cameraState = saved }
+        guard save(self) else { return false }
+        defaults.set(true, forKey: Self.cameraStateMigratedKey)
+        return true
+    }
+}
+
 /// The camera look in the camera piece's inspector (R11). The look is one setting for every
 /// layout; the shape, size and spot beside it are per layout.
 enum CameraLookRules {

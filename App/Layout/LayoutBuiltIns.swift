@@ -43,11 +43,13 @@ extension LayoutLibrary {
             name: "Room + laptop", starter: roomLaptop,
             oneDisplay: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
             twoDisplays: TwoDisplay(second: [LayoutPiece(kind: .roomScreen, rect: .full)], sharedSlot: .main),
-            camera: camera(.roundedRectangle, width: 0.12, right: 0.30, bottom: 0.06), share: ShareTarget())
+            camera: camera(.roundedRectangle, width: 0.12, right: 0.30, bottom: 0.06), share: ShareTarget(),
+            cameraState: .everyoneAndMe)
         // No pieces: no window moves. Only the camera has a place.
         let leave = LayoutTemplate(
             name: "Leave my windows alone", starter: leaveAlone,
-            camera: camera(.roundedRectangle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget())
+            camera: camera(.roundedRectangle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget(),
+            cameraState: .everyoneAndMe)
         // Raj's camera is the Cutout (owner, 2026-11-26): the person stands at the bottom right at 40% of the
         // picture's height, keeping clear of the top of Chat where its caption is.
         var rajCamera = LayoutCamera()
@@ -61,7 +63,7 @@ extension LayoutLibrary {
             oneDisplay: [browser(width: 9 * third), speaker(x: 9 * third, w: 3 * third), chat(x: 9 * third, w: 3 * third)],
             twoDisplays: TwoDisplay(
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)]),
-            camera: rajCamera, share: ShareTarget())
+            camera: rajCamera, share: ShareTarget(), cameraState: .everyoneAndMe)
         return [leave, raj, room]
     }
 

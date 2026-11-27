@@ -406,10 +406,15 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     var camera: LayoutCamera?
     /// What this layout shares at Start. nil: the global share target stands.
     var share: ShareTarget?
+    /// Who sees the owner's camera when this layout is active (meeting-setup R1.1). Every layout has
+    /// one, camera piece or not. Optional only on disk: a file from before the change has none, and
+    /// `LayoutLibrary.migrateCameraState` fills it once at load, so nil is "not migrated yet", never a
+    /// silent default inside the decoder. Written as the state's `raw` word.
+    var cameraState: CameraState?
 
     init(id: UUID = UUID(), name: String, starter: String? = nil,
          oneDisplay: [LayoutPiece] = [], twoDisplays: TwoDisplay? = nil,
-         camera: LayoutCamera? = nil, share: ShareTarget? = nil) {
+         camera: LayoutCamera? = nil, share: ShareTarget? = nil, cameraState: CameraState? = nil) {
         self.id = id
         self.name = name
         self.starter = starter
@@ -417,9 +422,22 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
         self.twoDisplays = twoDisplays
         self.camera = camera
         self.share = share
+        self.cameraState = cameraState
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, starter, oneDisplay, twoDisplays, camera, share }
+    private enum CodingKeys: String, CodingKey { case id, name, starter, oneDisplay, twoDisplays, camera, share, cameraState }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(starter, forKey: .starter)
+        try c.encode(oneDisplay, forKey: .oneDisplay)
+        try c.encodeIfPresent(twoDisplays, forKey: .twoDisplays)
+        try c.encodeIfPresent(camera, forKey: .camera)
+        try c.encodeIfPresent(share, forKey: .share)
+        try c.encodeIfPresent(cameraState?.raw, forKey: .cameraState)
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -430,7 +448,8 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
                     .compactMap(\.value),
                   twoDisplays: try? c.decodeIfPresent(TwoDisplay.self, forKey: .twoDisplays),
                   camera: try? c.decodeIfPresent(LayoutCamera.self, forKey: .camera),
-                  share: try? c.decodeIfPresent(ShareTarget.self, forKey: .share))
+                  share: try? c.decodeIfPresent(ShareTarget.self, forKey: .share),
+                  cameraState: (try? c.decodeIfPresent(String.self, forKey: .cameraState)).flatMap(CameraState.init(raw:)))
     }
 
     // MARK: Pieces by slot

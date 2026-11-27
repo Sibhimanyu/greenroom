@@ -30,7 +30,7 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 
 ## Requirements
 
-**R1. Camera state is saved per layout.** (D3) planned
+**R1. Camera state is saved per layout.** (D3) built in P2 (stored, migrated and exported; nothing reads it yet, P3 does)
 - R1.1 `LayoutTemplate` holds a camera state. A layout with no camera piece still has one.
 - R1.2 On first launch with this change, every existing layout gets the camera state that was saved for the whole app. Built-in layouts' originals use *Everyone & me*; Restore original puts that back.
 - R1.3 The settings file carries the camera state inside each layout. The old app-wide key is import-only: an old file's value is applied to every layout it brings in that has none.

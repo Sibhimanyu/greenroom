@@ -135,4 +135,8 @@ struct SettingsTransfer: Codable, Equatable {
     var chromeLayout: String?
     var chromeURL: String?
     var chromeOnStart: Bool?
+    /// Import-only (meeting-setup R1.3): the app-wide "camera shown on my screen" an older file may
+    /// carry. Each layout now carries its own camera state; this value, with the file's
+    /// `cameraDirector.noCamera`, goes to every imported layout that has none. Never written.
+    var cameraShownOnMyScreen: Bool?
 }

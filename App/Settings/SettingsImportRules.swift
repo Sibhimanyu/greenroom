@@ -94,6 +94,19 @@ enum SettingsImportRules {
         return (t, notes)
     }
 
+    /// meeting-setup R1.3: an older file's app-wide camera state goes to every layout it brings in that
+    /// has none. The file's `noCamera` and `cameraShownOnMyScreen` read as one state; what the file
+    /// omits keeps this Mac's (`fallback`). Layouts that already carry one are left alone.
+    static func applyingOldCameraState(_ library: LayoutLibrary, noCamera: Bool?, shownOnMyScreen: Bool?,
+                                       fallback: CameraState) -> LayoutLibrary {
+        var library = library
+        let state = CameraState(noCamera: noCamera ?? fallback.noCamera, shownOnMyScreen: shownOnMyScreen ?? fallback.shownOnMyScreen)
+        for i in library.templates.indices where library.templates[i].cameraState == nil {
+            library.templates[i].cameraState = state
+        }
+        return library
+    }
+
     /// A template with its saved second display cleared when that display is not
     /// connected to this Mac: an exported UUID from another Mac matches nothing
     /// here, and "automatic" finds the right one.

@@ -187,6 +187,14 @@ Real DOM checked, 2026-11-27 (DEBUG dump, look-only commands, this account): Cre
 
 Status: built; the harness passes on mocks that now follow the real markup; steps 2 and 3 are untested on a real Server-to-Server app, and no step has been pressed on the real account. DEBUG-only tools for that: `-zoomDomDump YES` writes the page's control structure (never values) to `~/Library/Logs/Greenroom/zoom-dom.jsonl`; `-zoomWindowURL <url>` opens the Zoom window at a marketplace.zoom.us page.
 
+### R17. One continuous run, and the keys
+
+Owner decisions, 2026-11-27. The Zoom window's setup is ONE run of seven steps across both apps, numbered from one source (`ZoomRun`): 1 Create the meeting app, 2 Turn on Meeting SDK, 3 Copy its keys, 4 Create the hosting app, 5 Add the permissions, 6 Turn it on, 7 Copy its keys. The bar reads "Step 5 of 7 \u00B7 Add the permissions" (steps 3 and 7 add the app name, as the only place a name does not say which app); the coach card's header carries the same counter and its text carries no part prefix. After step 3 the bar's primary is **Continue** (straight to step 4: Created apps, coached for the hosting app), after step 7 **Back to Greenroom**; when the Meeting app is already done the window starts at step 4. The guide's Connect Zoom list stays two lines (it shows "Step n of 7" on the app the window is on) and its button stays Set up Zoom / Continue setup.
+
+Keys: labels match case-insensitively (Zoom writes "Client secret"). The reader takes a key shown as plain text beside its label (Basic information's Client ID); a text that ends with an ellipsis is not readable; reveal, eye and show buttons are never pressed. Zoom does not put the secret in the page (dots only), so the person presses Zoom's own copy button and Greenroom picks the copied text up from the clipboard: while a credentials page is shown and for 60s after, a new clipboard string that is key-shaped and not a key already known is assigned to the missing field the coach points at (`ZoomClipboardRules`), through the same fill, offer and Undo path as a page read; it is never logged or kept. On credentials pages the coach always speaks: a missing key spotlights its row, "Hover Client secret and press its copy button. Greenroom fills it in."; all keys known, "Got it: the keys are in Greenroom."; no "Do this step" there.
+
+Status: built (`ZoomClipboardRulesTests`, `ZoomGuideFollowRulesTests`, `ZoomBarRulesTests`, `ZoomCoachRulesTests`; the reader and the credentials coach on a mock of the real card in `scripts/render/zoom-actor.sh`); the clipboard pickup and the continue flow are untested live.
+
 ## Plan
 
 1. Pure rules first, red then green: R2, R4 URLs, R3, R5 decide, R1 placement, R7.

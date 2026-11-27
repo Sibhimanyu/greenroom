@@ -56,7 +56,7 @@ enum ZoomBarPrimary: Equatable {
     var title: String {
         switch self {
         case .none: return ""
-        case .next(let part, _): return "Next: \(part.title)"
+        case .next: return "Continue"
         case .backToGreenroom: return "Back to Greenroom"
         }
     }
@@ -71,29 +71,30 @@ struct ZoomBar: Equatable {
 
 enum ZoomBarRules {
     private static let dot = " \u{00B7} "
-    private static let sdkShort = ["Choose General app", "Turn on Meeting SDK", "Copy the keys"]
-    private static let s2sShort = ["Choose Server to server OAuth app", "Add the scopes", "Activate the app", "Copy the keys"]
-
     static func bar(_ f: ZoomBarFacts) -> ZoomBar {
         let onSignInPage = f.page?.isSignIn == true
         let offersSignOut = ZoomSignInStateRules.offersSignOut(f.signIn) && !onSignInPage
         let part: ZoomGuidePart = f.page?.app.map { $0 == .sdk ? .meetingApp : .hostingApp } ?? f.part
         let isSignedOut = onSignInPage || f.signIn == .signedOut
 
-        // Title.
+        // Title: one counter across both apps ("Step 5 of 7 \u{00B7} Add the permissions").
         let title: String
+        let appWord = part == .meetingApp ? "meeting" : "hosting"
         if isSignedOut {
             title = "Sign in to Zoom"
         } else if let page = f.page, page != .createdApps, let step = ZoomGuideFollowRules.step(part: part, page: page) {
-            let short = (part == .meetingApp ? sdkShort : s2sShort)
-            let total = short.count
-            title = part.title + dot + "Step \(step) of \(total)" + dot + short[step - 1]
+            var t = ZoomRun.counter(step) + dot + ZoomRun.name(step)
+            // The two "Copy its keys" steps say which app they are for; every other name already does.
+            if step == 3 || step == 7 { t += dot + part.title }
+            title = t
         } else if let page = f.page, page.app != nil {
             title = part.title + dot + "Set up the app"
-        } else if f.page == .createdApps {
-            title = part.title + dot + (f.hasMatchingRow ? "Find your app" : "Create the app")
+        } else if let first = ZoomRun.firstStep(of: part), f.page == .createdApps {
+            title = ZoomRun.counter(first) + dot + (f.hasMatchingRow ? "Find the \(appWord) app" : ZoomRun.name(first))
+        } else if let first = ZoomRun.firstStep(of: part) {
+            title = ZoomRun.counter(first) + dot + "Find or create the \(appWord) app"
         } else {
-            title = part.title + dot + "Find or create the app"
+            title = part.title
         }
 
         // Contextual button.
@@ -120,11 +121,12 @@ enum ZoomBarRules {
         return ZoomBar(title: title, context: context, primary: primary, offersSignOut: offersSignOut)
     }
 
-    /// Where "Next" takes the window: the other app's page when its ID is known, else Created apps.
+    /// Where "Continue" takes the window: step 4 (Created apps, for the hosting app); the Meeting app's keys page when its ID is known.
     private static func nextPage(_ part: ZoomGuidePart, _ ids: ZoomAppIDs) -> ZoomMarketplacePage {
         switch part {
         case .meetingApp: return ids.meeting.map { .general($0, .information) } ?? .createdApps
-        case .hostingApp: return ids.hosting.map { .s2s($0, .scopes) } ?? .createdApps
+        // Step 4 always starts at Created apps, coached for the hosting app.
+        case .hostingApp: return .createdApps
         case .check: return .createdApps
         }
     }

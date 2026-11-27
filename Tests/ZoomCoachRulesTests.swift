@@ -11,38 +11,38 @@ final class ZoomCoachRulesTests: XCTestCase {
 
     func testChooseTypePointsAtTheRightRadioForThePart() {
         XCTAssertEqual(coach(.hostingApp, .chooseType(id)),
-                       ZoomCoach(label: "Server to server OAuth app", kind: .row, counter: "Step 1 of 4",
+                       ZoomCoach(label: "Server to server OAuth app", kind: .row, counter: "Step 4 of 7",
                                  text: "Choose Server to server OAuth app, then press Create."))
         XCTAssertEqual(coach(.meetingApp, .chooseType(id)),
-                       ZoomCoach(label: "General app", kind: .row, counter: "Step 1 of 3",
+                       ZoomCoach(label: "General app", kind: .row, counter: "Step 1 of 7",
                                  text: "Choose General app, then press Create."))
     }
 
     func testScopesPointAtAddScopesAndKnowTheSearchFieldText() {
         XCTAssertEqual(coach(.hostingApp, .s2s(id, .scopes)),
-                       ZoomCoach(label: "Add Scopes", kind: .control, counter: "Step 2 of 4",
+                       ZoomCoach(label: "Add Scopes", kind: .control, counter: "Step 5 of 7",
                                  text: "Press + Add Scopes.",
                                  searchText: "Paste one scope, tick it, repeat. Copy scopes is in the guide.",
                                  then: [ZoomCoachStage(kind: .afterTextsPresent, label: "Activation", text: "All \(ZoomScopes.count) scopes are in. Now open Activation.",
-                                                       counter: "Step 3 of 4", texts: ZoomScopes.names)]))
+                                                       counter: "Step 6 of 7", texts: ZoomScopes.names)]))
     }
 
     func testActivationAndEmbed() {
         XCTAssertEqual(coach(.hostingApp, .s2s(id, .activation)),
-                       ZoomCoach(label: "Activate", kind: .control, counter: "Step 3 of 4", text: "Press Activate to turn the app on.",
-                                 then: [ZoomCoachStage(kind: .afterActivated, label: "App Credentials", text: "The app is on. Now open App Credentials for the keys.", counter: "Step 4 of 4")]))
+                       ZoomCoach(label: "Activate", kind: .control, counter: "Step 6 of 7", text: "Press Activate to turn the app on.",
+                                 then: [ZoomCoachStage(kind: .afterActivated, label: "App Credentials", text: "The app is on. Now open App Credentials for the keys.", counter: "Step 7 of 7")]))
         XCTAssertEqual(coach(.meetingApp, .general(id, .embed)),
-                       ZoomCoach(label: "Meeting SDK", kind: .toggle, counter: "Step 2 of 3", text: "Turn on Meeting SDK.",
+                       ZoomCoach(label: "Meeting SDK", kind: .toggle, counter: "Step 2 of 7", text: "Turn on Meeting SDK.",
                                  then: [ZoomCoachStage(kind: .afterSwitchOn, label: "Basic information", text: "Meeting SDK is on. Now open Basic information for the keys.",
-                                                       counter: "Step 3 of 3", switchLabel: "Meeting SDK")]))
+                                                       counter: "Step 3 of 7", switchLabel: "Meeting SDK")]))
     }
 
     func testCredentialsPagesHaveNoSpotlightAndSpeakOnlyAfterTheFill() {
         XCTAssertNil(coach(.hostingApp, .s2s(id, .credentials)))
         XCTAssertNil(coach(.meetingApp, .general(id, .information)))
         XCTAssertEqual(coach(.hostingApp, .s2s(id, .credentials), filled: true),
-                       ZoomCoach(label: nil, kind: .none, counter: "Step 4 of 4", text: "Got it: the keys are in Greenroom."))
-        XCTAssertEqual(coach(.meetingApp, .general(id, .information), filled: true)?.counter, "Step 3 of 3")
+                       ZoomCoach(label: nil, kind: .none, counter: "Step 7 of 7", text: "Got it: the keys are in Greenroom."))
+        XCTAssertEqual(coach(.meetingApp, .general(id, .information), filled: true)?.counter, "Step 3 of 7")
     }
 
     func testNoCoachWhereThereIsNothingToSay() {
@@ -64,7 +64,7 @@ final class ZoomCoachRulesTests: XCTestCase {
         let obj = try JSONSerialization.jsonObject(with: Data(c.json.utf8)) as? [String: Any]
         XCTAssertEqual(obj?["label"] as? String, "Add Scopes")
         XCTAssertEqual(obj?["kind"] as? String, "control")
-        XCTAssertEqual(obj?["counter"] as? String, "Step 2 of 4")
+        XCTAssertEqual(obj?["counter"] as? String, "Step 5 of 7")
         XCTAssertNotNil(obj?["searchText"] as? String)
         for t in [c.text, c.searchText ?? ""] { XCTAssertFalse(t.lowercased().contains("class")) }
     }
@@ -129,23 +129,23 @@ final class ZoomCoachRulesTests: XCTestCase {
 
     func testOneMatchingRowIsSpotlitAndNamedForThePart() {
         XCTAssertEqual(created(.meetingApp, [s2s, general]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "This is your Meeting app. Click it.", rowIndex: 1, then: ZoomCoachRules.createFlow(.meetingApp)))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 7", text: "This is your Meeting app. Click it.", rowIndex: 1, then: ZoomCoachRules.createFlow(.meetingApp)))
         XCTAssertEqual(created(.hostingApp, [s2s, general]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "This is your Hosting app. Click it.", rowIndex: 0, then: ZoomCoachRules.createFlow(.hostingApp)))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 4 of 7", text: "This is your Hosting app. Click it.", rowIndex: 0, then: ZoomCoachRules.createFlow(.hostingApp)))
     }
 
     func testSeveralMatchingRowsSpotlightTheFirst() {
         XCTAssertEqual(created(.meetingApp, [s2s, general, "General app", general]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "Click the General app you made for Greenroom.", rowIndex: 1, then: ZoomCoachRules.createFlow(.meetingApp)))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 7", text: "Click the General app you made for Greenroom.", rowIndex: 1, then: ZoomCoachRules.createFlow(.meetingApp)))
         XCTAssertEqual(created(.hostingApp, [general, s2s, s2s]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "Click the Server-to-Server OAuth app you made for Greenroom.", rowIndex: 1, then: ZoomCoachRules.createFlow(.hostingApp)))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 4 of 7", text: "Click the Server-to-Server OAuth app you made for Greenroom.", rowIndex: 1, then: ZoomCoachRules.createFlow(.hostingApp)))
     }
 
     func testNoMatchingRowPointsAtThePlusButton() {
         XCTAssertEqual(created(.meetingApp, [s2s]),
-                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 3", text: "Press + to build your Meeting app.", then: ZoomCoachRules.createFlow(.meetingApp)))
+                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 7", text: "Press + to build your Meeting app.", then: ZoomCoachRules.createFlow(.meetingApp)))
         XCTAssertEqual(created(.hostingApp, []),
-                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 4", text: "Press + to build your Hosting app.", then: ZoomCoachRules.createFlow(.hostingApp)))
+                       ZoomCoach(label: nil, kind: .build, counter: "Step 4 of 7", text: "Press + to build your Hosting app.", then: ZoomCoachRules.createFlow(.hostingApp)))
         XCTAssertEqual(created(.hostingApp, [general])?.kind, .build)
     }
 
@@ -294,10 +294,10 @@ final class ZoomCoachRulesTests: XCTestCase {
 
     func testAMissingKeySpotlightsItsRowAndSaysToPressZoomsCopyButton() {
         XCTAssertEqual(creds(.meetingApp, .general(id, .information), missing: [.clientSecret]),
-                       ZoomCoach(label: "Client secret", kind: .credRow, counter: "Step 3 of 3",
+                       ZoomCoach(label: "Client secret", kind: .credRow, counter: "Step 3 of 7",
                                  text: "Hover Client secret and press its copy button. Greenroom fills it in."))
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.accountID, .clientID, .clientSecret]),
-                       ZoomCoach(label: "Account ID", kind: .credRow, counter: "Step 4 of 4",
+                       ZoomCoach(label: "Account ID", kind: .credRow, counter: "Step 7 of 7",
                                  text: "Hover Account ID and press its copy button. Greenroom fills it in."))
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientID, .clientSecret])?.label, "Client ID")
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientSecret])?.text,
@@ -306,7 +306,7 @@ final class ZoomCoachRulesTests: XCTestCase {
 
     func testAllKnownSaysGotIt() {
         XCTAssertEqual(creds(.meetingApp, .general(id, .information), missing: []),
-                       ZoomCoach(label: nil, kind: .none, counter: "Step 3 of 3", text: "Got it: the keys are in Greenroom."))
+                       ZoomCoach(label: nil, kind: .none, counter: "Step 3 of 7", text: "Got it: the keys are in Greenroom."))
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [], filled: true)?.text, "Got it: the keys are in Greenroom.")
     }
 

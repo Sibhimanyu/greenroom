@@ -151,7 +151,7 @@ struct ZoomGuideStep: View {
         let state = flow.state(part)
         let label = ZoomGuideFlowRules.label(part, facts)
         let step = state == .done ? nil : ZoomGuideFollowRules.step(part: part, page: assist.page)
-        let words = step.map { "Step \($0) of \(part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps.count : ZoomMarketplaceGuide.s2sSteps.count)" } ?? label
+        let words = step.map { ZoomRun.counter($0) } ?? label
         let shortcuts = ZoomConnectRules.shortcuts(part, ids: assist.ids)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {

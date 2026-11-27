@@ -8,18 +8,41 @@
 //
 import Foundation
 
+/// The Zoom window's setup is ONE run of seven steps across both apps (owner, 2026-11-27): the Meeting app's
+/// three, then the Hosting app's four. The only source of the numbering and the step names.
+enum ZoomRun {
+    static let names = ["Create the meeting app", "Turn on Meeting SDK", "Copy its keys",
+                        "Create the hosting app", "Add the permissions", "Turn it on", "Copy its keys"]
+    static var total: Int { names.count }
+
+    static func name(_ step: Int) -> String { (1...total).contains(step) ? names[step - 1] : "" }
+    static func counter(_ step: Int) -> String { "Step \(step) of \(total)" }
+
+    /// The step a part starts at (Created apps): 1 for the Meeting app, 4 for the Hosting app.
+    static func firstStep(of part: ZoomGuidePart) -> Int? {
+        switch part {
+        case .meetingApp: return 1
+        case .hostingApp: return 4
+        case .check: return nil
+        }
+    }
+
+    static func part(ofStep step: Int) -> ZoomGuidePart { step <= 3 ? .meetingApp : .hostingApp }
+}
+
 enum ZoomGuideFollowRules {
-    /// The current step (1-based) of `part` for the page the window shows; nil when the page is no step of that part.
+    /// The current step (1 to 7, across both apps) of `part` for the page the window shows; nil when the page is no step of that part.
     static func step(part: ZoomGuidePart, page: ZoomMarketplacePage?) -> Int? {
         guard let page else { return nil }
         switch (part, page) {
         case (.meetingApp, .createdApps), (.meetingApp, .chooseType): return 1
         case (.meetingApp, .general(_, .embed)): return 2
         case (.meetingApp, .general(_, .information)): return 3
-        case (.hostingApp, .createdApps), (.hostingApp, .chooseType): return 1
-        case (.hostingApp, .s2s(_, .scopes)): return 2
-        case (.hostingApp, .s2s(_, .activation)): return 3
-        case (.hostingApp, .s2s(_, .credentials)): return 4
+        case (.hostingApp, .createdApps), (.hostingApp, .chooseType): return 4
+        case (.hostingApp, .s2s(_, .information)), (.hostingApp, .s2s(_, .feature)): return 4
+        case (.hostingApp, .s2s(_, .scopes)): return 5
+        case (.hostingApp, .s2s(_, .activation)): return 6
+        case (.hostingApp, .s2s(_, .credentials)): return 7
         default: return nil
         }
     }

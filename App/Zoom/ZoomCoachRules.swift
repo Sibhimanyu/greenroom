@@ -111,8 +111,7 @@ enum ZoomCoachRules {
                              optional: true)
         }
         if tipsOn, page == .createdApps, part != .check, let appRows {
-            let total = part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps.count : ZoomMarketplaceGuide.s2sSteps.count
-            let counter = "Step 1 of \(total)"
+            let counter = ZoomRun.counter(ZoomRun.firstStep(of: part) ?? 1)
             let name = part == .meetingApp ? "Meeting app" : "Hosting app"
             let matches = matchingRows(part, appRows)
             switch matches.count {
@@ -129,8 +128,7 @@ enum ZoomCoachRules {
             return ZoomCoach(label: nil, kind: .none, counter: "", text: ZoomStartOverRules.coachFindMyApp)
         }
         guard tipsOn, let step = ZoomGuideFollowRules.step(part: part, page: page) else { return nil }
-        let total = part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps.count : ZoomMarketplaceGuide.s2sSteps.count
-        let counter = "Step \(step) of \(total)"
+        let counter = ZoomRun.counter(step)
         func make(_ label: String?, _ kind: ZoomCoach.Kind, _ text: String, search: String? = nil, then: [ZoomCoachStage]? = nil) -> ZoomCoach {
             ZoomCoach(label: label, kind: kind, counter: counter, text: text, searchText: search, then: then)
         }
@@ -142,16 +140,16 @@ enum ZoomCoachRules {
             return make("Add Scopes", .control, "Press + Add Scopes.",
                         search: "Paste one scope, tick it, repeat. Copy scopes is in the guide.",
                         then: [ZoomCoachStage(kind: .afterTextsPresent, label: "Activation", text: "All \(ZoomScopes.count) scopes are in. Now open Activation.",
-                                              counter: "Step 3 of 4", texts: ZoomScopes.names)])
+                                              counter: ZoomRun.counter(6), texts: ZoomScopes.names)])
         case .s2s(_, .activation):
             return make("Activate", .control, "Press Activate to turn the app on.",
                         then: [ZoomCoachStage(kind: .afterActivated, label: "App Credentials", text: "The app is on. Now open App Credentials for the keys.",
-                                              counter: "Step 4 of 4")])
+                                              counter: ZoomRun.counter(7))])
         case .general(_, .embed):
             return make("Meeting SDK", .toggle, "Turn on Meeting SDK.",
                         then: [ZoomCoachStage(kind: .afterSwitchOn, label: "Basic information",
                                               text: "Meeting SDK is on. Now open Basic information for the keys.",
-                                              counter: "Step 3 of 3", switchLabel: "Meeting SDK")])
+                                              counter: ZoomRun.counter(3), switchLabel: "Meeting SDK")])
         case .s2s(_, .credentials), .general(_, .information):
             // Always speaks once it knows what is missing: point at the row of the first missing key and say to
             // press Zoom's own copy button (the secret is not in the page); no "Do this step" here.

@@ -11,29 +11,30 @@ final class ZoomBarRulesTests: XCTestCase {
                                       hasMatchingRow: hasRow, working: working))
     }
 
-    func testTheTitleNamesThePartStepAndWhatToDo() {
-        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .scopes)).title, "Hosting app \u{00B7} Step 2 of 4 \u{00B7} Add the scopes")
-        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .activation)).title, "Hosting app \u{00B7} Step 3 of 4 \u{00B7} Activate the app")
-        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .credentials)).title, "Hosting app \u{00B7} Step 4 of 4 \u{00B7} Copy the keys")
-        XCTAssertEqual(bar(.meetingApp, .general(mid, .embed)).title, "Meeting app \u{00B7} Step 2 of 3 \u{00B7} Turn on Meeting SDK")
-        XCTAssertEqual(bar(.meetingApp, .general(mid, .information)).title, "Meeting app \u{00B7} Step 3 of 3 \u{00B7} Copy the keys")
-        XCTAssertEqual(bar(.hostingApp, .chooseType(hid)).title, "Hosting app \u{00B7} Step 1 of 4 \u{00B7} Choose Server to server OAuth app")
-        XCTAssertEqual(bar(.meetingApp, .chooseType(mid)).title, "Meeting app \u{00B7} Step 1 of 3 \u{00B7} Choose General app")
+    func testTheTitleCountsOneRunOfSevenSteps() {
+        let d = " \u{00B7} "
+        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .scopes)).title, "Step 5 of 7" + d + "Add the permissions")
+        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .activation)).title, "Step 6 of 7" + d + "Turn it on")
+        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .credentials)).title, "Step 7 of 7" + d + "Copy its keys" + d + "Hosting app")
+        XCTAssertEqual(bar(.meetingApp, .general(mid, .embed)).title, "Step 2 of 7" + d + "Turn on Meeting SDK")
+        XCTAssertEqual(bar(.meetingApp, .general(mid, .information)).title, "Step 3 of 7" + d + "Copy its keys" + d + "Meeting app")
+        XCTAssertEqual(bar(.hostingApp, .chooseType(hid)).title, "Step 4 of 7" + d + "Create the hosting app")
+        XCTAssertEqual(bar(.meetingApp, .chooseType(mid)).title, "Step 1 of 7" + d + "Create the meeting app")
+        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .information)).title, "Step 4 of 7" + d + "Create the hosting app")
     }
 
     func testBeforeAnAppPageIsKnown() {
-        XCTAssertEqual(bar(.hostingApp, .createdApps).title, "Hosting app \u{00B7} Create the app")
-        XCTAssertEqual(bar(.meetingApp, nil).title, "Meeting app \u{00B7} Find or create the app")
+        XCTAssertEqual(bar(.hostingApp, .createdApps).title, "Step 4 of 7 \u{00B7} Create the hosting app")
+        XCTAssertEqual(bar(.meetingApp, nil).title, "Step 1 of 7 \u{00B7} Find or create the meeting app")
     }
 
     func testSignInAndPagesWithoutAStep() {
         XCTAssertEqual(bar(.hostingApp, .signIn).title, "Sign in to Zoom")
-        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .information)).title, "Hosting app \u{00B7} Set up the app")
-        XCTAssertEqual(bar(.meetingApp, .general(mid, .other)).title, "Meeting app \u{00B7} Set up the app")
+                XCTAssertEqual(bar(.meetingApp, .general(mid, .other)).title, "Meeting app \u{00B7} Set up the app")
     }
 
     func testThePageDecidesThePartNotTheRequest() {
-        XCTAssertEqual(bar(.meetingApp, .s2s(hid, .scopes)).title, "Hosting app \u{00B7} Step 2 of 4 \u{00B7} Add the scopes")
+        XCTAssertEqual(bar(.meetingApp, .s2s(hid, .scopes)).title, "Step 5 of 7 \u{00B7} Add the permissions")
     }
 
     func testCopyScopesOnTheHostingScopesStepOnly() {
@@ -55,14 +56,15 @@ final class ZoomBarRulesTests: XCTestCase {
     func testNextPartAfterOneIsComplete() {
         let a = bar(.hostingApp, .s2s(hid, .credentials), hosting: true)
         XCTAssertEqual(a.primary, .next(.meetingApp, .createdApps))
-        XCTAssertEqual(a.primary.title, "Next: Meeting app")
+        XCTAssertEqual(a.primary.title, "Continue")
         let b = bar(.hostingApp, .s2s(hid, .credentials), hosting: true, ids: ZoomAppIDs(meeting: mid))
         XCTAssertEqual(b.primary, .next(.meetingApp, .general(mid, .information)))
         let c = bar(.meetingApp, .general(mid, .information), meeting: true)
         XCTAssertEqual(c.primary, .next(.hostingApp, .createdApps))
-        XCTAssertEqual(c.primary.title, "Next: Hosting app")
+        XCTAssertEqual(c.primary.title, "Continue")
+        // Step 4 always starts at Created apps, coached for the hosting app, even when its ID is known.
         let d = bar(.meetingApp, .general(mid, .information), meeting: true, ids: ZoomAppIDs(hosting: hid))
-        XCTAssertEqual(d.primary, .next(.hostingApp, .s2s(hid, .scopes)))
+        XCTAssertEqual(d.primary, .next(.hostingApp, .createdApps))
     }
 
     func testNoNextUntilThePartIsCompleteAndOnItsCredentialsPage() {
@@ -119,11 +121,11 @@ final class ZoomBarRulesTests: XCTestCase {
     }
 
     func testCreatedAppsSaysFindYourAppWhenARowMatches() {
-        XCTAssertEqual(bar(.meetingApp, .createdApps, hasRow: true).title, "Meeting app \u{00B7} Find your app")
-        XCTAssertEqual(bar(.hostingApp, .createdApps, hasRow: true).title, "Hosting app \u{00B7} Find your app")
-        XCTAssertEqual(bar(.meetingApp, .createdApps, hasRow: false).title, "Meeting app \u{00B7} Create the app")
+        XCTAssertEqual(bar(.meetingApp, .createdApps, hasRow: true).title, "Step 1 of 7 \u{00B7} Find the meeting app")
+        XCTAssertEqual(bar(.hostingApp, .createdApps, hasRow: true).title, "Step 4 of 7 \u{00B7} Find the hosting app")
+        XCTAssertEqual(bar(.meetingApp, .createdApps, hasRow: false).title, "Step 1 of 7 \u{00B7} Create the meeting app")
         // A page that is not Created apps ignores it.
-        XCTAssertEqual(bar(.hostingApp, nil, hasRow: true).title, "Hosting app \u{00B7} Find or create the app")
+        XCTAssertEqual(bar(.hostingApp, nil, hasRow: true).title, "Step 4 of 7 \u{00B7} Find or create the hosting app")
         XCTAssertEqual(bar(.hostingApp, .signIn, hasRow: true).title, "Sign in to Zoom")
     }
 
@@ -143,7 +145,7 @@ final class ZoomBarRulesTests: XCTestCase {
         let b = bar(.hostingApp, .s2s(hid, .scopes), working: true)
         XCTAssertEqual(b.context, .working)
         XCTAssertEqual(ZoomBarContext.working.title, "Working\u{2026}")
-        XCTAssertEqual(b.title, "Hosting app \u{00B7} Step 2 of 4 \u{00B7} Add the scopes")
+        XCTAssertEqual(b.title, "Step 5 of 7 \u{00B7} Add the permissions")
         XCTAssertEqual(bar(.hostingApp, .createdApps, working: true).context, .working)
         XCTAssertEqual(bar(.hostingApp, .s2s(hid, .scopes), working: false).context, .copyScopes)
     }

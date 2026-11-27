@@ -5,6 +5,24 @@ import XCTest
 final class ZoomGuideFollowRulesTests: XCTestCase {
     private let id = "AbC_123-xyZ789qrstuvw1"
 
+    // MARK: One continuous run: 7 steps across both apps
+
+    func testOneRunOfSevenSteps() {
+        XCTAssertEqual(ZoomRun.total, 7)
+        XCTAssertEqual(ZoomRun.names, ["Create the meeting app", "Turn on Meeting SDK", "Copy its keys",
+                                       "Create the hosting app", "Add the permissions", "Turn it on", "Copy its keys"])
+        XCTAssertEqual(ZoomRun.counter(5), "Step 5 of 7")
+        XCTAssertEqual(ZoomRun.firstStep(of: .meetingApp), 1)
+        XCTAssertEqual(ZoomRun.firstStep(of: .hostingApp), 4)
+        XCTAssertNil(ZoomRun.firstStep(of: .check))
+        XCTAssertEqual(ZoomRun.part(ofStep: 3), .meetingApp)
+        XCTAssertEqual(ZoomRun.part(ofStep: 4), .hostingApp)
+        XCTAssertEqual(ZoomRun.name(3), "Copy its keys")
+        XCTAssertEqual(ZoomRun.name(0), "")
+        XCTAssertEqual(ZoomRun.name(8), "")
+        for n in ZoomRun.names { XCTAssertFalse(n.lowercased().contains("class")) }
+    }
+
     // MARK: R3
 
     func testEveryPageTimesPartPicksItsStep() {
@@ -15,10 +33,10 @@ final class ZoomGuideFollowRulesTests: XCTestCase {
             (.meetingApp, .general(id, .scopes), nil), (.meetingApp, .general(id, .other), nil),
             (.meetingApp, .s2s(id, .scopes), nil), (.meetingApp, .s2s(id, .credentials), nil),
             (.meetingApp, .signIn, nil),
-            (.hostingApp, .createdApps, 1), (.hostingApp, .chooseType(id), 1),
-            (.hostingApp, .s2s(id, .scopes), 2), (.hostingApp, .s2s(id, .activation), 3),
-            (.hostingApp, .s2s(id, .credentials), 4),
-            (.hostingApp, .s2s(id, .information), nil), (.hostingApp, .s2s(id, .feature), nil),
+            (.hostingApp, .createdApps, 4), (.hostingApp, .chooseType(id), 4),
+            (.hostingApp, .s2s(id, .information), 4), (.hostingApp, .s2s(id, .feature), 4),
+            (.hostingApp, .s2s(id, .scopes), 5), (.hostingApp, .s2s(id, .activation), 6),
+            (.hostingApp, .s2s(id, .credentials), 7),
             (.hostingApp, .general(id, .embed), nil), (.hostingApp, .general(id, .information), nil),
             (.hostingApp, .signIn, nil),
             (.check, .createdApps, nil), (.check, .s2s(id, .credentials), nil),

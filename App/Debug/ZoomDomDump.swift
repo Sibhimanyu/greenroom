@@ -68,6 +68,8 @@ enum ZoomDomDump {
                 let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 if word.hasPrefix("go "), let u = URL(string: String(word.dropFirst(3))), ZoomMarketplacePages.isMarketplace(u) {
                     ZoomMarketplaceWindow.shared.debugLoad(u)
+                } else if word == "backupkeys" || word == "restorekeys" || word.hasPrefix("setupforme") {
+                    report(word, e2e(word))
                 } else if let js = driverScript(word) {
                     ZoomMarketplaceWindow.shared.debugEval(js) { result in report(word, result) }
                 } else if let js = commands[word] {
@@ -131,7 +133,50 @@ enum ZoomDomDump {
         """
     }
 
+    // MARK: End-to-end run helpers (DEBUG). The owner's Zoom keys are backed up to their own Keychain
+    // item before a run that saves test apps' keys, and put back after. Values never logged.
+
+    private static let backupService = "com.sibhimanyu.greenroom.e2e-backup", backupAccount = "zoom"
+    @MainActor private static func e2e(_ word: String) -> String {
+        guard let c = CoordinatorController.shared else { return "no coordinator" }
+        c.loadSecretsIfNeeded()
+        let chain = SystemKeychain()
+        func fp(_ v: String) -> String { v.isEmpty ? "-" : String(v.count) }
+        switch word {
+        case "backupkeys":
+            if case .found = chain.read(service: backupService, account: backupAccount) { return "backup already exists (kept)" }
+            let all = ["sdkID": c.sdkClientID, "sdkSecret": c.sdkClientSecret, "s2sAccount": c.s2sAccountID,
+                       "s2sID": c.s2sClientID, "s2sSecret": c.s2sClientSecret]
+            guard let data = try? JSONSerialization.data(withJSONObject: all) else { return "encode failed" }
+            let st = chain.write(data, service: backupService, account: backupAccount)
+            return st == errSecSuccess ? "backed up lens " + all.keys.sorted().map { $0 + "=" + fp(all[$0]!) }.joined(separator: " ") : "write failed \(st)"
+        case "restorekeys":
+            guard case .found(let data) = chain.read(service: backupService, account: backupAccount),
+                  let all = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return "no backup" }
+            c.sdkClientID = all["sdkID"] ?? ""; c.sdkClientSecret = all["sdkSecret"] ?? ""
+            c.s2sAccountID = all["s2sAccount"] ?? ""; c.s2sClientID = all["s2sID"] ?? ""; c.s2sClientSecret = all["s2sSecret"] ?? ""
+            c.zoomSetupChecker.credentialsChanged()
+            _ = chain.delete(service: backupService, account: backupAccount)
+            return "restored and backup removed"
+        default:
+            // setupforme <email>: the form's answers for a fresh build of both apps.
+            let email = word.split(separator: " ").dropFirst().first.map(String.init) ?? ""
+            guard case .found = chain.read(service: backupService, account: backupAccount) else { return "refused: run backupkeys first" }
+            var info = InfoValues()
+            info.name = NSFullUserName(); info.email = email; info.company = NSFullUserName()
+            c.zoomAssist.stopSetUpForMe()
+            // As the button does: the Zoom window first, then the run.
+            c.zoomAssist.open(ZoomMarketplaceGuide.builderURL, part: .meetingApp)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                c.zoomAssist.startSetUpForMe(info, buildNew: word.contains(" new") ? [.meeting, .hosting] : [])
+                report("setupforme", "run started")
+            }
+            return "opening window"
+        }
+    }
+
     static let driverLogURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Greenroom/zoom-driver.log")
+    static func log(_ text: String) { report("run", text) }
     private static func report(_ word: String, _ result: String) {
         let shown = word.hasPrefix("type ") ? word.split(separator: " ").prefix(2).joined(separator: " ") + " …" : word
         let line = ISO8601DateFormatter().string(from: Date()) + " " + shown + " -> " + result + "\n"

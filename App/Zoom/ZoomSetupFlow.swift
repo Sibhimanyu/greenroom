@@ -30,6 +30,16 @@ enum ZoomCondition: Equatable {
 
     enum Kind: Equatable { case appType, name(ZoomApp), addScopes }
 
+    /// Whether the page shows enough to judge this yet. Right after a page opens Zoom shows nothing for a
+    /// moment (live run, 2026-11-27): a switch's state that isn't shown is unknown, never "off".
+    func isKnown(in s: ZoomPageSnapshot) -> Bool {
+        switch self {
+        case .sdkOn: return s.meetingSDKOn != nil
+        case .activated: return s.activated != nil
+        default: return true
+        }
+    }
+
     func holds(in s: ZoomPageSnapshot) -> Bool {
         switch self {
         case .dialogOpen: return s.dialog != .none

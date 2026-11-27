@@ -25,7 +25,12 @@ final class ZoomSetupAssist: ObservableObject {
         didSet { if state != oldValue { coordinator?.objectWillChange.send() } }
     }
     @Published private(set) var setUpForMe = ZoomSetUpForMeState.idle {
-        didSet { if setUpForMe != oldValue { coordinator?.objectWillChange.send() } }
+        didSet {
+            if setUpForMe != oldValue { coordinator?.objectWillChange.send() }
+            #if DEBUG
+            if setUpForMe != oldValue { ZoomDomDump.log("state " + String(describing: setUpForMe)) }
+            #endif
+        }
     }
 
     private var session: SetupForMe?

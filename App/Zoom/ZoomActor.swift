@@ -66,7 +66,14 @@ struct ZoomActor {
         for step in plan.steps {
             switch step {
             case .press(let c, let unless):
-                if let unless, let s = await page.read(), unless.holds(in: s) { continue }
+                if let unless {
+                    switch await judge(unless) {
+                    case .holds: continue
+                    case .doesNot: break
+                    case .signedOut: return .stopped(.signedOut)
+                    case .unknown: return .stopped(.timedOut(unless))
+                    }
+                }
                 if let stop = await act(.press(c), c) { return .stopped(stop) }
             case .pressDeep(let c):
                 if let stop = await act(.pressDeep(c), c) { return .stopped(stop) }
@@ -101,6 +108,21 @@ struct ZoomActor {
         return .notFound(control)
     }
 
+    private enum Judgement { case holds, doesNot, signedOut, unknown }
+    /// Waits until the page shows whether `condition` holds (a sign-out ends the wait at once).
+    @MainActor
+    private func judge(_ condition: ZoomCondition) async -> Judgement {
+        for poll in 0..<max(1, pacing.polls) {
+            if let s = await page.read() {
+                observer(s)
+                if s.isSignedOut { return .signedOut }
+                if condition.isKnown(in: s) { return condition.holds(in: s) ? .holds : .doesNot }
+            }
+            if poll < pacing.polls - 1 { await pause() }
+        }
+        return .unknown
+    }
+
     @MainActor
     private func wait(_ condition: ZoomCondition) async -> Reason? {
         for poll in 0..<max(1, pacing.polls) {
@@ -117,10 +139,17 @@ struct ZoomActor {
     /// A readable key is taken as it is; a hidden one is copied with Zoom's own Copy control and taken from the copy hook.
     @MainActor
     private func capture(_ field: ZoomKeyField, already: Set<String>) async -> Result<String, Reason> {
-        guard let s = await page.read() else { return .failure(.noKey(field)) }
-        observer(s)
-        if let v = s.keys[field]?.text, ZoomMarketplacePages.isKey(v) { return .success(v) }
-        guard s.has(.copy(field)) else { return .failure(.noKey(field)) }
+        // The page may still be loading: look until the key is readable or its Copy control is there.
+        var copyable = false
+        for poll in 0..<max(1, pacing.polls) {
+            if let s = await page.read() {
+                observer(s)
+                if let v = s.keys[field]?.text, ZoomMarketplacePages.isKey(v) { return .success(v) }
+                if s.has(.copy(field)) { copyable = true; break }
+            }
+            if poll < pacing.polls - 1 { await pause() }
+        }
+        guard copyable else { return .failure(.noKey(field)) }
         _ = page.takeCopiedKey()
         _ = await page.perform(.hover(.keyRow(field)))
         if let stop = await act(.pressDeep(.copy(field)), .copy(field)) { return .failure(stop) }

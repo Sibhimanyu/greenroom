@@ -32,7 +32,11 @@ final class FixturePage: ZoomPage {
     }
 
     var apps: [App] = []
-    var address: ZoomMarketplacePage = .createdApps
+    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads } } }
+    /// Live finding, 2026-11-27: right after a page opens Zoom shows nothing yet (no switch state, no keys)
+    /// for a second or two. The next `loadingReads` reads after a page change come back empty.
+    var loadingReads = 0
+    private var blankReads = 0
     var signedIn = true
     /// Every action the page performed, in order (a press, a type, a navigation), for tests that watch for forbidden ones.
     private(set) var log: [ZoomPageAction] = []
@@ -70,6 +74,7 @@ final class FixturePage: ZoomPage {
 
     func read() async -> ZoomPageSnapshot? {
         guard signedIn else { return ZoomPageSnapshot(address: address, signedIn: false) }
+        if blankReads > 0 { blankReads -= 1; return ZoomPageSnapshot(address: address, signedIn: true, dialog: .none) }
         var s = ZoomPageSnapshot(address: address, signedIn: true, dialog: dialog)
         func nav(_ links: [ZoomNavLink]) { links.forEach { s.controls.insert(.navLink($0)) } }
         switch address {

@@ -87,4 +87,29 @@ final class ZoomActorTests: XCTestCase {
         let outcome = await actor(zoom).run(ZoomSetupFlow.keysPlan(.meeting, [.clientID, .clientSecret]))
         XCTAssertEqual(outcome, .done(captured: [.clientID: "clientClientClient1", .clientSecret: "secretSecretSecret12"]))
     }
+
+    /// Live run, 2026-11-27: Set up for me pressed the Meeting SDK switch before Zoom showed whether it was on,
+    /// and so could turn it off. A switch whose state isn't shown yet is never pressed; the actor waits.
+    func testASwitchWhoseStateIsNotShownYetIsNeverPressed() async {
+        let zoom = onEmbed(sdkOn: true)
+        zoom.loadingReads = 3
+        zoom.address = .createdApps
+        zoom.address = .general(zoom.apps[0].id, .embed)
+        let outcome = await actor(zoom).run(ZoomSetupFlow.sdkPlan)
+        XCTAssertEqual(outcome, .done(captured: [:]))
+        XCTAssertEqual(zoom.apps[0].sdkOn, true)
+        XCTAssertFalse(zoom.log.contains(.press(.meetingSDKSwitch)), "the switch was not pressed")
+    }
+
+    /// Live run, 2026-11-27: step 3 read the keys the moment the page opened, found no Client ID and gave up;
+    /// two seconds later it was there. Keys on a page still loading are waited for.
+    func testKeysOnAPageStillLoadingAreWaitedFor() async {
+        let zoom = FixturePage.freshAccount()
+        let app = FixturePage.App(kind: .meeting, id: "meetingAppIdIdIdIdId1", clientID: "clientClientClient1", secret: "secretSecretSecret12")
+        zoom.apps = [app]
+        zoom.loadingReads = 3
+        zoom.address = .general(app.id, .information)
+        let outcome = await actor(zoom).run(ZoomSetupFlow.keysPlan(.meeting, [.clientID, .clientSecret]))
+        XCTAssertEqual(outcome, .done(captured: [.clientID: "clientClientClient1", .clientSecret: "secretSecretSecret12"]))
+    }
 }

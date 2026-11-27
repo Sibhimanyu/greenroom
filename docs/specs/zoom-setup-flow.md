@@ -60,7 +60,7 @@ One run, eight steps. Each app is built completely first and its keys are copied
 | 2 | Turn on Meeting SDK | Without it Zoom won't let the app join meetings. | general/embed | switch on | `.doThisStep` | turns the switch on, verifies |
 | 3 | Copy its keys | Greenroom signs in to meetings with them. Copied last, so they're the final ones. | general/information | Client ID + Secret stored and equal to the page's ID, read after step 2 | `.doThisStep` | reads Client ID; presses the secret row's copy control; takes it from the clipboard, then restores the clipboard |
 | 4 | Create the hosting app | It lets Greenroom create and start your meetings as host. | Created apps → dialogs | an S2S app's ID is in evidence | `.press(appRow)` "Use this app" if one exists, else `.doThisStep` | + → Build app → Server to server OAuth app → Create → types "Greenroom Hosting" → Create |
-| 5 | Fill in Information | Zoom asks for a contact before it turns the app on. | s2s/information (Zoom opens App Credentials first: `.goTo` Information) | no empty required field, and Continue pressed or Feature/Scopes reached | empty field: `.fill(field)`; else `.doThisStep` | presses Continue (types nothing) |
+| 5 | Fill in Information | Zoom asks for a contact before it turns the app on. | s2s/information (Zoom opens App Credentials first: `.goTo` Information) | no required field empty (Short Description, Company Name, Developer contact Name, Email) and Activation lists nothing missing | `.doThisStep` after the person confirms the values in the bar's small form | types the confirmed values into the empty required fields only, then presses Continue |
 | 6 | Add the permissions | These eight let Greenroom create, list, start and end meetings. | s2s/scopes | all eight on the page, or the check passes scopes | `.doThisStep` | Add scopes → for each missing one: search, tick → Done; verifies all eight |
 | 7 | Turn it on | Zoom only answers an app that's switched on. | s2s/activation | activated | `.doThisStep` | presses Activate, verifies |
 | 8 | Copy its keys | Greenroom uses them to talk to Zoom for you. Copied last, so they're the final ones. | s2s/credentials | Account ID, Client ID, Secret stored and equal to the page, read after step 7 | `.doThisStep` | reads the three fields; presses Copy where a value can't be read |
@@ -73,6 +73,15 @@ Rules that apply to every step:
 - **Existing apps:** on Created apps, a row of the needed type gives "Use this app"; opening it records its ID. Keys already stored for a different app: step 2/5 shows "Use the keys from this app" (`.doThisStep` replaces them, with Undo), never silently.
 - **The check runs by itself** when an app's keys are copied (steps 3 and 8), and again after any fix. It never blocks Continue.
 - **Card layout:** title (the action, imperative) · why line · status line, if any · the single action button. The bar shows "Step n of 8 · title" and the same action.
+
+### Step 5's values (owner, 2026-11-27)
+
+Zoom's Information page requires Short Description, Company Name, Developer contact Name and Email (red "This field cannot be empty"), and Activation then says "Your app can not be activated yet due to missing the following information: 1. Developer contact name 2. Developer contact email 3. Company name". Greenroom fills them:
+- Short Description: "Lets Greenroom create, start and host my Zoom meetings."
+- Name and Email: read (read-only) from the signed-in Zoom profile page (zoom.us/profile in the same data store, a hidden second web view, never clicking); else the Mac account's full name (`NSFullUserName()`) and an empty email the person must type.
+- Company Name: the person's name unless they change it.
+- The Greenroom bar shows these in a small native form (editable) with the step's Do this step; nothing is typed into Zoom before that press. Only empty required fields are typed into; a field the person already filled is kept.
+- The snapshot reports Information's required fields (label → empty / filled / error) and Activation's "missing" list; a non-empty missing list re-opens step 5 naming the fields.
 
 ## Testing
 

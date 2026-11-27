@@ -387,6 +387,7 @@ targets:
       - path: App/UI/VisibilitySymbols.swift
       - path: App/Layout/LayoutCamera.swift
       - path: App/Layout/MeetingSetup.swift
+      - path: App/Layout/MeetingSetupLibrary.swift
       - path: App/Stage/ShareTargetModel.swift
       - path: App/Stage/WebcamShape.swift
       - path: App/LiveExitRules.swift

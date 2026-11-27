@@ -147,12 +147,12 @@ final class MeetingSetupTests: XCTestCase {
     // Spec: meeting-setup R5.1, R5.2
     func testALayoutSwitchBringsInTheNewSavedValuesAndDropsChanges() {
         var s = setup()
-        s.change(.cameraState(.off), meetingLive: true)
+        s.change(.cameraState(.onlyMe), meetingLive: true)
         s.change(.share(share(.nothing)), meetingLive: true)
         let next = values(.onlyEveryone, .cutout, .window)
         let effect = s.apply(.layoutSwitched(to: next))
         XCTAssertEqual(s.saved, next)
-        XCTAssertEqual(s.cameraState, .onlyEveryone, "a live Off does not survive a layout switch")
+        XCTAssertEqual(s.cameraState, .onlyEveryone, "a for-this-meeting camera state other than Off does not survive a layout switch")
         XCTAssertEqual(s.cameraPiece, piece(.cutout))
         XCTAssertEqual(s.share, share(.window))
         XCTAssertEqual(effect.saved, [.cameraState, .cameraPiece, .share])
@@ -259,5 +259,59 @@ final class MeetingSetupTests: XCTestCase {
 
     func testTurnOnTargetIsNilWhenTheMeetingAlreadySeesTheCamera() {
         XCTAssertNil(setup().cameraTurnOnTarget)
+    }
+
+    // Spec: meeting-setup R5.4
+    func testACameraTurnedOffForThisMeetingStaysOffAcrossALayoutSwitch() {
+        var s = setup()
+        s.change(.cameraState(.off), meetingLive: true)
+        s.change(.share(share(.nothing)), meetingLive: true)
+        s.change(.cameraPiece(piece(.square)), meetingLive: true)
+        let next = values(.onlyEveryone, .cutout, .window)
+        let effect = s.apply(.layoutSwitched(to: next))
+        XCTAssertEqual(s.cameraState, .off, "Off stays Off")
+        XCTAssertEqual(s.saved, next, "the new layout's saved values come in")
+        XCTAssertTrue(s.isForThisMeeting(.cameraState))
+        XCTAssertEqual(s.share, share(.window), "every other change is dropped")
+        XCTAssertEqual(s.cameraPiece, piece(.cutout))
+        XCTAssertFalse(s.isForThisMeeting(.share))
+        XCTAssertFalse(s.isForThisMeeting(.cameraPiece))
+        XCTAssertEqual(effect.inUse, [.cameraPiece, .share], "the camera state in use did not change")
+        XCTAssertEqual(effect.saved, [.cameraState, .cameraPiece, .share])
+    }
+
+    // Spec: meeting-setup R5.4
+    func testAnOffThatTheNewLayoutAlsoHasIsNotAForThisMeetingChange() {
+        var s = setup()
+        s.change(.cameraState(.off), meetingLive: true)
+        s.apply(.layoutSwitched(to: values(.off)))
+        XCTAssertEqual(s.cameraState, .off)
+        XCTAssertFalse(s.isForThisMeeting(.cameraState))
+    }
+
+    // Spec: meeting-setup R5.4
+    func testTheCameraComesBackAsTheNewLayoutsOnStateAfterASwitchHeldItOff() {
+        var s = MeetingSetup(saved: values(.onlyEveryone))
+        s.change(.cameraState(.off), meetingLive: true)
+        s.apply(.layoutSwitched(to: values(.onlyMe)))
+        XCTAssertEqual(s.cameraClickTarget(noCameraAllowed: true), .onlyMe)
+    }
+
+    // Spec: meeting-setup R5.4
+    func testStartSnapBackAndTheMeetingEndingStillDropAnOff() {
+        for event: MeetingSetup.Event in [.start, .snapBack, .meetingEnded] {
+            var s = setup()
+            s.change(.cameraState(.off), meetingLive: true)
+            s.apply(event)
+            XCTAssertEqual(s.cameraState, .everyoneAndMe, "\(event)")
+        }
+    }
+
+    // Spec: meeting-setup R5.4
+    func testAnOffNeverCarriesAcrossASwitchBeforeAMeeting() {
+        var s = setup()
+        s.change(.cameraState(.off), meetingLive: false)
+        s.apply(.layoutSwitched(to: values(.onlyEveryone)))
+        XCTAssertEqual(s.cameraState, .onlyEveryone, "before a meeting Off was saved into the old layout, not for this meeting")
     }
 }

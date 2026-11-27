@@ -53,7 +53,8 @@ struct MeetingSetup: Equatable {
     enum Event: Equatable {
         /// Start, Snap Back and the meeting ending: every for-this-meeting change goes (R5.1).
         case start, snapBack, meetingEnded
-        /// Another layout became active, by any route: its saved values come in, changes go (R5.1, R5.2).
+        /// Another layout became active, by any route: its saved values come in, changes go (R5.1, R5.2),
+        /// except a camera turned Off for this meeting, which stays Off (R5.4).
         case layoutSwitched(to: Values)
         /// Save that setting's for-this-meeting change into the layout and clear it (R4.4).
         case keep(Setting)
@@ -98,6 +99,9 @@ struct MeetingSetup: Equatable {
         }
     }
 
+    /// The "on" state the camera comes back as after Off (the bar's click, Stop video's press).
+    var cameraLastOn: CameraState { camera.lastOn }
+
     /// What a click on the camera button turns the state into (the bar, the toolbar).
     func cameraClickTarget(noCameraAllowed: Bool) -> CameraState { camera.clickTarget(noCameraAllowed: noCameraAllowed) }
     /// What Home's camera choices turn the camera on to; nil when the meeting already sees it.
@@ -127,9 +131,12 @@ struct MeetingSetup: Equatable {
             case .start, .snapBack, .meetingEnded:
                 Setting.allCases.forEach { me.clear($0) }
             case .layoutSwitched(let next):
+                // R5.4 (D8): a camera turned Off for this meeting stays Off; everything else goes.
+                let keepsOff = me.camera.live == .off
                 Setting.allCases.forEach { me.clear($0) }
                 me.camera.setSaved(next.cameraState)
                 me.camera.resetToDefault()
+                if keepsOff { me.camera.setLive(.off) }
                 me.savedCameraPiece = next.cameraPiece
                 me.savedShare = next.share
             case .keep(let setting):

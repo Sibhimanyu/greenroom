@@ -199,13 +199,13 @@ extension LayoutTemplate {
     /// (what "no layout" did), while its camera still applies.
     var movesWindows: Bool { starter != LayoutLibrary.leaveAlone }
 
-    /// Unedited: same name, pieces, camera and share as the shipped version (piece ids ignored).
+    /// Unedited: same name, pieces, camera, camera state and share as the shipped version (piece ids ignored).
     var isAsShipped: Bool {
         guard let s = LayoutLibrary.shipped(starter) else { return false }
         func same(_ a: [LayoutPiece], _ b: [LayoutPiece]) -> Bool {
             a.count == b.count && zip(a, b).allSatisfy { $0.kind == $1.kind && $0.rect.isClose(to: $1.rect) && $0.showsToEveryone == $1.showsToEveryone }
         }
-        guard name == s.name, camera == s.camera, share == s.share, same(oneDisplay, s.oneDisplay) else { return false }
+        guard name == s.name, camera == s.camera, share == s.share, cameraState == s.cameraState, same(oneDisplay, s.oneDisplay) else { return false }
         switch (twoDisplays, s.twoDisplays) {
         case (nil, nil): return true
         case let (a?, b?): return a.sharedSlot == b.sharedSlot && same(a.second, b.second)

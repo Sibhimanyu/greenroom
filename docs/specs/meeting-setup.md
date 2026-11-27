@@ -26,6 +26,7 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 - D4. A layout switch brings in the new layout's camera state, camera piece and share in full, and drops any for-this-meeting change. Start, Snap Back and the meeting ending drop them too.
 - D5. One module, the Meeting setup, owns all three settings: the active layout's saved values and any for-this-meeting changes. Every screen reads the value in use from it, and every change goes through it.
 - D6. The no-layout fallback is deleted (exactly one layout is always active), once a check confirms nothing reads it.
+- D8. A camera turned Off for this meeting stays Off across a layout switch; every other for-this-meeting change is dropped (owner, 2026-11-27).
 - D7. Out of scope: the camera look (background, effects, framing, mirror) and camera devices. They stay one for the whole app. The Look as one value is the next piece of work.
 
 ## Requirements
@@ -55,9 +56,11 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 - R4.5 The Layouts canvas draws the saved camera piece, never a for-this-meeting change, so its drawing and its rows always agree.
 
 **R5. When for-this-meeting changes end.** (D4) planned
-- R5.1 Start, Snap Back, a layout switch (by any route: Home, menu bar, present menu, shortcut, Layouts) and the meeting ending each drop every for-this-meeting change. (module built in P1)
+- R5.1 Start, Snap Back, a layout switch (by any route: Home, menu bar, present menu, shortcut, Layouts) and the meeting ending each drop every for-this-meeting change. The one exception is R5.4: a camera turned Off for this meeting survives a layout switch. (module built in P1)
 - R5.2 A layout switch brings in the new layout's camera state, camera piece and share. Given a meeting is live, the meeting gets them at once.
 - R5.3 The camera's "last on" state (`CameraStateSession.lastOn`) resets to the active layout's on-state at the same moments. (lastOn reset: module built in P1)
+
+- R5.4 Given a camera turned Off for this meeting, when the layout is switched, then the camera is still Off and every other for-this-meeting change is dropped. Start, Snap Back and the meeting ending still drop it. (D8; planned, module change in P3)
 
 **R6. No other copies.** (D6) planned
 - R6.1 The no-layout fallback writes for `webcamShape` and `shareTarget` are removed after a search confirms nothing reads them. The old keys become import-only in the settings file.

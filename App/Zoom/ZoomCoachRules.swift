@@ -38,6 +38,9 @@ struct ZoomCoachStage: Equatable, Codable {
     var counter: String? = nil
     var texts: [String]? = nil
     var switchLabel: String? = nil
+    /// "Do this step" for this stage (an actor step name) and its own plan line; nil: no button here.
+    var action: String? = nil
+    var plan: String? = nil
 }
 
 struct ZoomCoach: Equatable, Codable {
@@ -76,11 +79,19 @@ enum ZoomCoachRules {
     static func createFlow(_ part: ZoomGuidePart) -> [ZoomCoachStage] {
         let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
         let heading = part == .hostingApp ? "Create a Server-to-Server OAuth app" : "Create a General app"
-        return [ZoomCoachStage(kind: .menuItem, label: "Build app", text: "Press Build app."),
-                ZoomCoachStage(kind: .chooseRow, label: type, text: "Choose \(type)."),
-                ZoomCoachStage(kind: .createAfter, label: type, text: "Press Create."),
-                ZoomCoachStage(kind: .nameField, label: heading, text: "Name it, for example Greenroom, then press Create."),
-                ZoomCoachStage(kind: .createNamed, label: heading, text: "Press Create.")]
+        let name = ZoomActorRules.appName(part)
+        let then = "then name it \(name) and press Create."
+        let act = ZoomActorStep.createApp.rawValue
+        return [ZoomCoachStage(kind: .menuItem, label: "Build app", text: "Press Build app.", action: act,
+                               plan: "Greenroom will press Build app, choose \(type), press Create, \(then)"),
+                ZoomCoachStage(kind: .chooseRow, label: type, text: "Choose \(type).", action: act,
+                               plan: "Greenroom will choose \(type), press Create, \(then)"),
+                ZoomCoachStage(kind: .createAfter, label: type, text: "Press Create.", action: act,
+                               plan: "Greenroom will press Create, \(then)"),
+                ZoomCoachStage(kind: .nameField, label: heading, text: "Name it, for example Greenroom, then press Create.", action: act,
+                               plan: "Greenroom will name it \(name) and press Create."),
+                ZoomCoachStage(kind: .createNamed, label: heading, text: "Press Create.", action: act,
+                               plan: "Greenroom will press Create.")]
     }
 
     /// Zoom's name dialog is headed "Create a Server-to-Server OAuth app" / "Create a General app".
@@ -140,15 +151,14 @@ enum ZoomCoachRules {
             return make("Add Scopes", .control, "Press + Add Scopes.",
                         search: "Paste one scope, tick it, repeat. Copy scopes is in the guide.",
                         then: [ZoomCoachStage(kind: .afterTextsPresent, label: "Activation", text: "All \(ZoomScopes.count) scopes are in. Now open Activation.",
-                                              counter: ZoomRun.counter(6), texts: ZoomScopes.names)])
+                                              counter: ZoomRun.counter(8), texts: ZoomScopes.names)])
         case .s2s(_, .activation):
             return make("Activate", .control, "Press Activate to turn the app on.",
-                        then: [ZoomCoachStage(kind: .afterActivated, label: "App Credentials", text: "The app is on. Now open App Credentials for the keys.",
-                                              counter: ZoomRun.counter(7))])
+                        then: [ZoomCoachStage(kind: .afterActivated, label: "", text: "The app is on. Greenroom will check it.",
+                                              counter: ZoomRun.counter(8))])
         case .general(_, .embed):
             return make("Meeting SDK", .toggle, "Turn on Meeting SDK.",
-                        then: [ZoomCoachStage(kind: .afterSwitchOn, label: "Basic information",
-                                              text: "Meeting SDK is on. Now open Basic information for the keys.",
+                        then: [ZoomCoachStage(kind: .afterSwitchOn, label: "", text: "Meeting SDK is on. Greenroom will check it.",
                                               counter: ZoomRun.counter(3), switchLabel: "Meeting SDK")])
         case .s2s(_, .credentials), .general(_, .information):
             // Always speaks once it knows what is missing: point at the row of the first missing key and say to

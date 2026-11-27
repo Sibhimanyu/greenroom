@@ -87,7 +87,8 @@ MainActor.assumeIsolated {
         let (web, win) = load("created-apps")
         snap(web, "1-created-apps-before-\(part == .meetingApp ? "meeting" : "hosting")", coach: coachFor(part, .createdApps, rows: []))
         let r = run(web, .createApp, part: part); let s = state(web)
-        check(r.code == "done", "\(part.title): result done (got \(r.code))")
+        check(r.code == "named", "\(part.title): result named (got \(r.code))")
+        check(s["named"] as? String == ZoomActorRules.appName(part) && s["nameCreated"] as? Int == 1, "\(part.title): typed the name and pressed Create in the name dialog (\(String(describing: s["named"])))")
         check(s["plus"] as? Int == 1 && s["build"] as? Int == 1, "\(part.title): pressed + once and Build once")
         check(s["created"] as? String == type, "\(part.title): chose \(type) and pressed Create")
         check(s["cancel"] as? Int == 0 && s["regen"] as? Int == 0 && s["del"] as? Int == 0, "\(part.title): never Cancel, Regenerate or Delete")
@@ -99,8 +100,26 @@ MainActor.assumeIsolated {
         let (web, win) = load("created-apps")
         _ = js(web, "document.getElementById('plus').click(); document.getElementById('build').click();")
         let r = run(web, .createApp, part: .hostingApp); let s = state(web)
-        check(r.code == "done" && s["plus"] as? Int == 1 && s["build"] as? Int == 1, "dialog already open: + and Build not pressed again")
+        check(r.code == "named" && s["plus"] as? Int == 1 && s["build"] as? Int == 1, "dialog already open: + and Build not pressed again")
         check(s["created"] as? String == "Server to server OAuth app", "dialog already open: type chosen and Create pressed")
+        win.orderOut(nil)
+    }
+
+    print("-- Name dialog on its own: types the name; never overwrites a typed one")
+    do {
+        let (web, win) = load("created-apps")
+        _ = js(web, "document.getElementById('plus').click(); document.getElementById('build').click(); document.querySelectorAll('input[type=radio]')[1].click(); document.getElementById('create').click();")
+        var s = state(web)
+        check(s["named"] is NSNull || s["named"] == nil, "name dialog open, nothing typed yet")
+        let r = run(web, .createApp, part: .hostingApp); s = state(web)
+        check(r.code == "named" && s["named"] as? String == "Greenroom Hosting", "name dialog: typed Greenroom Hosting and pressed Create (got \(r.code))")
+        win.orderOut(nil)
+    }
+    do {
+        let (web, win) = load("created-apps")
+        _ = js(web, "document.getElementById('plus').click(); document.getElementById('build').click(); document.querySelectorAll('input[type=radio]')[0].click(); document.getElementById('create').click(); var i=document.getElementById('nmi'); i.value='My own name'; i.dispatchEvent(new Event('input',{bubbles:true}));")
+        let r = run(web, .createApp, part: .meetingApp); let s = state(web)
+        check(r.code == "named" && s["named"] as? String == "My own name", "a name the person typed is kept; Create is just pressed (got \(String(describing: s["named"])))")
         win.orderOut(nil)
     }
 

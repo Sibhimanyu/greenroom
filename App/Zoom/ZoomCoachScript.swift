@@ -118,7 +118,7 @@ enum ZoomCoachScript {
         go.addEventListener('click', function (e) {
           e.preventDefault();
           if (go.disabled) return;
-          try { window.webkit.messageHandlers.coach.postMessage('do'); } catch (err) {}
+          if (curActionNow) { try { window.webkit.messageHandlers.coach.postMessage('do:' + curActionNow); } catch (err) {} }
         });
         row.appendChild(go); row.appendChild(hide);
         card.appendChild(head); card.appendChild(text); card.appendChild(plan); card.appendChild(note); card.appendChild(row);
@@ -136,17 +136,18 @@ enum ZoomCoachScript {
         if (st.kind === 'createAfter') return isChosen(row) ? findControl('Create', root) : null;
         return null;
       }
-      var stageText = null, stageCounter = null, stageDone = false, lostAt = 0;
+      var stageText = null, stageCounter = null, stageDone = false, stageAction = null, stagePlan = null, stageIdx = -1, lostAt = 0;
+      var noteKey = null, lastNote = null, curActionNow = null;
 
       // A later stage the page has reached: {target} (the target may be null), or null when not reached.
       function stageResult(st) {
-        if (st.kind === 'afterSwitchOn') { var sw = findToggle(st.switchLabel); return sw && isOn(sw) ? { target: findNavLink(st.label), done: true } : null; }
+        if (st.kind === 'afterSwitchOn') { var sw = findToggle(st.switchLabel); return sw && isOn(sw) ? { target: st.label ? findNavLink(st.label) : null, done: true } : null; }
         if (st.kind === 'afterTextsPresent') {
           var all = st.texts && st.texts.length;
           for (var i = 0; all && i < st.texts.length; i++) if (!textVisibleOutside(st.texts[i])) { all = false; }
-          return all ? { target: findNavLink(st.label), done: true } : null;
+          return all ? { target: st.label ? findNavLink(st.label) : null, done: true } : null;
         }
-        if (st.kind === 'afterActivated') return pageActivated() ? { target: findNavLink(st.label), done: true } : null;
+        if (st.kind === 'afterActivated') return pageActivated() ? { target: st.label ? findNavLink(st.label) : null, done: true } : null;
         if (st.kind === 'nameField' || st.kind === 'createNamed') {
           var d = openDialog();
           if (!d || dialogHeading(d).indexOf(nn2(st.label)) !== 0) return null;
@@ -164,11 +165,11 @@ enum ZoomCoachScript {
       var dialogEl = null;
       function resolve() {
         if (!cfg) return null;
-        stageText = null; stageCounter = null; stageDone = false;
+        stageText = null; stageCounter = null; stageDone = false; stageAction = null; stagePlan = null; stageIdx = -1;
         dialogEl = openDialog();
         var t = resolveInner();
         // With a dialog open the coach only ever points INSIDE it; nothing behind it.
-        if (dialogEl && (!t || !dialogEl.contains(t))) { if (t) { stageText = null; stageCounter = null; stageDone = false; } return null; }
+        if (dialogEl && (!t || !dialogEl.contains(t))) { if (t) { stageText = null; stageCounter = null; stageDone = false; stageAction = null; stagePlan = null; stageIdx = -1; } return null; }
         return t;
       }
       function resolveInner() {
@@ -176,7 +177,7 @@ enum ZoomCoachScript {
           // The furthest later stage the page shows wins; else the first spotlight.
           for (var si = cfg.then.length - 1; si >= 0; si--) {
             var r = stageResult(cfg.then[si]);
-            if (r) { stageText = cfg.then[si].text; stageCounter = cfg.then[si].counter || null; stageDone = r.done; return r.target; }
+            if (r) { stageText = cfg.then[si].text; stageCounter = cfg.then[si].counter || null; stageDone = r.done; stageAction = cfg.then[si].action || null; stagePlan = cfg.then[si].plan || null; stageIdx = si; return r.target; }
           }
         }
         if (cfg.kind === 'appRow') return findAppRow(cfg.rowIndex);
@@ -204,15 +205,22 @@ enum ZoomCoachScript {
         if (mark) { ui.markEl.src = mark; ui.markEl.style.display = 'block'; }
         var behindDialog = !!dialogEl && !target && !stageText;
         ui.text.textContent = behindDialog ? cfg.dialogText : (useSearch ? cfg.searchText : (stageText || cfg.text));
-        var canDo = !!cfg.action && !stageDone && !behindDialog;
+        // The button, the plan line and the result line belong to the CURRENT stage only.
+        var curAction = stageIdx >= 0 ? stageAction : cfg.action;
+        var curPlan = stageIdx >= 0 ? stagePlan : cfg.plan;
+        var key = behindDialog ? 'dlg' : String(stageIdx);
+        if (cfg.note !== lastNote) { lastNote = cfg.note; noteKey = cfg.note ? key : null; }
+        var canDo = !!curAction && !stageDone && !behindDialog;
         ui.go.style.display = canDo ? 'inline-block' : 'none';
         ui.go.style.background = fill;
         ui.go.disabled = !!cfg.busy;
         ui.go.textContent = cfg.busy ? 'Working\\u2026' : 'Do this step';
-        ui.plan.textContent = canDo && !cfg.busy && cfg.plan ? cfg.plan : '';
+        ui.plan.textContent = canDo && !cfg.busy && curPlan ? curPlan : '';
         ui.plan.style.display = ui.plan.textContent ? 'block' : 'none';
-        ui.note.textContent = cfg.note || '';
-        ui.note.style.display = cfg.note ? 'block' : 'none';
+        var showNote = !!cfg.note && noteKey === key;
+        ui.note.textContent = showNote ? cfg.note : '';
+        ui.note.style.display = showNote ? 'block' : 'none';
+        curActionNow = canDo ? curAction : null;
         var animate = !reduce && ui.placed;
         ui.spot.className = 'spot' + (animate ? ' move' : '');
         ui.card.className = 'card' + (animate ? ' move' : '');

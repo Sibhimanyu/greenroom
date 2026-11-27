@@ -195,6 +195,14 @@ Keys: labels match case-insensitively (Zoom writes "Client secret"). The reader 
 
 Status: built (`ZoomClipboardRulesTests`, `ZoomGuideFollowRulesTests`, `ZoomBarRulesTests`, `ZoomCoachRulesTests`; the reader and the credentials coach on a mock of the real card in `scripts/render/zoom-actor.sh`); the clipboard pickup and the continue flow are untested live.
 
+### R18. Zoom's own order, and the check as the judge
+
+Owner live test, 2026-11-27. Zoom opens `/develop/apps/<id>/credentials` first after creating a Server-to-Server app (its wizard order is App Credentials, Information, Feature, Scopes, Activation), and the run had wrongly called the app "set up" with no scopes and no activation. Now: the run has eight steps in Zoom's order (`ZoomRun`, one source): 1 Create the meeting app, 2 Copy its keys (Basic information comes first on a General app), 3 Turn on Meeting SDK, 4 Create the hosting app, 5 Copy its keys, 6 Fill in Information (the Feature page counts as 6: just Continue), 7 Add the permissions, 8 Turn it on.
+
+Keys in is not done. An app is **set up** only when its keys are complete AND the latest Check Zoom setup passed for that app (`ZoomRunRules.passed`): the Meeting app's line is `sdk`, the hosting app's are all the others. A part's keys becoming complete starts the check by itself (not in a session, not twice), and it re-runs after each completed Do this step and when the person leaves a fixed place, until it passes (`shouldCheckAfterKeys`, `shouldRecheck`). A failed line is the current step (`ZoomRunRules.fix`): missing scopes, Scopes ("Add 8 missing permissions"); a refused token, Activation; Meeting SDK off, Embed; missing keys, the credentials page. The bar and the guide's status line show it ("Step 7 of 8 \u00B7 Add 8 missing permissions") and Continue goes there when it is behind the person; a fix still ahead waits its turn, so Continue follows Zoom's order. "\u2713 set up" never shows while the latest check for that app has failures; Back to Greenroom shows only when both apps passed. A part showing "Needs a fix" requires some of its keys to be filled in.
+
+Status: built (`ZoomRunRulesTests`, `ZoomBarRulesTests`, `ZoomGuideFollowRulesTests`, `ZoomCoachRulesTests`); the loop is untested live.
+
 ## Plan
 
 1. Pure rules first, red then green: R2, R4 URLs, R3, R5 decide, R1 placement, R7.

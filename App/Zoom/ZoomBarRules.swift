@@ -23,6 +23,9 @@ struct ZoomBarFacts: Equatable {
     var hasMatchingRow = false
     /// A "Do this step" run is under way.
     var working = false
+    /// The latest Check Zoom setup (R18): an app is set up only when its keys are in AND its lines passed.
+    var checkLines: [ZoomCheckLine] = []
+    var checkRunning = false
 }
 
 enum ZoomBarContext: Equatable {
@@ -35,6 +38,8 @@ enum ZoomBarContext: Equatable {
     case openInSafari
     /// A "Do this step" run is under way.
     case working
+    /// The check for this app is running.
+    case checking
 
     var title: String {
         switch self {
@@ -44,6 +49,7 @@ enum ZoomBarContext: Equatable {
         case .signIn: return "Sign in"
         case .openInSafari: return "Open in Safari"
         case .working: return ZoomActorRules.busyTitle
+        case .checking: return "Checking\u{2026}"
         }
     }
 }
@@ -75,17 +81,34 @@ enum ZoomBarRules {
         let onSignInPage = f.page?.isSignIn == true
         let offersSignOut = ZoomSignInStateRules.offersSignOut(f.signIn) && !onSignInPage
         let part: ZoomGuidePart = f.page?.app.map { $0 == .sdk ? .meetingApp : .hostingApp } ?? f.part
+        let app: ZoomOwnApp = part == .meetingApp ? .sdk : .s2s
         let isSignedOut = onSignInPage || f.signIn == .signedOut
+        let keysComplete = part == .meetingApp ? f.meetingComplete : f.hostingComplete
+        let otherPart: ZoomGuidePart = part == .meetingApp ? .hostingApp : .meetingApp
 
-        // Title: one counter across both apps ("Step 5 of 7 \u{00B7} Add the permissions").
+        // The check is the judge (R18): set up only when it passed for that app; a failed line is the current step.
+        func passed(_ a: ZoomOwnApp, _ keys: Bool) -> Bool {
+            ZoomRunRules.passed(a, lines: f.checkLines, running: f.checkRunning, keysComplete: keys)
+        }
+        let meetingPassed = passed(.sdk, f.meetingComplete), hostingPassed = passed(.s2s, f.hostingComplete)
+        let partPassed = app == .sdk ? meetingPassed : hostingPassed
+        let fix = f.checkRunning ? nil : ZoomRunRules.fix(app, lines: f.checkLines, keysComplete: keysComplete)
+        let pageStep = f.page.flatMap { ZoomGuideFollowRules.step(part: part, page: $0) }
+        let fixStep = fix.map { ZoomRunRules.step($0, app: app) }
+        // A fix BEHIND the person (an earlier tab) or on this very step is the current step; one still ahead waits its turn.
+        let fixIsCurrent = fix != nil && fixStep != nil && (pageStep == nil || fixStep! <= pageStep!)
+
+        // Title: one counter across both apps ("Step 7 of 8 \u{00B7} Add 2 missing permissions").
         let title: String
         let appWord = part == .meetingApp ? "meeting" : "hosting"
         if isSignedOut {
             title = "Sign in to Zoom"
-        } else if let page = f.page, page != .createdApps, let step = ZoomGuideFollowRules.step(part: part, page: page) {
+        } else if let fix, fixIsCurrent, let fixStep, f.page?.app != nil {
+            title = ZoomRun.counter(fixStep) + dot + ZoomRunRules.title(fix)
+        } else if let page = f.page, page != .createdApps, let step = pageStep {
             var t = ZoomRun.counter(step) + dot + ZoomRun.name(step)
             // The two "Copy its keys" steps say which app they are for; every other name already does.
-            if step == 3 || step == 7 { t += dot + part.title }
+            if step == 2 || step == 5 { t += dot + part.title }
             title = t
         } else if let page = f.page, page.app != nil {
             title = part.title + dot + "Set up the app"
@@ -98,24 +121,30 @@ enum ZoomBarRules {
         }
 
         // Contextual button.
-        let partComplete = part == .meetingApp ? f.meetingComplete : f.hostingComplete
-        let onCredentials = f.page.map { ZoomMarketplacePages.keyFields(on: $0) != nil } ?? false
         let context: ZoomBarContext
         if f.working && !onSignInPage { context = .working }
         else if f.page == .passkey { context = .openInSafari }
         else if onSignInPage { context = .none }
         else if f.signIn == .signedOut { context = .signIn }
         else if f.page == .s2s(f.page?.appID ?? "", .scopes), part == .hostingApp { context = .copyScopes }
-        else if onCredentials && partComplete { context = .setUp("\(part.title) is set up") }
+        else if f.checkRunning && keysComplete && f.page?.app != nil { context = .checking }
+        else if partPassed && f.page?.app != nil { context = .setUp("\(part.title) is set up") }
         else { context = .none }
 
-        // Primary button.
+        // Primary button: Back to Greenroom only when BOTH apps passed; else Continue to the next place.
         let primary: ZoomBarPrimary
         if onSignInPage { primary = .none }
-        else if f.meetingComplete && f.hostingComplete { primary = .backToGreenroom }
-        else if onCredentials && partComplete {
-            let other: ZoomGuidePart = part == .meetingApp ? .hostingApp : .meetingApp
-            primary = .next(other, nextPage(other, f.ids))
+        else if meetingPassed && hostingPassed { primary = .backToGreenroom }
+        else if partPassed {
+            primary = .next(otherPart, nextPage(otherPart, f.ids))
+        } else if let fix, fixIsCurrent, fixStep != pageStep, let id = f.page?.appID ?? (app == .sdk ? f.ids.meeting : f.ids.hosting) {
+            primary = .next(part, ZoomRunRules.page(fix, app: app, id: id))
+        } else if let page = f.page, page.app != nil, !(fix != nil && fixIsCurrent), let next = ZoomRunRules.nextTab(after: page),
+                  (ZoomRunRules.continuesWithoutWork(page) && (keysComplete || (pageStep ?? 0) >= 6))
+                    || (fix == .activation && pageStep == 7) {
+            // Zoom's own order: Credentials, Information, Feature, Scopes, Activation. Scopes, Activation and the
+            // Meeting SDK switch are done through Do this step, and the check says when they are done.
+            primary = .next(part, next)
         } else { primary = .none }
 
         return ZoomBar(title: title, context: context, primary: primary, offersSignOut: offersSignOut)

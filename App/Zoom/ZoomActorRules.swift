@@ -74,6 +74,28 @@ enum ZoomActorRules {
         return !isDenied(name.replacingOccurrences(of: scope, with: ""))
     }
 
+    /// Zoom's name dialogs (lowercase heading prefixes): the ONLY place the actor may type a name.
+    static let nameHeadings = ["create a server-to-server oauth app", "create a general app"]
+
+    static func allowedNameDialog(_ heading: String) -> Bool {
+        let h = normalize(heading)
+        return nameHeadings.contains { h.hasPrefix($0) }
+    }
+
+    /// The name the actor gives the app, unless the person already typed one.
+    static func appName(_ part: ZoomGuidePart) -> String { part == .hostingApp ? "Greenroom Hosting" : "Greenroom Meeting" }
+
+    /// A step runs only on its own pages (checked again in Swift when the card's button is pressed).
+    static func pageAllows(_ step: ZoomActorStep, _ page: ZoomMarketplacePage) -> Bool {
+        switch (step, page) {
+        case (.createApp, .createdApps), (.createApp, .chooseType): return true
+        case (.addScopes, .s2s(_, .scopes)): return true
+        case (.activate, .s2s(_, .activation)): return true
+        case (.enableSDK, .general(_, .embed)): return true
+        default: return false
+        }
+    }
+
     /// The step a page offers (nil on credentials, sign-in and every other page). `coachKind` is the coach's spotlight kind.
     static func step(part: ZoomGuidePart, page: ZoomMarketplacePage, coachKind: ZoomCoach.Kind) -> ZoomActorStep? {
         switch (part, page) {
@@ -90,7 +112,7 @@ enum ZoomActorRules {
         switch step {
         case .createApp:
             let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
-            return "Greenroom will press + \u{2192} Build app, choose \(type) and press Create."
+            return "Greenroom will press + \u{2192} Build app, choose \(type), press Create, then name it \(appName(part)) and press Create."
         case .addScopes:
             return "Greenroom will add the \(ZoomScopes.countWord) scopes: open + Add Scopes, tick each one and press Done."
         case .activate: return "Greenroom will press Activate your app."
@@ -113,6 +135,9 @@ enum ZoomActorRules {
         case (.addScopes, "no-add-scopes"): return "Couldn\u{2019}t find + Add Scopes. Press it yourself; Copy scopes is in the bar."
         case (.addScopes, "no-panel"): return "The scopes panel didn\u{2019}t open. Press + Add Scopes yourself; Copy scopes is in the bar."
         case (.createApp, "done"): return "Pressed Create. Fill in what Zoom asks next."
+        case (.createApp, "named"): return "Named it and pressed Create. Fill in what Zoom asks next."
+        case (.createApp, "no-name"): return "Couldn\u{2019}t find the name field. Type a name yourself, then press Create."
+        case (.createApp, "no-create-enabled"): return "Typed the name but Create didn\u{2019}t turn on. Check the name and press Create yourself."
         case (.createApp, "no-plus"): return "Couldn\u{2019}t find the + button. Press it yourself."
         case (.createApp, "no-build"): return "Couldn\u{2019}t find Build app in the menu. Press it yourself."
         case (.createApp, "no-chooser"): return "The app type dialog didn\u{2019}t open. Press Build app yourself."

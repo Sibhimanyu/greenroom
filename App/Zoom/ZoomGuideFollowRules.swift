@@ -8,11 +8,12 @@
 //
 import Foundation
 
-/// The Zoom window's setup is ONE run of seven steps across both apps (owner, 2026-11-27): the Meeting app's
-/// three, then the Hosting app's four. The only source of the numbering and the step names.
+/// The Zoom window's setup is ONE run of eight steps across both apps, in Zoom's own tab order (owner, 2026-11-27):
+/// the Meeting app's three (Basic information comes first, then Embed), then the Hosting app's five (App Credentials,
+/// Information, Scopes, Activation). The only source of the numbering and the step names.
 enum ZoomRun {
-    static let names = ["Create the meeting app", "Turn on Meeting SDK", "Copy its keys",
-                        "Create the hosting app", "Add the permissions", "Turn it on", "Copy its keys"]
+    static let names = ["Create the meeting app", "Copy its keys", "Turn on Meeting SDK",
+                        "Create the hosting app", "Copy its keys", "Fill in Information", "Add the permissions", "Turn it on"]
     static var total: Int { names.count }
 
     static func name(_ step: Int) -> String { (1...total).contains(step) ? names[step - 1] : "" }
@@ -36,13 +37,13 @@ enum ZoomGuideFollowRules {
         guard let page else { return nil }
         switch (part, page) {
         case (.meetingApp, .createdApps), (.meetingApp, .chooseType): return 1
-        case (.meetingApp, .general(_, .embed)): return 2
-        case (.meetingApp, .general(_, .information)): return 3
+        case (.meetingApp, .general(_, .information)): return 2
+        case (.meetingApp, .general(_, .embed)): return 3
         case (.hostingApp, .createdApps), (.hostingApp, .chooseType): return 4
-        case (.hostingApp, .s2s(_, .information)), (.hostingApp, .s2s(_, .feature)): return 4
-        case (.hostingApp, .s2s(_, .scopes)): return 5
-        case (.hostingApp, .s2s(_, .activation)): return 6
-        case (.hostingApp, .s2s(_, .credentials)): return 7
+        case (.hostingApp, .s2s(_, .credentials)): return 5
+        case (.hostingApp, .s2s(_, .information)), (.hostingApp, .s2s(_, .feature)): return 6
+        case (.hostingApp, .s2s(_, .scopes)): return 7
+        case (.hostingApp, .s2s(_, .activation)): return 8
         default: return nil
         }
     }

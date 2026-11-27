@@ -57,7 +57,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// A key copied with Zoom's own copy button while a credentials page is (or just was) shown. Never logged.
     var onCopied: (ZoomMarketplacePage, String) -> Void = { _, _ in }
     /// Which parts have all their keys in Greenroom, and the remembered app IDs, for the bar.
-    var barState: () -> (meeting: Bool, hosting: Bool, ids: ZoomAppIDs) = { (false, false, ZoomAppIDs()) }
+    var barState: () -> (meeting: Bool, hosting: Bool, ids: ZoomAppIDs, lines: [ZoomCheckLine], running: Bool) = { (false, false, ZoomAppIDs(), [], false) }
+    /// A "Do this step" run finished: look at the check again while something fails.
+    var onStepDone: () -> Void = {}
     /// The bar's "Back to Greenroom" hands over to the guide.
     var onBackToGreenroom: () -> Void = {}
 
@@ -221,7 +223,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         bar = ZoomBarRules.bar(ZoomBarFacts(part: requestedPart, page: lastPage, ids: s.ids, meetingComplete: s.meeting,
                                             hostingComplete: s.hosting, signIn: signIn,
                                             hasMatchingRow: appRows.map { !ZoomCoachRules.matchingRows(requestedPartForBar, $0).isEmpty } ?? false,
-                                            working: working))
+                                            working: working, checkLines: s.lines, checkRunning: s.running))
     }
 
     /// The same address in Safari (R8).
@@ -457,13 +459,12 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     // MARK: Do this step (R16)
 
     /// Runs the page's one safe step, on the person's press only (the coach card's button).
-    private func runStep() {
+    private func runStep(_ name: String) {
         guard !working, let webView, let url = webView.url, ZoomMarketplacePages.isMarketplace(url),
               let page = ZoomMarketplacePages.page(for: url) else { return }
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
-        let kind = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
-                                        needsApp: needsApp(part), appRows: appRows, missingKeys: missingKeys(page))?.kind ?? .none
-        guard let step = ZoomActorRules.step(part: part, page: page, coachKind: kind) else { note(page, "step refused"); return }
+        // The card names the step it is offering; Swift only runs a known step on that step's own pages.
+        guard let step = ZoomActorStep(rawValue: name), ZoomActorRules.pageAllows(step, page) else { note(page, "step refused"); return }
         working = true; actorNote = nil
         updateBar(); drawCoach(page)
         note(page, "step:\(step.logName) start")
@@ -484,6 +485,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
                 self.working = false
                 self.updateBar()
                 self.refresh()
+                self.onStepDone()
             }
         }
     }
@@ -535,7 +537,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         case "coach":
             switch message.body as? String {
             case "hide": tipsOn = false
-            case "do": runStep()
+            case .some(let body) where body.hasPrefix("do:"): runStep(String(body.dropFirst(3)))
             default: break
             }
         default: break

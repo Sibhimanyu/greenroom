@@ -151,7 +151,12 @@ struct ZoomGuideStep: View {
         let state = flow.state(part)
         let label = ZoomGuideFlowRules.label(part, facts)
         let step = state == .done ? nil : ZoomGuideFollowRules.step(part: part, page: assist.page)
-        let words = step.map { ZoomRun.counter($0) } ?? label
+        // A failed check line is the current step (R18): "Step 7 of 8 \u{00B7} Add 8 missing permissions".
+        let app: ZoomOwnApp = part == .meetingApp ? .sdk : .s2s
+        let keysDone = part == .meetingApp ? facts.sdkFilled == 2 : facts.s2sFilled == 3
+        let fixWords = ZoomRunRules.fix(app, lines: checkLines, keysComplete: keysDone)
+            .map { ZoomRun.counter(ZoomRunRules.step($0, app: app)) + " \u{00B7} " + ZoomRunRules.title($0) }
+        let words = step.map { ZoomRun.counter($0) } ?? (label == "Needs a fix" ? (fixWords ?? label) : label)
         let shortcuts = ZoomConnectRules.shortcuts(part, ids: assist.ids)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {

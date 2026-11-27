@@ -99,6 +99,12 @@ struct ZoomBarView: View {
             }
             .lineLimit(1)
             .fixedSize()
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(bar.context.title).font(.callout).foregroundStyle(.secondary)
+            }
+            .fixedSize()
         case .working:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)

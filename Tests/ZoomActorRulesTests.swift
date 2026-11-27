@@ -75,9 +75,9 @@ final class ZoomActorRulesTests: XCTestCase {
 
     func testThePlanLineSaysWhatItWillDo() {
         XCTAssertEqual(ZoomActorRules.plan(.createApp, part: .meetingApp),
-                       "Greenroom will press + \u{2192} Build app, choose General app and press Create.")
+                       "Greenroom will press + \u{2192} Build app, choose General app, press Create, then name it Greenroom Meeting and press Create.")
         XCTAssertEqual(ZoomActorRules.plan(.createApp, part: .hostingApp),
-                       "Greenroom will press + \u{2192} Build app, choose Server to server OAuth app and press Create.")
+                       "Greenroom will press + \u{2192} Build app, choose Server to server OAuth app, press Create, then name it Greenroom Hosting and press Create.")
         XCTAssertEqual(ZoomActorRules.plan(.addScopes, part: .hostingApp),
                        "Greenroom will add the \(ZoomScopes.countWord) scopes: open + Add Scopes, tick each one and press Done.")
         XCTAssertEqual(ZoomActorRules.plan(.activate, part: .hostingApp), "Greenroom will press Activate your app.")
@@ -98,6 +98,9 @@ final class ZoomActorRulesTests: XCTestCase {
         XCTAssertEqual(m(.addScopes, r("no-confirm", added: 8, total: 8)), "Press Done to save the scopes.")
         XCTAssertEqual(m(.addScopes, r("no-add-scopes")), "Couldn\u{2019}t find + Add Scopes. Press it yourself; Copy scopes is in the bar.")
         XCTAssertEqual(m(.createApp, r("done")), "Pressed Create. Fill in what Zoom asks next.")
+        XCTAssertEqual(m(.createApp, r("named")), "Named it and pressed Create. Fill in what Zoom asks next.")
+        XCTAssertEqual(m(.createApp, r("no-name")), "Couldn\u{2019}t find the name field. Type a name yourself, then press Create.")
+        XCTAssertEqual(m(.createApp, r("no-create-enabled")), "Typed the name but Create didn\u{2019}t turn on. Check the name and press Create yourself.")
         XCTAssertEqual(m(.createApp, r("no-plus")), "Couldn\u{2019}t find the + button. Press it yourself.")
         XCTAssertEqual(m(.createApp, r("no-build")), "Couldn\u{2019}t find Build app in the menu. Press it yourself.")
         XCTAssertEqual(m(.createApp, r("no-radio")), "Couldn\u{2019}t choose the app type. Choose it yourself, then press Create.")
@@ -134,5 +137,45 @@ final class ZoomActorRulesTests: XCTestCase {
         XCTAssertEqual((args["allow"] as? [String])?.contains("done"), true)
         let c = ZoomActorScript.arguments(.createApp, part: .meetingApp)
         XCTAssertEqual(c["typeLabel"] as? String, "General app")
+    }
+
+    // The name input is the one input the actor may type into besides the scope search, and only in Zoom's name dialog.
+
+    func testTheNameInputIsOnlyAllowedInTheNameDialogs() {
+        let ok = ZoomActorRules.allowedNameDialog
+        XCTAssertTrue(ok("Create a Server-to-Server OAuth app"))
+        XCTAssertTrue(ok("create a general app"))
+        XCTAssertTrue(ok("  Create a General app  "))
+        XCTAssertFalse(ok("What kind of app are you creating"))
+        XCTAssertFalse(ok("Create a Webhook only app"))
+        XCTAssertFalse(ok("Delete the app"))
+        XCTAssertFalse(ok(""))
+        XCTAssertEqual(ZoomActorRules.nameHeadings, ["create a server-to-server oauth app", "create a general app"])
+        XCTAssertEqual(ZoomActorRules.appName(.hostingApp), "Greenroom Hosting")
+        XCTAssertEqual(ZoomActorRules.appName(.meetingApp), "Greenroom Meeting")
+        // The deny-list is unchanged and still wins over the name dialog's Create.
+        XCTAssertTrue(ZoomActorRules.isDenied("Delete"))
+        XCTAssertTrue(ZoomActorRules.allowed("Create", for: .createApp))
+    }
+
+    func testAStepIsOnlyRunOnItsOwnPages() {
+        let p = ZoomActorRules.pageAllows
+        XCTAssertTrue(p(.createApp, .createdApps)); XCTAssertTrue(p(.createApp, .chooseType(id)))
+        XCTAssertFalse(p(.createApp, .s2s(id, .scopes)))
+        XCTAssertTrue(p(.addScopes, .s2s(id, .scopes))); XCTAssertFalse(p(.addScopes, .createdApps))
+        XCTAssertTrue(p(.activate, .s2s(id, .activation))); XCTAssertFalse(p(.activate, .s2s(id, .credentials)))
+        XCTAssertTrue(p(.enableSDK, .general(id, .embed))); XCTAssertFalse(p(.enableSDK, .general(id, .information)))
+        for step in ZoomActorStep.allCases { XCTAssertFalse(p(step, .signIn)); XCTAssertFalse(p(step, .passkey)) }
+        XCTAssertEqual(ZoomActorStep(rawValue: "createApp"), .createApp)
+        XCTAssertNil(ZoomActorStep(rawValue: "regenerate"))
+    }
+
+    func testTheScriptTypesOnlyIntoTheNameFieldInsideAKnownDialog() {
+        let js = ZoomActorScript.body
+        XCTAssertTrue(js.contains("nameHeadings"))
+        XCTAssertTrue(js.contains("typeName"))
+        let args = ZoomActorScript.arguments(.createApp, part: .hostingApp)
+        XCTAssertEqual(args["nameHeadings"] as? [String], ZoomActorRules.nameHeadings)
+        XCTAssertEqual(args["appName"] as? String, "Greenroom Hosting")
     }
 }

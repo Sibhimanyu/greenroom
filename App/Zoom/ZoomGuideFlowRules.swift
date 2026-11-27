@@ -165,7 +165,7 @@ enum ZoomGuideFlowRules {
             : lines.isEmpty ? .notRun
             : failed.isEmpty ? .passed : .failed
         return ZoomGuideFlowFacts(sdkFilled: filled(sdkFields), s2sFilled: filled(s2sFields), check: check,
-                                  meetingAppNeedsFix: fixesIn(.sdk), hostingAppNeedsFix: fixesIn(.s2s))
+                                  meetingAppNeedsFix: fixesIn(.sdk) && filled(sdkFields) > 0, hostingAppNeedsFix: fixesIn(.s2s) && filled(s2sFields) > 0)
     }
 
     static let notConnectedNote = "Zoom isn\u{2019}t connected yet; you can finish this later in Settings \u{2192} Zoom."

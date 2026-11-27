@@ -25,10 +25,12 @@ enum ZoomActorScript {
                 "scopes": ZoomScopes.names,
                 "deny": ZoomActorRules.denyPattern,
                 "allow": ZoomActorRules.allowList(for: step),
-                "typeLabel": type]
+                "typeLabel": type,
+                "nameHeadings": ZoomActorRules.nameHeadings,
+                "appName": ZoomActorRules.appName(part)]
     }
 
-    /// Function body (top-level await allowed). Arguments: step, scopes, deny, allow, typeLabel.
+    /// Function body (top-level await allowed). Arguments: step, scopes, deny, allow, typeLabel, nameHeadings, appName.
     static let body = """
     var host = null;
     \(ZoomAppListScript.scanFunction)
@@ -89,6 +91,23 @@ enum ZoomActorScript {
       setter.call(input, value);
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    // The ONLY other input the actor types into: the App Name field, inside Zoom's own name dialog.
+    function inNameDialog(dlg) {
+      var h = dialogHeading(dlg);
+      for (var i = 0; i < nameHeadings.length; i++) if (h.indexOf(nameHeadings[i]) === 0) return true;
+      return false;
+    }
+    function nameInput(dlg) {
+      var ins = dlg.querySelectorAll('input[type=text],input:not([type])');
+      for (var i = 0; i < ins.length; i++) if (shown(ins[i])) return ins[i];
+      return null;
+    }
+    function typeName(dlg, input, value) {
+      if (!dlg || !input || !inNameDialog(dlg) || !dlg.contains(input)) { log.push('refused name'); return false; }
+      setSearch(input, value);
+      log.push('typed name ok');
+      return true;
+    }
     function isSearch(el) {
       var hint = nn((el.getAttribute('placeholder') || '') + ' ' + (el.getAttribute('aria-label') || ''));
       return hint.indexOf('search') >= 0 && shown(el);
@@ -127,7 +146,27 @@ enum ZoomActorScript {
       return null;
     }
 
+    async function nameAndCreate(dlg) {
+      var input = nameInput(dlg);
+      if (!input) return fin('no-name');
+      // Only whether it has text is read: a name the person typed is never overwritten.
+      if (!(input.value || '').length) {
+        if (!typeName(dlg, input, appName)) return fin('no-name');
+        await until(function () { return (input.value || '').length > 0; }, 2000);
+      }
+      var create = await until(function () {
+        var d = openDialog(); var c = d && findControl('Create', d);
+        return c && c.matches('button,[role=button]') && !c.disabled && c.getAttribute('aria-disabled') !== 'true' ? c : null;
+      });
+      if (!create) return fin('no-create-enabled');
+      if (!press(create)) return fin('no-create-enabled');
+      await until(function () { var d = openDialog(); return !d || !inNameDialog(d); });
+      return fin('named');
+    }
+
     async function createApp() {
+      var open0 = openDialog();
+      if (open0 && inNameDialog(open0)) return await nameAndCreate(open0);
       var chooser = chooserRoot();
       if (!chooser) {
         var item = findMenuItem('Build app') || findMenuItem('Build');
@@ -154,6 +193,9 @@ enum ZoomActorScript {
         return el && el.matches('button,[role=button]') ? el : null;
       });
       if (!create || !press(create)) return fin('no-create');
+      // The name dialog usually follows: carry on through it in the same press.
+      var named = await until(function () { var d = openDialog(); return d && inNameDialog(d) ? d : null; }, 4000);
+      if (named) return await nameAndCreate(named);
       await wait(300);
       return fin('done');
     }

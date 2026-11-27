@@ -7,19 +7,19 @@ final class ZoomGuideFollowRulesTests: XCTestCase {
 
     // MARK: One continuous run: 7 steps across both apps
 
-    func testOneRunOfSevenSteps() {
-        XCTAssertEqual(ZoomRun.total, 7)
-        XCTAssertEqual(ZoomRun.names, ["Create the meeting app", "Turn on Meeting SDK", "Copy its keys",
-                                       "Create the hosting app", "Add the permissions", "Turn it on", "Copy its keys"])
-        XCTAssertEqual(ZoomRun.counter(5), "Step 5 of 7")
+    func testOneRunOfEightStepsInZoomsOwnOrder() {
+        XCTAssertEqual(ZoomRun.total, 8)
+        XCTAssertEqual(ZoomRun.names, ["Create the meeting app", "Copy its keys", "Turn on Meeting SDK",
+                                       "Create the hosting app", "Copy its keys", "Fill in Information", "Add the permissions", "Turn it on"])
+        XCTAssertEqual(ZoomRun.counter(5), "Step 5 of 8")
         XCTAssertEqual(ZoomRun.firstStep(of: .meetingApp), 1)
         XCTAssertEqual(ZoomRun.firstStep(of: .hostingApp), 4)
         XCTAssertNil(ZoomRun.firstStep(of: .check))
         XCTAssertEqual(ZoomRun.part(ofStep: 3), .meetingApp)
         XCTAssertEqual(ZoomRun.part(ofStep: 4), .hostingApp)
-        XCTAssertEqual(ZoomRun.name(3), "Copy its keys")
+        XCTAssertEqual(ZoomRun.name(2), "Copy its keys")
         XCTAssertEqual(ZoomRun.name(0), "")
-        XCTAssertEqual(ZoomRun.name(8), "")
+        XCTAssertEqual(ZoomRun.name(9), "")
         for n in ZoomRun.names { XCTAssertFalse(n.lowercased().contains("class")) }
     }
 
@@ -29,14 +29,14 @@ final class ZoomGuideFollowRulesTests: XCTestCase {
         typealias Row = (ZoomGuidePart, ZoomMarketplacePage, Int?)
         let table: [Row] = [
             (.meetingApp, .createdApps, 1), (.meetingApp, .chooseType(id), 1),
-            (.meetingApp, .general(id, .embed), 2), (.meetingApp, .general(id, .information), 3),
+            (.meetingApp, .general(id, .information), 2), (.meetingApp, .general(id, .embed), 3),
             (.meetingApp, .general(id, .scopes), nil), (.meetingApp, .general(id, .other), nil),
             (.meetingApp, .s2s(id, .scopes), nil), (.meetingApp, .s2s(id, .credentials), nil),
             (.meetingApp, .signIn, nil),
             (.hostingApp, .createdApps, 4), (.hostingApp, .chooseType(id), 4),
-            (.hostingApp, .s2s(id, .information), 4), (.hostingApp, .s2s(id, .feature), 4),
-            (.hostingApp, .s2s(id, .scopes), 5), (.hostingApp, .s2s(id, .activation), 6),
-            (.hostingApp, .s2s(id, .credentials), 7),
+            (.hostingApp, .s2s(id, .credentials), 5),
+            (.hostingApp, .s2s(id, .information), 6), (.hostingApp, .s2s(id, .feature), 6),
+            (.hostingApp, .s2s(id, .scopes), 7), (.hostingApp, .s2s(id, .activation), 8),
             (.hostingApp, .general(id, .embed), nil), (.hostingApp, .general(id, .information), nil),
             (.hostingApp, .signIn, nil),
             (.check, .createdApps, nil), (.check, .s2s(id, .credentials), nil),

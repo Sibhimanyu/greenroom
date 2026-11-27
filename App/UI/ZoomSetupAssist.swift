@@ -12,6 +12,7 @@
 //  than the pending offer, in memory, until it is used or the page changes.
 //
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -29,6 +30,8 @@ final class ZoomSetupAssist: ObservableObject {
     private var filledFields: [ZoomGuidePart: [ZoomKeyField]] = [:]
     /// Parts the person undid on this visit to the page: not filled again until the page changes.
     private var undone: Set<ZoomGuidePart> = []
+    private var checkWatch: [AnyCancellable] = []
+    private var lastRecheck = Date.distantPast
     /// What "Use a different app" took away, until Undo or the next change (in memory only).
     private var removedBackup: [ZoomGuidePart: (values: [ZoomKeyField: String], id: String?)] = [:]
 
@@ -40,9 +43,17 @@ final class ZoomSetupAssist: ObservableObject {
         window.onPage = { [weak self] in self?.pageChanged($0) }
         window.onKeys = { [weak self] page, found in self?.keysFound(page, found) }
         window.barState = { [weak self] in
-            guard let self, let c = self.coordinator else { return (false, false, ZoomAppIDs()) }
-            return (self.isComplete(.sdk, c), self.isComplete(.s2s, c), self.state.ids)
+            guard let self, let c = self.coordinator else { return (false, false, ZoomAppIDs(), [], false) }
+            return (self.isComplete(.sdk, c), self.isComplete(.s2s, c), self.state.ids,
+                    c.zoomSetupChecker.lines, c.zoomSetupChecker.isRunning)
         }
+        window.onStepDone = { [weak self] in self?.recheck() }
+        // The check is the judge: whenever its lines change, the bar and the coach look again.
+        checkWatch = [coordinator.zoomSetupChecker.$lines.sink { _ in
+            DispatchQueue.main.async { ZoomMarketplaceWindow.shared.updateBar(); ZoomMarketplaceWindow.shared.refresh() }
+        }, coordinator.zoomSetupChecker.$isRunning.sink { _ in
+            DispatchQueue.main.async { ZoomMarketplaceWindow.shared.updateBar() }
+        }]
         window.onBackToGreenroom = { [weak self] in self?.backToGreenroom() }
         window.missingKeys = { [weak self] page in self?.missingKeys(on: page) }
         window.onCopied = { [weak self] page, text in self?.copied(on: page, text: text) }
@@ -129,6 +140,26 @@ final class ZoomSetupAssist: ObservableObject {
         }
     }
 
+    /// R18: when a part's keys become complete, the check runs for it by itself (not in a session, not twice).
+    private func checkIfPartCompleted(_ app: ZoomOwnApp, before: Bool) {
+        guard let coordinator else { return }
+        if ZoomRunRules.shouldCheckAfterKeys(completeBefore: before, completeAfter: isComplete(app, coordinator),
+                                             inSession: coordinator.phase.isInMeeting, running: coordinator.zoomSetupChecker.isRunning) {
+            coordinator.checkZoomSetup()
+        }
+    }
+
+    /// After a completed step (or leaving a fixed place): check again while something fails, at most every 4s.
+    func recheck() {
+        guard let coordinator, Date().timeIntervalSince(lastRecheck) > 4 else { return }
+        let lines = coordinator.zoomSetupChecker.lines
+        let hasFix = [ZoomOwnApp.sdk, .s2s].contains { ZoomRunRules.fix($0, lines: lines, keysComplete: isComplete($0, coordinator)) != nil }
+        if ZoomRunRules.shouldRecheck(hasFix: hasFix, running: coordinator.zoomSetupChecker.isRunning, inSession: coordinator.phase.isInMeeting) {
+            lastRecheck = Date()
+            coordinator.checkZoomSetup()
+        }
+    }
+
     private func isComplete(_ app: ZoomOwnApp, _ c: CoordinatorController) -> Bool {
         fields(app, c).values.allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
@@ -183,7 +214,7 @@ final class ZoomSetupAssist: ObservableObject {
         let part = Self.part(of: app)
         // A secret not loaded yet would look empty, and be overwritten.
         coordinator.loadSecretsIfNeeded()
-        let before = bothFilled
+        let partBefore = isComplete(app, coordinator)
         var next = state
         switch ZoomKeyFillRules.decide(current: fields(app, coordinator), found: found) {
         case .nothing:
@@ -199,17 +230,13 @@ final class ZoomSetupAssist: ObservableObject {
         state = next
         // The coach says "Got it" now.
         ZoomMarketplaceWindow.shared.refresh()
-        if ZoomKeyFillRules.shouldAutoCheck(bothFilledBefore: before, bothFilledAfter: bothFilled,
-                                            inSession: coordinator.phase.isInMeeting,
-                                            checkRunning: coordinator.zoomSetupChecker.isRunning) {
-            coordinator.checkZoomSetup()
-        }
+        checkIfPartCompleted(app, before: partBefore)
     }
 
     /// "Use the keys from this page".
     func useOffer(_ part: ZoomGuidePart) {
         guard let coordinator, let app = Self.app(of: part), let values = offerValues[part] else { return }
-        let before = bothFilled
+        let partBefore = isComplete(app, coordinator)
         write(app, values, coordinator)
         filledFields[part] = Array(values.keys)
         offerValues[part] = nil
@@ -217,11 +244,7 @@ final class ZoomSetupAssist: ObservableObject {
         next.offers.remove(part); next.filled.insert(part)
         state = next
         ZoomMarketplaceWindow.shared.refresh()
-        if ZoomKeyFillRules.shouldAutoCheck(bothFilledBefore: before, bothFilledAfter: bothFilled,
-                                            inSession: coordinator.phase.isInMeeting,
-                                            checkRunning: coordinator.zoomSetupChecker.isRunning) {
-            coordinator.checkZoomSetup()
-        }
+        checkIfPartCompleted(app, before: partBefore)
     }
 
     /// "Undo" on "Filled in from Zoom": empties what the window filled.

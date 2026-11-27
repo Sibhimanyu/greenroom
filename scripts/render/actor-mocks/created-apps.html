@@ -18,13 +18,16 @@
  <label class="card"><input type="radio" name="t" value="Server to server OAuth app"><div><b>Server to server OAuth app</b><span>Call Zoom's API from your server.</span></div></label>
  <label class="card"><input type="radio" name="t" value="Webhook only app"><div><b>Webhook only app</b><span>Receive events.</span></div></label>
  <p><button id="create">Create</button> <button id="cancel">Cancel</button></p></div>
+<div role="dialog" id="nm" style="display:none;position:fixed;left:200px;top:120px;width:480px;background:#fff;border-radius:12px;padding:24px"><h2 id="nmh"></h2><label>App Name</label><input id="nmi" type="text" placeholder="Name your app" style="width:100%;padding:8px;margin:6px 0 16px;box-sizing:border-box"><button id="nmc" disabled>Create</button> <button id="nmx">Cancel</button></div>
 <script>
- var st = window.__state = {plus:0, build:0, chosen:null, created:null, cancel:0, regen:0, del:0};
+ var st = window.__state = {plus:0, build:0, chosen:null, created:null, cancel:0, regen:0, del:0, named:null, nameCreated:0};
  var $ = function(i){return document.getElementById(i)};
  $('plus').onclick=function(){st.plus++; $('menu').style.display='block'};
  $('build').onclick=function(){st.build++; $('menu').style.display='none'; $('dlg').style.display='block'};
  document.querySelectorAll('input[type=radio]').forEach(function(r){r.onchange=function(){st.chosen=r.value}});
- $('create').onclick=function(){st.created=st.chosen; $('dlg').style.display='none'};
+ $('create').onclick=function(){st.created=st.chosen; $('dlg').style.display='none'; $('nmh').textContent = st.chosen==='General app' ? 'Create a General app' : 'Create a Server-to-Server OAuth app'; $('nm').style.display='block'};
+ $('nmi').addEventListener('input',function(){ $('nmc').disabled = $('nmi').value.length===0; });
+ $('nmc').onclick=function(){st.named=$('nmi').value; st.nameCreated++; $('nm').style.display='none'};
  $('cancel').onclick=function(){st.cancel++; $('dlg').style.display='none'};
  $('regen').onclick=function(){st.regen++}; $('del').onclick=function(){st.del++};
 </script></body></html>

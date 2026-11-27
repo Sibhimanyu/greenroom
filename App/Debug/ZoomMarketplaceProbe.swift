@@ -22,7 +22,7 @@ import SwiftUI
 import WebKit
 
 @MainActor
-final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate {
+final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSWindowDelegate {
     static let shared = ZoomMarketplaceProbe()
 
     static let startURL = URL(string: "https://marketplace.zoom.us/user/build")!
@@ -49,6 +49,7 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
         let web = WKWebView(frame: .zero, configuration: config)
         web.customUserAgent = Self.safariUA
         web.navigationDelegate = self
+        web.uiDelegate = self
 
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 850),
                            styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -136,6 +137,17 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
     // MARK: WKNavigationDelegate / WKScriptMessageHandler
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { scheduleRecord("commit") }
+
+    /// Links that open a new window (Marketplace's "Developers", target=_blank)
+    /// load in this same window instead, and are logged as such.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url {
+            Self.append(["ts": ISO8601DateFormatter().string(from: Date()), "reason": "new-window", "url": Self.safeURL(url.absoluteString)])
+            webView.load(URLRequest(url: url))
+        }
+        return nil
+    }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { scheduleRecord("finish") }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

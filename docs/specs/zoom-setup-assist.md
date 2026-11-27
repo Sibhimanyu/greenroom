@@ -203,6 +203,14 @@ Keys in is not done. An app is **set up** only when its keys are complete AND th
 
 Status: built (`ZoomRunRulesTests`, `ZoomBarRulesTests`, `ZoomGuideFollowRulesTests`, `ZoomCoachRulesTests`); the loop is untested live.
 
+### R19. Do this step on every step, and the real credentials pages
+
+Owner live tests, 2026-11-27. **Name dialog:** Do this step carries on through Zoom's name dialog in the same press (+ \u2192 Build app \u2192 type \u2192 Create \u2192 name \u2192 Create), typing "Greenroom Hosting" / "Greenroom Meeting" only in a dialog headed "Create a Server-to-Server OAuth app" / "Create a General app" (that name field is the one input the actor may type into besides the scope search; a name the person typed is kept). The plan line, the button and the result line belong to the CURRENT stage: when the coach moves on, the old result is cleared and the new stage's own plan shows (`ZoomCoachStage.action`, `.plan`).
+
+**Keys:** the reader takes each value from the nearest following input of its label (read-only or disabled inputs included; case-insensitive), under the "App Credentials" card in the probe's order as the fallback, and logs only how each field was read ("read accountID=input22;clientID=missing"). If a value truly cannot be read, the coach spotlights that row's own **Copy** button ("Press Copy next to Account ID. Greenroom fills it in."; "Hover \u2026" stays only for the General app card, where copy appears on hover), and the card never covers any row's field (beside the group, else below it). Do this step on a keys page reads the keys, then presses each missing key's own Copy control (a mouseover on the row first, for hover-only controls; reveal, show, eye and view are never pressed; a Copy inside a Regenerate control is denied) and picks the key up from the clipboard, then puts the clipboard back as it was (cleared if it was not plain text). On Server-to-Server Information and Feature: if a required field is empty the coach spotlights it ("Fill in <label>, then press Continue."; nothing is typed), else Do this step presses Continue.
+
+Status: built (`ZoomActorRulesTests`, `ZoomCoachRulesTests`, `ZoomKeyReaderScriptTests`; the actor harness covers a mock of the S2S credentials rows, the hover card, the Information page and the name dialog); untested live (the real S2S pages were not reachable from this account when checked).
+
 ## Plan
 
 1. Pure rules first, red then green: R2, R4 URLs, R3, R5 decide, R1 placement, R7.

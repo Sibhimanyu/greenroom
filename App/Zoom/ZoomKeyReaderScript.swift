@@ -39,18 +39,29 @@ enum ZoomKeyReaderScript {
       function fieldInputs(scope) {
         return Array.prototype.slice.call(scope.querySelectorAll('input')).filter(function (i) {
           var t = (i.getAttribute('type') || 'text').toLowerCase();
-          return (t === 'text' || t === 'password') && !i.disabled;
+          return t === 'text' || t === 'password';
         });
       }
-      var all = fieldInputs(document);
+      var labels = document.body ? document.body.getElementsByTagName('*') : [];
+      // The probe's order (text, text, password) is only trusted inside the "App Credentials" card: the smallest
+      // ancestor of that heading that holds as many fields as we want; else the whole page.
+      var scope = document;
+      for (var h = 0; h < labels.length; h++) {
+        if (ownText(labels[h]) !== 'app credentials') continue;
+        var q = labels[h];
+        for (var up = 0; up < 8 && q && q !== document.body; up++, q = q.parentElement) {
+          if (fieldInputs(q).length >= want.length) { scope = q; break; }
+        }
+        break;
+      }
+      var all = fieldInputs(scope);
       var texts = all.filter(function (i) { return (i.getAttribute('type') || 'text').toLowerCase() === 'text'; });
       var passwords = all.filter(function (i) { return (i.getAttribute('type') || '').toLowerCase() === 'password'; });
-      var labels = document.body ? document.body.getElementsByTagName('*') : [];
 
       function byLabel(text) {
         for (var i = 0; i < labels.length; i++) {
           var el = labels[i];
-          if (ownText(el) !== text) continue;
+          if (ownText(el) !== text && ownText(el) !== text + ':') continue;
           var p = el;
           for (var hops = 0; p && p !== document.body && hops < 5; hops++, p = p.parentElement) {
             var inputs = fieldInputs(p);
@@ -88,15 +99,19 @@ enum ZoomKeyReaderScript {
         return passwords[0] || null;
       }
 
-      var out = {};
+      var out = {}, diag = [];
       for (var k = 0; k < want.length; k++) {
         var name = want[k];
         var input = byLabel(LABEL[name].toLowerCase());
         var v = input ? String(input.value || '').trim() : '';
         if (!v) { var text = textSibling(LABEL[name].toLowerCase()); if (text) v = text; }
-        if (!v) { var guess = byOrder(name); v = guess ? String(guess.value || '').trim() : ''; }
+        var how = v ? (input ? 'input' : 'text') : '';
+        if (!v) { var guess = byOrder(name); v = guess ? String(guess.value || '').trim() : ''; if (v) how = 'order'; }
+        // Lengths only: how each field was found, never what it holds.
+        diag.push(name + '=' + (v ? how + v.length : 'missing'));
         if (v) out[name] = v;
       }
+      out._diag = diag.join(';');
       return JSON.stringify(out);
     }
     """

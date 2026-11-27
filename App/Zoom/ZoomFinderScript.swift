@@ -138,6 +138,36 @@ enum ZoomFinderScript {
         return nn2(h ? h.textContent : (dlg.textContent || '').slice(0, 80));
       }
       function nn2(s) { return (s || '').replace(/\\s+/g, ' ').trim().toLowerCase(); }
+      // The row that holds a credential label and its value: the label's smallest ancestor with a button or an input.
+      function credRowOf(labelEl) {
+        var p = labelEl;
+        for (var hops = 0; p && p !== document.body && hops < 5; hops++, p = p.parentElement) {
+          if (p.querySelector('input,button,[role=button]') && p !== labelEl) return p;
+        }
+        return labelEl.parentElement || labelEl;
+      }
+      // The credential rows together, so a card never covers a neighbouring row's field: avoidEl stays the row, and
+      // `groupRect` is the union of its sibling rows that hold an input.
+      function credGroupOf(row) { return row; }
+      function groupRect(row) {
+        var r = row.getBoundingClientRect(), left = r.left, top = r.top, right = r.right, bottom = r.bottom;
+        var sibs = row.parentElement ? row.parentElement.children : [];
+        for (var i = 0; i < sibs.length; i++) {
+          if (!sibs[i].querySelector('input') || !shown(sibs[i])) continue;
+          var q = sibs[i].getBoundingClientRect();
+          left = Math.min(left, q.left); top = Math.min(top, q.top); right = Math.max(right, q.right); bottom = Math.max(bottom, q.bottom);
+        }
+        return { left: left, top: top, right: right, bottom: bottom };
+      }
+      // A row's copy control: text "Copy", else an aria-label or title that starts with copy.
+      function copyControlIn(row) {
+        var els = row.querySelectorAll('button,[role=button],a,svg,span');
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i], t = nn2(el.textContent), a = nn2((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || ''));
+          if (t === 'copy' || /^copy\\b/.test(a)) { var c = el.closest('button,[role=button],a') || el; if (shown(c)) return c; }
+        }
+        return null;
+      }
       function isOn(el) {
         if (!el) return false;
         return el.getAttribute('aria-checked') === 'true' || el.checked === true || !!el.closest('.Mui-checked') ||
@@ -167,6 +197,23 @@ enum ZoomFinderScript {
           if (el) { var c = el.closest('a,[role=tab],[role=link],[role=menuitem],button,li'); return c && shown(c) ? c : el; }
         }
         return findControl(label);
+      }
+    """
+
+    /// Read-only form helpers for the coach and the actor (not the dialog scan, which reads no values at all).
+    static let formFunctions = """
+      // The first visible required input that is still empty: whether it has text only, never the text.
+      function firstEmptyRequired() {
+        var ins = document.querySelectorAll('input,textarea');
+        for (var i = 0; i < ins.length; i++) {
+          var el = ins[i], ty = (el.getAttribute('type') || 'text').toLowerCase();
+          if (!shown(el) || el.disabled || el.readOnly || ['text', 'email', 'url', 'tel', 'search'].indexOf(ty) < 0) continue;
+          var lab = el.closest('label') || (el.id ? document.querySelector('label[for="' + el.id + '"]') : null);
+          var near = lab ? (lab.textContent || '').replace(/\\s+/g, ' ').trim() : '';
+          var required = el.required || el.getAttribute('aria-required') === 'true' || near.indexOf('*') >= 0;
+          if (required && !(el.value || '').length) return { el: el, label: near.replace(/\\*/g, '').trim() };
+        }
+        return null;
       }
     """
 }

@@ -39,6 +39,7 @@ enum ZoomCoachScript {
       \(ZoomAppListScript.scanFunction)
       var host = null;
       \(ZoomFinderScript.functions)
+      \(ZoomFinderScript.formFunctions)
       var root = null, ui = null, cfg = null, ring = 'currentColor', fill = '#4E8C30', mark = null;
       var status = 'cleared', target = null, resizeObs = null, mutObs = null, timer = 0, pending = 0, dismissed = false;
       var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -137,7 +138,7 @@ enum ZoomCoachScript {
         return null;
       }
       var stageText = null, stageCounter = null, stageDone = false, stageAction = null, stagePlan = null, stageIdx = -1, lostAt = 0;
-      var noteKey = null, lastNote = null, curActionNow = null;
+      var noteKey = null, lastNote = null, curActionNow = null, emptyLabel = '';
 
       // A later stage the page has reached: {target} (the target may be null), or null when not reached.
       function stageResult(st) {
@@ -148,6 +149,12 @@ enum ZoomCoachScript {
           return all ? { target: st.label ? findNavLink(st.label) : null, done: true } : null;
         }
         if (st.kind === 'afterActivated') return pageActivated() ? { target: st.label ? findNavLink(st.label) : null, done: true } : null;
+        if (st.kind === 'emptyRequired') {
+          var er = firstEmptyRequired();
+          if (!er) return null;
+          emptyLabel = er.label || 'the first empty field';
+          return { target: er.el, done: false };
+        }
         if (st.kind === 'nameField' || st.kind === 'createNamed') {
           var d = openDialog();
           if (!d || dialogHeading(d).indexOf(nn2(st.label)) !== 0) return null;
@@ -162,10 +169,10 @@ enum ZoomCoachScript {
         return t ? { target: t, done: false } : null;
       }
 
-      var dialogEl = null;
+      var dialogEl = null, avoidEl = null;
       function resolve() {
         if (!cfg) return null;
-        stageText = null; stageCounter = null; stageDone = false; stageAction = null; stagePlan = null; stageIdx = -1;
+        stageText = null; stageCounter = null; stageDone = false; stageAction = null; stagePlan = null; stageIdx = -1; avoidEl = null;
         dialogEl = openDialog();
         var t = resolveInner();
         // With a dialog open the coach only ever points INSIDE it; nothing behind it.
@@ -182,7 +189,14 @@ enum ZoomCoachScript {
         }
         if (cfg.kind === 'appRow') return findAppRow(cfg.rowIndex);
         if (cfg.kind === 'build') return findBuildButton();
-        if (cfg.kind === 'credRow') { var lab = textElement(cfg.label); var par = lab && lab.parentElement; return par && par.children.length >= 2 && shown(par) ? par : lab; }
+        if (cfg.kind === 'copyButton') {
+          var cl = textElement(cfg.label);
+          if (!cl) return null;
+          var crow = credRowOf(cl), cb = copyControlIn(crow);
+          avoidEl = credGroupOf(crow);
+          return cb || crow;
+        }
+        if (cfg.kind === 'credRow') { var lab = textElement(cfg.label); if (lab) avoidEl = credGroupOf(credRowOf(lab)); var par = lab && lab.parentElement; return par && par.children.length >= 2 && shown(par) ? par : lab; }
         if (!cfg.label) return null;
         if (cfg.kind === 'row') return findRow(cfg.label);
         if (cfg.kind === 'toggle') return findToggle(cfg.label);
@@ -204,7 +218,7 @@ enum ZoomCoachScript {
         ui.count.textContent = counter ? ' \\u00B7 ' + counter : '';
         if (mark) { ui.markEl.src = mark; ui.markEl.style.display = 'block'; }
         var behindDialog = !!dialogEl && !target && !stageText;
-        ui.text.textContent = behindDialog ? cfg.dialogText : (useSearch ? cfg.searchText : (stageText || cfg.text));
+        ui.text.textContent = behindDialog ? cfg.dialogText : (useSearch ? cfg.searchText : String(stageText || cfg.text).replace('{label}', emptyLabel));
         // The button, the plan line and the result line belong to the CURRENT stage only.
         var curAction = stageIdx >= 0 ? stageAction : cfg.action;
         var curPlan = stageIdx >= 0 ? stagePlan : cfg.plan;
@@ -233,8 +247,16 @@ enum ZoomCoachScript {
           ui.spot.style.left = (r.left - pad) + 'px'; ui.spot.style.top = (r.top - pad) + 'px';
           ui.spot.style.width = (r.width + pad * 2) + 'px'; ui.spot.style.height = (r.height + pad * 2) + 'px';
           ui.ring.style.boxShadow = '0 0 0 2px ' + ring;
-          if (r.right + 16 + cw <= vw - 8) { left = r.right + 16 + pad; top = r.top; }
-          else if (r.left - 16 - cw >= 8) { left = r.left - 16 - cw - pad; top = r.top; }
+          if (avoidEl) {
+            // Rows with value fields: never cover any of them. Beside the whole group if there is room, else
+            // above or below the WHOLE group, right-aligned.
+            var ar = groupRect(avoidEl);
+            if (ar.right + 16 + cw <= vw - 8) { left = ar.right + 16; top = r.top; }
+            else if (ar.bottom + 16 + ch <= vh - 8) { left = ar.right - cw; top = ar.bottom + 12; }
+            else { left = ar.right - cw; top = Math.max(8, ar.top - 12 - ch); }
+          }
+          else if (r.right + 16 + cw <= vw - 8) { left = r.right + 16 + pad; top = r.top; }
+          else if (!avoidEl && r.left - 16 - cw >= 8) { left = r.left - 16 - cw - pad; top = r.top; }
           // No room beside it (a full-width row): sit under or over its RIGHT end, so
           // the card covers the empty side of the next row, never its label or the
           // Create button, which Zoom puts on the left.

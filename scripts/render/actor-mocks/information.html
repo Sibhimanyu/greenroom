@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mock: S2S Information page (sample, not Zoom's)</title>
+<style>body{font:14px -apple-system,system-ui,sans-serif;padding:24px 40px;background:#f4f5f7;color:#222;width:600px}
+ label{display:block;margin:14px 0 4px}input{width:100%;padding:8px;box-sizing:border-box}</style></head><body>
+<h2>Information</h2>
+<label for="n">App name *</label><input id="n" type="text" required>
+<label for="e">Company name *</label><input id="e" type="text" required>
+<label for="o">Notes</label><input id="o" type="text">
+<p><button id="cont">Continue</button> <button id="regen">Regenerate</button></p>
+<script>
+ var st = window.__state = {continued: 0, regen: 0};
+ document.getElementById('cont').onclick=function(){ st.continued++ };
+ document.getElementById('regen').onclick=function(){ st.regen++ };
+</script></body></html>

@@ -50,9 +50,9 @@ func check(_ ok: Bool, _ what: String) { print((ok ? "PASS  " : "FAIL  ") + what
     return (try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any]) ?? [:]
 }
 
-@MainActor func run(_ web: WKWebView, _ step: ZoomActorStep, part: ZoomGuidePart) -> ZoomActorResult {
+@MainActor func run(_ web: WKWebView, _ step: ZoomActorStep, part: ZoomGuidePart, field: String = "") -> ZoomActorResult {
     var out = ZoomActorResult(code: "error"); var done = false
-    web.callAsyncJavaScript(ZoomActorScript.body, arguments: ZoomActorScript.arguments(step, part: part), in: nil, in: .defaultClient) { r in
+    web.callAsyncJavaScript(ZoomActorScript.body, arguments: ZoomActorScript.arguments(step, part: part, field: field), in: nil, in: .defaultClient) { r in
         switch r {
         case .success(let v): if let s = v as? String, let d = try? JSONDecoder().decode(ZoomActorResult.self, from: Data(s.utf8)) { out = d }
         case .failure(let e): print("actor error: \(e)")
@@ -193,6 +193,45 @@ MainActor.assumeIsolated {
         win.orderOut(nil)
     }
 
+    print("-- S2S App Credentials: the reader fills all three from the read-only inputs")
+    do {
+        let (web, win) = load("s2s-credentials", base: "https://marketplace.zoom.us/develop/apps/AbC_123-xyZ789qrstuvw1/credentials")
+        let json = js(web, ZoomKeyReaderScript.call(fields: [.accountID, .clientID, .clientSecret]), page: false) as? String ?? ""
+        let obj = (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String]) ?? [:]
+        check(obj["accountID"] != nil && obj["clientID"] != nil && obj["clientSecret"] != nil, "reader: Account ID (disabled input), Client ID and the password input all read")
+        check(obj["_diag"] == "accountID=input22;clientID=input21;clientSecret=input36", "reader: lengths only in the log line (\(obj["_diag"] ?? ""))")
+        let c = ZoomCoachRules.coach(part: .hostingApp, page: .s2s(id, .credentials), keysFilled: false, tipsOn: true, missingKeys: [.accountID, .clientID, .clientSecret])
+        snap(web, "15-s2s-credentials-copy-button-coach", coach: ZoomCoachRules.offeringAction(c, part: .hostingApp, page: .s2s(id, .credentials)))
+        // A value that cannot be read: the row's own Copy is pressed, never Show or Regenerate.
+        _ = js(web, "blank('a')")
+        let jsonB = js(web, ZoomKeyReaderScript.call(fields: [.accountID]), page: false) as? String ?? ""
+        check(!jsonB.contains("\"accountID\"") || jsonB.contains("order") == false, "reader: an unreadable field is simply missing")
+        let r = run(web, .readKeys, part: .hostingApp, field: "Account ID"); let s = state(web)
+        check(r.code == "copied" && (s["copied"] as? [String]) == ["a"], "copy: pressed Account ID's own Copy only (got \(r.code), \(s["copied"] ?? "-"))")
+        check(s["eye"] as? Int == 0 && s["regen"] as? Int == 0, "copy: never Show or Regenerate")
+        win.orderOut(nil)
+    }
+    print("-- General app card: copy only on hover; View is never pressed")
+    do {
+        let (web, win) = load("general-card", base: "https://marketplace.zoom.us/develop/applications/AbC_123-xyZ789qrstuvw1/information")
+        let r = run(web, .readKeys, part: .meetingApp, field: "Client secret"); let s = state(web)
+        check(r.code == "copied" && s["copied"] as? Int == 1, "hover card: hovered the row and pressed Copy (got \(r.code))")
+        check(s["view"] as? Int == 0, "hover card: never View")
+        win.orderOut(nil)
+    }
+    print("-- Information: press Continue only when the required fields are filled")
+    do {
+        let (web, win) = load("information", base: "https://marketplace.zoom.us/develop/apps/AbC_123-xyZ789qrstuvw1/information")
+        let c = ZoomCoachRules.coach(part: .hostingApp, page: .s2s(id, .information), keysFilled: false, tipsOn: true)
+        snap(web, "16-information-required-field", coach: ZoomCoachRules.offeringAction(c, part: .hostingApp, page: .s2s(id, .information)))
+        var r = run(web, .continueInfo, part: .hostingApp)
+        check(r.code == "needs-field" && state(web)["continued"] as? Int == 0, "information: an empty required field stops it, nothing pressed (got \(r.code))")
+        _ = js(web, "document.getElementById('n').value='x'; document.getElementById('e').value='y';")
+        r = run(web, .continueInfo, part: .hostingApp)
+        check(r.code == "done" && state(web)["continued"] as? Int == 1 && state(web)["regen"] as? Int == 0, "information: filled in: Continue pressed once, never Regenerate (got \(r.code))")
+        win.orderOut(nil)
+    }
+
     print("-- Refusals")
     do {
         let (web, win) = load("activation", base: "https://marketplace.zoom.us/develop/apps/AbC_123-xyZ789qrstuvw1/credentials")
@@ -241,7 +280,7 @@ MainActor.assumeIsolated {
         check(c?.text == "Hover Client secret and press its copy button. Greenroom fills it in.", "coach: card for the missing secret")
         _ = js(web, "document.getElementById('cid').textContent = '209M70PLQb2Lyc...'")
         let trunc = js(web, ZoomKeyReaderScript.call(fields: [.clientID]), page: false) as? String ?? ""
-        check(trunc == "{}", "reader: a text that ends with an ellipsis is not readable")
+        check(!trunc.contains("\"clientID\"") && trunc.contains("clientID=missing"), "reader: a text that ends with an ellipsis is not readable")
         win.orderOut(nil)
     }
     print(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")

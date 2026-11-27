@@ -67,7 +67,7 @@ final class ZoomActorRulesTests: XCTestCase {
         XCTAssertNil(step(.meetingApp, .general(id, .information), .none))
         XCTAssertNil(step(.hostingApp, .signIn, .control))
         XCTAssertNil(step(.hostingApp, .passkey, .control))
-        XCTAssertNil(step(.hostingApp, .s2s(id, .information), .none))
+        XCTAssertEqual(step(.hostingApp, .s2s(id, .information), .none), .continueInfo)
         XCTAssertNil(step(.check, .createdApps, .build))
         // A step on the wrong part does not exist.
         XCTAssertNil(step(.meetingApp, .s2s(id, .scopes), .control))
@@ -122,7 +122,7 @@ final class ZoomActorRulesTests: XCTestCase {
         let js = ZoomActorScript.body
         XCTAssertEqual(js.components(separatedBy: ".click(").count - 1, 1, "one place clicks")
         for banned in [".submit(", "fetch(", "XMLHttpRequest", "localStorage", "document.cookie", "console.", "postMessage", "eval(",
-                       "requestSubmit", "dispatchEvent(new MouseEvent", "location.href"] {
+                       "requestSubmit", "new MouseEvent('click'", "new MouseEvent('mousedown'", "location.href"] {
             XCTAssertFalse(js.contains(banned), banned)
         }
         XCTAssertTrue(js.contains("credentials"), "refuses credentials pages")
@@ -177,5 +177,61 @@ final class ZoomActorRulesTests: XCTestCase {
         let args = ZoomActorScript.arguments(.createApp, part: .hostingApp)
         XCTAssertEqual(args["nameHeadings"] as? [String], ZoomActorRules.nameHeadings)
         XCTAssertEqual(args["appName"] as? String, "Greenroom Hosting")
+    }
+
+    // R16 on every step: reading the keys (Copy only) and pressing Continue on Information.
+
+    func testCopyAndContinueAreAllowedOnlyOnTheirSteps() {
+        XCTAssertTrue(ZoomActorRules.allowed("Copy", for: .readKeys))
+        XCTAssertTrue(ZoomActorRules.allowed(" copy ", for: .readKeys))
+        XCTAssertFalse(ZoomActorRules.allowed("Copy", for: .createApp))
+        XCTAssertFalse(ZoomActorRules.allowed("Copy", for: .addScopes))
+        XCTAssertTrue(ZoomActorRules.allowed("Continue", for: .continueInfo))
+        XCTAssertFalse(ZoomActorRules.allowed("Continue", for: .readKeys))
+        XCTAssertTrue(ZoomActorRules.allowed("Continue", for: .addScopes))   // the scopes panel's own confirm list
+    }
+
+    func testRevealShowEyeViewAreNeverPressedForCopyAndTheDenyListStillWins() {
+        for text in ["Show", "Reveal", "View", "Hide", "eye", "Show secret", "visibility", "Regenerate", "Copy and regenerate", "Delete"] {
+            XCTAssertFalse(ZoomActorRules.allowedCopyControl(text: text, label: text), text)
+        }
+        XCTAssertTrue(ZoomActorRules.allowedCopyControl(text: "Copy", label: ""))
+        XCTAssertTrue(ZoomActorRules.allowedCopyControl(text: "", label: "Copy"))
+        XCTAssertTrue(ZoomActorRules.allowedCopyControl(text: "", label: "Copy client secret"))
+        XCTAssertFalse(ZoomActorRules.allowedCopyControl(text: "Copy", label: "Regenerate secret"))
+        XCTAssertFalse(ZoomActorRules.allowedCopyControl(text: "", label: ""))
+        XCTAssertTrue(ZoomActorRules.isDenied("Regenerate"))
+    }
+
+    func testTheNewStepsRunOnlyOnTheirPages() {
+        let p = ZoomActorRules.pageAllows
+        XCTAssertTrue(p(.readKeys, .s2s(id, .credentials))); XCTAssertTrue(p(.readKeys, .general(id, .information)))
+        XCTAssertFalse(p(.readKeys, .s2s(id, .scopes))); XCTAssertFalse(p(.readKeys, .createdApps))
+        XCTAssertTrue(p(.continueInfo, .s2s(id, .information))); XCTAssertTrue(p(.continueInfo, .s2s(id, .feature)))
+        XCTAssertFalse(p(.continueInfo, .s2s(id, .credentials))); XCTAssertFalse(p(.continueInfo, .general(id, .information)))
+        XCTAssertEqual(ZoomActorRules.step(part: .hostingApp, page: .s2s(id, .credentials), coachKind: .copyButton), .readKeys)
+        XCTAssertEqual(ZoomActorRules.step(part: .meetingApp, page: .general(id, .information), coachKind: .credRow), .readKeys)
+        XCTAssertNil(ZoomActorRules.step(part: .hostingApp, page: .s2s(id, .credentials), coachKind: .none))
+        XCTAssertEqual(ZoomActorRules.step(part: .hostingApp, page: .s2s(id, .information), coachKind: .control), .continueInfo)
+        XCTAssertEqual(ZoomActorRules.plan(.readKeys, part: .hostingApp), "Greenroom will read the three keys and fill them in.")
+        XCTAssertEqual(ZoomActorRules.plan(.readKeys, part: .meetingApp), "Greenroom will read the Client ID and copy the Client secret.")
+        XCTAssertEqual(ZoomActorRules.plan(.continueInfo, part: .hostingApp), "Greenroom will press Continue if Zoom\u{2019}s required fields are filled in.")
+    }
+
+    func testTheWordsAfterReadingKeysAndContinuing() {
+        let m = ZoomActorRules.message
+        func r(_ c: String) -> ZoomActorResult { ZoomActorResult(code: c) }
+        XCTAssertEqual(m(.readKeys, r("done")), "Read the keys and filled them in.")
+        XCTAssertEqual(m(.readKeys, r("partial")), "Filled in what Zoom shows. Press Zoom\u{2019}s Copy button for the rest.")
+        XCTAssertEqual(m(.readKeys, r("no-copy")), "Couldn\u{2019}t find a Copy button. Press it yourself and Greenroom will pick the key up.")
+        XCTAssertEqual(m(.continueInfo, r("done")), "Pressed Continue.")
+        XCTAssertEqual(m(.continueInfo, r("needs-field")), "A required field is empty. Fill it in, then press Continue.")
+        XCTAssertEqual(m(.continueInfo, r("no-continue")), "Couldn\u{2019}t find Continue. Press it yourself.")
+    }
+
+    func testTheClipboardIsRestoredNotLeftHoldingASecret() {
+        XCTAssertEqual(ZoomActorRules.restoration(previous: "some text"), .restore("some text"))
+        XCTAssertEqual(ZoomActorRules.restoration(previous: nil), .clear)
+        XCTAssertEqual(ZoomActorRules.restoration(previous: ""), .clear)
     }
 }

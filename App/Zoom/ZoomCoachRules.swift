@@ -29,6 +29,9 @@ struct ZoomCoachStage: Equatable, Codable {
         case nameField
         /// The same dialog once the name field has text (read: non-empty only): spotlight Create.
         case createNamed
+        /// Information page: the first required field that is still empty (only whether it has text is read). `{label}` in
+        /// the text becomes that field's own label.
+        case emptyRequired
     }
     var kind: Kind
     /// What to spotlight (a row, button, menu item or, for the "after" kinds, a nav link).
@@ -44,7 +47,7 @@ struct ZoomCoachStage: Equatable, Codable {
 }
 
 struct ZoomCoach: Equatable, Codable {
-    enum Kind: String, Codable { case none, row, control, toggle, appRow, build, credRow }
+    enum Kind: String, Codable { case none, row, control, toggle, appRow, build, credRow, copyButton }
     /// The visible label of the control to spotlight; nil for a card alone.
     var label: String?
     var kind: Kind
@@ -160,13 +163,28 @@ enum ZoomCoachRules {
             return make("Meeting SDK", .toggle, "Turn on Meeting SDK.",
                         then: [ZoomCoachStage(kind: .afterSwitchOn, label: "", text: "Meeting SDK is on. Greenroom will check it.",
                                               counter: ZoomRun.counter(3), switchLabel: "Meeting SDK")])
+        case .s2s(_, .information), .s2s(_, .feature):
+            var c = make("Continue", .control, "Press Continue to go on.",
+                         then: [ZoomCoachStage(kind: .emptyRequired, label: "", text: "Fill in {label}, then press Continue.")])
+            c.action = ZoomActorStep.continueInfo.rawValue
+            c.plan = ZoomActorRules.plan(.continueInfo, part: part)
+            return c
         case .s2s(_, .credentials), .general(_, .information):
             // Always speaks once it knows what is missing: point at the row of the first missing key and say to
             // press Zoom's own copy button (the secret is not in the page); no "Do this step" here.
             if let missingKeys {
                 guard let first = missingKeys.first else { return make(nil, .none, "Got it: the keys are in Greenroom.") }
                 let name = keyLabel(first)
-                return make(name, .credRow, "Hover \(name) and press its copy button. Greenroom fills it in.")
+                var c: ZoomCoach
+                if case .s2s = page {
+                    // Server-to-Server shows a Copy button in every row: say Press Copy, never Hover.
+                    c = make(name, .copyButton, "Press Copy next to \(name). Greenroom fills it in.")
+                } else {
+                    c = make(name, .credRow, "Hover \(name) and press its copy button. Greenroom fills it in.")
+                }
+                c.action = ZoomActorStep.readKeys.rawValue
+                c.plan = ZoomActorRules.plan(.readKeys, part: part)
+                return c
             }
             return keysFilled ? make(nil, .none, "Got it: the keys are in Greenroom.") : nil
         default:

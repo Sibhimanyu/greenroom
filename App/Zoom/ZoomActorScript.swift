@@ -19,7 +19,7 @@ import Foundation
 
 enum ZoomActorScript {
     /// The arguments for a step: Swift's lists, never the page's.
-    static func arguments(_ step: ZoomActorStep, part: ZoomGuidePart) -> [String: Any] {
+    static func arguments(_ step: ZoomActorStep, part: ZoomGuidePart, field: String = "") -> [String: Any] {
         let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
         return ["step": step.rawValue,
                 "scopes": ZoomScopes.names,
@@ -27,14 +27,17 @@ enum ZoomActorScript {
                 "allow": ZoomActorRules.allowList(for: step),
                 "typeLabel": type,
                 "nameHeadings": ZoomActorRules.nameHeadings,
-                "appName": ZoomActorRules.appName(part)]
+                "appName": ZoomActorRules.appName(part),
+                "field": field,
+                "copyDeny": ZoomActorRules.copyDenyPattern]
     }
 
-    /// Function body (top-level await allowed). Arguments: step, scopes, deny, allow, typeLabel, nameHeadings, appName.
+    /// Function body (top-level await allowed). Arguments: step, scopes, deny, allow, typeLabel, nameHeadings, appName, field, copyDeny.
     static let body = """
     var host = null;
     \(ZoomAppListScript.scanFunction)
     \(ZoomFinderScript.functions)
+    \(ZoomFinderScript.formFunctions)
     var DENY = new RegExp(deny, 'i');
     var log = [];
     function nn(s) { return (s || '').replace(/\\s+/g, ' ').trim().toLowerCase(); }
@@ -164,6 +167,33 @@ enum ZoomActorScript {
       return fin('named');
     }
 
+    // readKeys: press the row's OWN Copy control for one key (the clipboard pickup takes the key from there).
+    // Hover-only controls are revealed with a mouseover on the row; reveal, show, eye and view are never pressed.
+    function pressCopy(el) {
+      var text = nn(el.textContent), label = nn((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || ''));
+      var bad = new RegExp(copyDeny, 'i');
+      var ok = (text === 'copy' || label === 'copy' || label.indexOf('copy ') === 0) && !bad.test(text) && !bad.test(label);
+      if (!ok || !allow.indexOf || allow.indexOf('copy') < 0) { log.push('refused copy'); return false; }
+      return rawClick(el, 'copy', [text, label, nn(el.getAttribute('title'))]);
+    }
+    async function copyKey() {
+      var lab = field ? textElement(field) : null;
+      if (!lab) return fin('no-copy');
+      var row = credRowOf(lab);
+      ['mouseover', 'mouseenter'].forEach(function (t) { row.dispatchEvent(new MouseEvent(t, { bubbles: true })); });
+      var btn = await until(function () { return copyControlIn(row); }, 2500);
+      if (!btn || !pressCopy(btn)) return fin('no-copy');
+      return fin('copied');
+    }
+
+    async function continueInfo() {
+      if (firstEmptyRequired()) return fin('needs-field');
+      var btn = findControl('Continue');
+      if (!btn || !btn.matches('button,[role=button],a') || !press(btn)) return fin('no-continue');
+      await wait(400);
+      return fin('done');
+    }
+
     async function createApp() {
       var open0 = openDialog();
       if (open0 && inNameDialog(open0)) return await nameAndCreate(open0);
@@ -260,11 +290,18 @@ enum ZoomActorScript {
     }
 
     var path = (location.pathname || '');
-    if (path.indexOf('/credentials') >= 0 || path.indexOf('/information') >= 0) return fin('refused');
+    var keysPath = path.indexOf('/credentials') >= 0 || (path.indexOf('/information') >= 0 && path.indexOf('/develop/applications/') >= 0);
+    var infoPath = path.indexOf('/develop/apps/') >= 0 && (path.indexOf('/information') >= 0 || path.indexOf('/feature') >= 0);
+    // Credentials and Information pages belong to their own steps only; every other step refuses them.
+    if (step === 'readKeys') { if (!keysPath) return fin('refused'); }
+    else if (step === 'continueInfo') { if (!infoPath) return fin('refused'); }
+    else if (path.indexOf('/credentials') >= 0 || path.indexOf('/information') >= 0) return fin('refused');
     if (step === 'createApp') return await createApp();
     if (step === 'addScopes') return await addScopes();
     if (step === 'activate') return await activate();
     if (step === 'enableSDK') return await enableSDK();
+    if (step === 'readKeys') return await copyKey();
+    if (step === 'continueInfo') return await continueInfo();
     return fin('refused');
     """
 }

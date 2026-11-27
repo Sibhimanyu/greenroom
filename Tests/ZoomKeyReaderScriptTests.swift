@@ -18,6 +18,14 @@ final class ZoomKeyReaderScriptTests: XCTestCase {
         XCTAssertTrue(js.contains("A-Za-z0-9_-"))
     }
 
+    /// Real App Credentials (2026-11-27): each value sits in a read-only (possibly disabled) input beside a Copy button.
+    func testTheReaderReadsReadOnlyAndDisabledInputsAndFallsBackToTheCredentialsHeadingInputs() {
+        let js = ZoomKeyReaderScript.source
+        XCTAssertFalse(js.contains("!i.disabled"), "read-only fields may carry disabled")
+        XCTAssertTrue(js.contains("app credentials"), "the fallback order is taken inside the App Credentials card")
+        XCTAssertTrue(js.contains("_diag"), "lengths per field for the DEBUG log")
+    }
+
     func testTheReaderNeverActsOnThePageOrLogs() {
         let js = ZoomKeyReaderScript.source
         for banned in [".click(", ".focus(", "dispatchEvent", ".submit(", "console.", "fetch(", "XMLHttpRequest", "postMessage",

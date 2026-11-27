@@ -13,7 +13,7 @@
 import Foundation
 
 enum ZoomActorStep: String, CaseIterable, Codable, Equatable {
-    case createApp, addScopes, activate, enableSDK
+    case createApp, addScopes, activate, enableSDK, readKeys, continueInfo
 
     /// The log word, e.g. "step:scopes click Add Scopes ok".
     var logName: String {
@@ -22,6 +22,8 @@ enum ZoomActorStep: String, CaseIterable, Codable, Equatable {
         case .addScopes: return "scopes"
         case .activate: return "activate"
         case .enableSDK: return "embed"
+        case .readKeys: return "keys"
+        case .continueInfo: return "info"
         }
     }
 }
@@ -58,6 +60,8 @@ enum ZoomActorRules {
         case .addScopes: return ["add scopes", "+ add scopes", "done", "save", "continue"]
         case .activate: return ["activate", "activate your app"]
         case .enableSDK: return ["meeting sdk"]
+        case .readKeys: return ["copy"]
+        case .continueInfo: return ["continue"]
         }
     }
 
@@ -66,6 +70,28 @@ enum ZoomActorRules {
     }
 
     static func allowed(label: String) -> Bool { ZoomActorStep.allCases.contains { allowed(label, for: $0) } }
+
+    /// Words that make a control something other than a plain copy: reveal, show, eye and view are never pressed.
+    static let copyDenyPattern = "(reveal|show|hide|eye|view|visib)"
+
+    /// A control the actor may press to copy a key: its text or label is Copy (or "Copy <something>"), never a reveal
+    /// control, and the main deny-list wins (a Copy inside a Regenerate control is still denied).
+    static func allowedCopyControl(text: String, label: String) -> Bool {
+        let t = normalize(text), l = normalize(label)
+        if isDenied(t) || isDenied(l) { return false }
+        for w in [t, l] where !w.isEmpty {
+            if w.range(of: copyDenyPattern, options: .regularExpression) != nil { return false }
+        }
+        return t == "copy" || l == "copy" || l.hasPrefix("copy ")
+    }
+
+    enum Restoration: Equatable { case restore(String); case clear }
+
+    /// After a key is picked up from the clipboard: put the previous plain-text contents back, or clear it.
+    static func restoration(previous: String?) -> Restoration {
+        guard let previous, !previous.isEmpty else { return .clear }
+        return .restore(previous)
+    }
 
     /// A scope's checkbox: only one of our scopes; the checkbox's own name is checked against the
     /// deny-list with the scope string removed (the scope names themselves contain "delete").
@@ -92,6 +118,8 @@ enum ZoomActorRules {
         case (.addScopes, .s2s(_, .scopes)): return true
         case (.activate, .s2s(_, .activation)): return true
         case (.enableSDK, .general(_, .embed)): return true
+        case (.readKeys, .s2s(_, .credentials)), (.readKeys, .general(_, .information)): return true
+        case (.continueInfo, .s2s(_, .information)), (.continueInfo, .s2s(_, .feature)): return true
         default: return false
         }
     }
@@ -104,6 +132,8 @@ enum ZoomActorRules {
         case (.hostingApp, .s2s(_, .scopes)): return .addScopes
         case (.hostingApp, .s2s(_, .activation)): return .activate
         case (.meetingApp, .general(_, .embed)): return .enableSDK
+        case (.hostingApp, .s2s(_, .credentials)), (.meetingApp, .general(_, .information)): return coachKind == .none ? nil : .readKeys
+        case (.hostingApp, .s2s(_, .information)), (.hostingApp, .s2s(_, .feature)): return .continueInfo
         default: return nil
         }
     }
@@ -117,6 +147,10 @@ enum ZoomActorRules {
             return "Greenroom will add the \(ZoomScopes.countWord) scopes: open + Add Scopes, tick each one and press Done."
         case .activate: return "Greenroom will press Activate your app."
         case .enableSDK: return "Greenroom will turn on Meeting SDK."
+        case .readKeys:
+            return part == .hostingApp ? "Greenroom will read the three keys and fill them in."
+                                       : "Greenroom will read the Client ID and copy the Client secret."
+        case .continueInfo: return "Greenroom will press Continue if Zoom\u{2019}s required fields are filled in."
         }
     }
 
@@ -150,6 +184,12 @@ enum ZoomActorRules {
         case (.enableSDK, "done"): return "Meeting SDK is on."
         case (.enableSDK, "already"): return "Meeting SDK was already on."
         case (.enableSDK, "no-switch"): return "Couldn\u{2019}t find the Meeting SDK switch. Turn it on yourself."
+        case (.readKeys, "done"): return "Read the keys and filled them in."
+        case (.readKeys, "partial"): return "Filled in what Zoom shows. Press Zoom\u{2019}s Copy button for the rest."
+        case (.readKeys, "no-copy"): return "Couldn\u{2019}t find a Copy button. Press it yourself and Greenroom will pick the key up."
+        case (.continueInfo, "done"): return "Pressed Continue."
+        case (.continueInfo, "needs-field"): return "A required field is empty. Fill it in, then press Continue."
+        case (.continueInfo, "no-continue"): return "Couldn\u{2019}t find Continue. Press it yourself."
         case (.enableSDK, "not-verified"): return "Pressed the switch, but it doesn\u{2019}t look on. Check the page."
         default: return "Stopped. Check the page and finish this step yourself."
         }

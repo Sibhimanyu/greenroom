@@ -387,20 +387,23 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         }
     }
 
-    private func readKeys(on page: ZoomMarketplacePage) {
-        guard let fields = ZoomMarketplacePages.keyFields(on: page), let webView else { return }
+    private func readKeys(on page: ZoomMarketplacePage, then done: (() -> Void)? = nil) {
+        guard let fields = ZoomMarketplacePages.keyFields(on: page), let webView else { done?(); return }
         webView.evaluateJavaScript(ZoomKeyReaderScript.call(fields: fields), in: nil, in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
                 if case .failure(let error) = result { self?.note(page, "reader-error " + Self.describe(error)) }
                 guard let self, case .success(let value) = result, let json = value as? String,
                       let data = json.data(using: .utf8),
                       let raw = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-                      self.webView?.url.flatMap(ZoomMarketplacePages.page(for:)) == page else { return }
+                      self.webView?.url.flatMap(ZoomMarketplacePages.page(for:)) == page else { done?(); return }
+                // Lengths only: how each field was read ("accountID=input22;clientID=missing").
+                if let diag = raw["_diag"] { self.note(page, "read " + diag) }
                 var found: [ZoomKeyField: String] = [:]
                 if let v = raw["accountID"] { found[.accountID] = v }
                 if let v = raw["clientID"] { found[.clientID] = v }
                 if let v = raw["clientSecret"] { found[.clientSecret] = v }
                 if !found.isEmpty { self.onKeys(page, found) }
+                done?()
             }
         }
     }
@@ -468,6 +471,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         working = true; actorNote = nil
         updateBar(); drawCoach(page)
         note(page, "step:\(step.logName) start")
+        if step == .readKeys { runReadKeys(page, part: part); return }
         webView.callAsyncJavaScript(ZoomActorScript.body, arguments: ZoomActorScript.arguments(step, part: part), in: nil,
                                     in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
@@ -482,6 +486,48 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
                 for line in r.log ?? [] { self.note(page, "step:\(step.logName) \(line)") }
                 self.note(page, "step:\(step.logName) result \(r.code)")
                 self.actorNote = ZoomActorRules.message(step, r)
+                self.working = false
+                self.updateBar()
+                self.refresh()
+                self.onStepDone()
+            }
+        }
+    }
+
+    /// Do this step on a keys page: read what the page shows, then press the page's OWN Copy control for each key still
+    /// missing (Greenroom picks each up from the clipboard), and put the clipboard back as it was. Nothing else is pressed.
+    private func runReadKeys(_ page: ZoomMarketplacePage, part: ZoomGuidePart) {
+        readKeys(on: page) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                let pb = NSPasteboard.general
+                let plain = (pb.types ?? []).allSatisfy { $0 == .string }
+                let previous = plain ? pb.string(forType: .string) : nil
+                var missing = self.missingKeys(page) ?? []
+                let wanted = missing.count
+                var copied = 0
+                var code = missing.isEmpty ? "done" : "no-copy"
+                for field in missing {
+                    let args = ZoomActorScript.arguments(.readKeys, part: part, field: ZoomCoachRules.keyLabel(field))
+                    let r = try? await self.webView?.callAsyncJavaScript(ZoomActorScript.body, arguments: args, in: nil, contentWorld: .defaultClient)
+                    if let json = r as? String, let d = try? JSONDecoder().decode(ZoomActorResult.self, from: Data(json.utf8)) {
+                        for line in d.log ?? [] { self.note(page, "step:keys \(line)") }
+                        guard d.code == "copied" else { break }
+                    } else { break }
+                    // The clipboard pickup fills the field; wait for it (at most 3s).
+                    for _ in 0..<10 {
+                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        if !(self.missingKeys(page) ?? []).contains(field) { copied += 1; break }
+                    }
+                }
+                missing = self.missingKeys(page) ?? []
+                if wanted > 0 { code = missing.isEmpty ? "done" : (copied > 0 || missing.count < wanted ? "partial" : "no-copy") }
+                // Put the clipboard back as it was (or clear it): the secret must not stay on it.
+                pb.clearContents()
+                if case .restore(let text) = ZoomActorRules.restoration(previous: previous) { pb.setString(text, forType: .string) }
+                self.pasteboardCount = pb.changeCount
+                self.note(page, "step:keys result \(code)")
+                self.actorNote = ZoomActorRules.message(.readKeys, ZoomActorResult(code: code))
                 self.working = false
                 self.updateBar()
                 self.refresh()

@@ -48,7 +48,6 @@ final class ZoomCoachRulesTests: XCTestCase {
     func testNoCoachWhereThereIsNothingToSay() {
         XCTAssertNil(coach(.hostingApp, .createdApps))
         XCTAssertNil(coach(.hostingApp, .signIn))
-        XCTAssertNil(coach(.hostingApp, .s2s(id, .information)))
         XCTAssertNil(coach(.hostingApp, .general(id, .embed)))   // the other kind
         XCTAssertNil(coach(.meetingApp, .s2s(id, .scopes)))
         XCTAssertNil(coach(.check, .chooseType(id)))
@@ -303,13 +302,17 @@ final class ZoomCoachRulesTests: XCTestCase {
     func testAMissingKeySpotlightsItsRowAndSaysToPressZoomsCopyButton() {
         XCTAssertEqual(creds(.meetingApp, .general(id, .information), missing: [.clientSecret]),
                        ZoomCoach(label: "Client secret", kind: .credRow, counter: "Step 2 of 8",
-                                 text: "Hover Client secret and press its copy button. Greenroom fills it in."))
+                                 text: "Hover Client secret and press its copy button. Greenroom fills it in.",
+                                 action: "readKeys", plan: "Greenroom will read the Client ID and copy the Client secret."))
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.accountID, .clientID, .clientSecret]),
-                       ZoomCoach(label: "Account ID", kind: .credRow, counter: "Step 5 of 8",
-                                 text: "Hover Account ID and press its copy button. Greenroom fills it in."))
+                       ZoomCoach(label: "Account ID", kind: .copyButton, counter: "Step 5 of 8",
+                                 text: "Press Copy next to Account ID. Greenroom fills it in.",
+                                 action: "readKeys", plan: "Greenroom will read the three keys and fill them in."))
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientID, .clientSecret])?.label, "Client ID")
+        // On Server-to-Server the Copy button is always visible: "Press Copy", never "Hover".
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientSecret])?.text,
-                       "Hover Client secret and press its copy button. Greenroom fills it in.")
+                       "Press Copy next to Client secret. Greenroom fills it in.")
+        XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientSecret])?.kind, .copyButton)
     }
 
     func testAllKnownSaysGotIt() {
@@ -318,11 +321,27 @@ final class ZoomCoachRulesTests: XCTestCase {
         XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [], filled: true)?.text, "Got it: the keys are in Greenroom.")
     }
 
-    func testCredentialsPagesNeverOfferDoThisStep() {
+    func testKeysPagesOfferDoThisStepWhileKeysAreMissingAndAreSilentOnceKnown() {
         let c = ZoomCoachRules.offeringAction(creds(.meetingApp, .general(id, .information), missing: [.clientSecret]),
                                               part: .meetingApp, page: .general(id, .information))
-        XCTAssertNil(c?.action)
-        XCTAssertNil(c?.plan)
+        XCTAssertEqual(c?.action, "readKeys")
+        XCTAssertEqual(c?.plan, "Greenroom will read the Client ID and copy the Client secret.")
+        XCTAssertNil(creds(.meetingApp, .general(id, .information), missing: [])?.action, "all known: Got it, nothing to do")
+    }
+
+    func testInformationAndFeaturePagesOfferContinue() {
+        for tab in [ZoomS2STab.information, .feature] {
+            let c = coach(.hostingApp, .s2s(id, tab))
+            XCTAssertEqual(c?.label, "Continue")
+            XCTAssertEqual(c?.counter, "Step 6 of 8")
+            XCTAssertEqual(c?.action, "continueInfo")
+            XCTAssertEqual(c?.plan, "Greenroom will press Continue if Zoom\u{2019}s required fields are filled in.")
+            XCTAssertEqual(c?.then?.first?.kind, .emptyRequired)
+            XCTAssertEqual(c?.then?.first?.text, "Fill in {label}, then press Continue.")
+            XCTAssertNil(c?.then?.first?.action, "no Do this step while a required field is empty")
+        }
+        XCTAssertTrue(ZoomCoachScript.source.contains("emptyRequired"))
+        XCTAssertTrue(ZoomCoachScript.source.contains("copyButton"))
     }
 
     func testWithoutKnowledgeOfWhatIsMissingTheOldBehaviourHolds() {

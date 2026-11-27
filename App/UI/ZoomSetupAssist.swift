@@ -18,7 +18,8 @@ import SwiftUI
 final class ZoomSetupAssist: ObservableObject {
     private weak var coordinator: CoordinatorController?
     private let defaults = UserDefaults.standard
-    private static let meetingKey = "zoomSDKAppID", hostingKey = "zoomS2SAppID"
+    private static let meetingKey = "zoomSDKAppID"
+    private static let hostingKey = "zoomS2SAppID"
 
     /// What the guide shows (the page, the IDs, the notices).
     @Published private(set) var state: ZoomGuideAssistState {

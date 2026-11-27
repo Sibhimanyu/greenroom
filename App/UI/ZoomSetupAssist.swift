@@ -96,6 +96,9 @@ final class ZoomSetupAssist: ObservableObject {
         case .backToGreenroom:
             ZoomMarketplaceWindow.shared.close()
             coordinator?.openZoomSetupGuide(at: .zoomStep)
+        case .checkAgain where step.number != nil:
+            // The blocker step: look at the page again (the admin may have changed the permission); nothing is pressed.
+            Task { @MainActor in await session.refresh() }
         case .doThisStep, .goTo, .checkAgain:
             working = true; handoverNote = nil; showStep()
             Task { @MainActor in

@@ -76,6 +76,10 @@ final class SetupForMe {
     }
 
     func stop() { stopRequested = true }
+    /// Looks up the person's own name and email (their Zoom profile). Step 5 asks again when the email is still
+    /// unknown, because a run that started signed out couldn't read the profile then (live, 2026-11-27).
+    var lookUpInfo: () async -> (name: String?, email: String?) = { (name: nil, email: nil) }
+    private var lookedUpAgain = false
     /// Told when an app turned out deleted in Zoom (the guide forgets its remembered ID too).
     var onForgotApp: (ZoomApp) -> Void = { _ in }
 
@@ -183,6 +187,11 @@ final class SetupForMe {
             return nil
         }
         if stopRequested { return .stopped }
+        if step.number == 5, answers.info.email.isEmpty, !lookedUpAgain {
+            lookedUpAgain = true
+            let found = await lookUpInfo()
+            if let e = found.email, !e.isEmpty { answers.info.email = e; return nil }
+        }
         switch step.cta {
         case .doThisStep(let plan):
             // Greenroom did this step and Zoom (the check) still says it is not right: stop, don't go round again.
@@ -209,11 +218,11 @@ final class SetupForMe {
             if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
         case .backToGreenroom:
             return .done
-        case .press(.signIn, _), .press(.tryAnotherWay, _):
+        case .press(.signIn, _), .press(.tryAnotherWay, _), .fill:
             // Sign-in is the person's (owner, 2026-11-27): wait for it in place, then carry on by itself.
             signInWaits += 1
             if signInWaits > (pacing.pause > 0 ? 2400 : 50) {   // about 10 minutes live
-                return .handedOver(step, why: "Greenroom waited for the sign-in to Zoom.")
+                return .handedOver(step, why: "Greenroom waited for you in Zoom\u{2019}s page.")
             }
             waitedForPerson = true
             if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }

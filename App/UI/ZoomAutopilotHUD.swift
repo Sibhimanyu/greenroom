@@ -18,6 +18,8 @@ struct ZoomAutopilotHUD: View {
     let total: Int
     /// What the person must do now (sign in), or nil while Greenroom drives.
     let needsYou: String?
+    /// The card's title while the person acts (sign-in by default).
+    var needsYouTitle: String? = nil
     let onStop: () -> Void
 
     var body: some View {
@@ -46,7 +48,7 @@ struct ZoomAutopilotHUD: View {
                     .resizable()
                     .frame(width: 22, height: 22)
                     .accessibilityHidden(true)
-                Text(needsYou == nil ? "Greenroom is setting up Zoom" : "Sign in to Zoom to continue")
+                Text(needsYou == nil ? "Greenroom is setting up Zoom" : (needsYouTitle ?? "Sign in to Zoom to continue"))
                     .font(.headline)
                 Spacer(minLength: 12)
                 if needsYou == nil {

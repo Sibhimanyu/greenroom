@@ -289,6 +289,7 @@ final class ZoomSetupAssist: ObservableObject {
         answers.info = info
         answers.buildNew = buildNew
         run.answers = answers
+        run.lookUpInfo = { let p = await ZoomProfileReader.read(); return (name: p.name, email: p.email) }
         handoverNote = nil
         let window = ZoomMarketplaceWindow.shared
         run.onStep = { [weak self] step in

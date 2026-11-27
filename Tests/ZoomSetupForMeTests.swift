@@ -398,4 +398,27 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(end, .done)
         XCTAssertEqual(zoom.apps.first { $0.kind == .hosting }?.scopes, Set(ZoomScopes.names))
     }
+
+    /// Live, 2026-11-27: Set up for me started signed out, so the Zoom profile (the person's email) couldn't be read
+    /// then; step 5 had no email to type and the run looped. Step 5 looks the email up again once signed in.
+    func testTheEmailIsLookedUpAgainAtStepFiveWhenItWasUnknown() async {
+        let zoom = FixturePage.freshAccount()
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: SetupAnswers(info: InfoValues(name: "Test Person")))
+        run.lookUpInfo = { (name: nil, email: "late.found@example.com") }
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.first { $0.kind == .hosting }?.info[.contactEmail], "late.found@example.com")
+    }
+
+    /// And when no email can be found at all, the person types it (the cover lifts) and the run carries on by itself.
+    func testWithNoEmailAnywhereThePersonTypesItAndTheRunCarriesOn() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.personTypesEmail = (afterReads: 6, email: "typed@example.com")
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: SetupAnswers(info: InfoValues(name: "Test Person")))
+        var askedForEmail = false
+        run.onStep = { if case .fill(.infoField(.contactEmail), _) = $0.cta { askedForEmail = true } }
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertTrue(askedForEmail, "the person was asked for the email")
+    }
 }

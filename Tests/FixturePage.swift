@@ -55,6 +55,8 @@ final class FixturePage: ZoomPage {
     var signsInAfterReads = 0
     /// Called on every read (a test presses Stop mid-wait from here).
     var onRead: () -> Void = {}
+    /// The person types this into Information's Email after this many reads (0: never).
+    var personTypesEmail: (afterReads: Int, email: String)? = nil
     /// Live run 9, 2026-11-27: a tick in the Add scopes window registers only once the page redraws; Done pressed
     /// straight after the last tick lost it. With this on, a tick counts after the next read.
     var ticksRegisterOnRead = false
@@ -107,6 +109,10 @@ final class FixturePage: ZoomPage {
 
     func read() async -> ZoomPageSnapshot? {
         onRead()
+        if let t = personTypesEmail, case .s2s(let id, .information) = address {
+            if t.afterReads <= 1 { edit(id) { $0.info[.contactEmail] = t.email }; personTypesEmail = nil }
+            else { personTypesEmail = (t.afterReads - 1, t.email) }
+        }
         if !pendingTicks.isEmpty { ticked.formUnion(pendingTicks); pendingTicks = [] }
         if !signedIn, signsInAfterReads > 0 { signsInAfterReads -= 1; if signsInAfterReads == 0 { personSignsIn() } }
         guard signedIn else { return ZoomPageSnapshot(address: address, signedIn: false) }

@@ -632,7 +632,7 @@ private struct ZoomWindowView: View {
                 ZoomWebView(web: web)
                 if let line = window.autopilotLine {
                     ZoomAutopilotHUD(line: line, step: window.step?.number, total: SetupStep.total,
-                                     needsYou: needsYou, onStop: { window.onStop() })
+                                     needsYou: needsYou, needsYouTitle: needsYouTitle, onStop: { window.onStop() })
                 }
             }
             .animation(.easeOut(duration: 0.2), value: window.autopilotLine == nil)
@@ -650,8 +650,14 @@ private struct ZoomWindowView: View {
         switch cta {
         case .press(.signIn, _): return "Sign in to Zoom in this window. Greenroom carries on by itself once you\u{2019}re in."
         case .press(.tryAnotherWay, _): return "Passkeys don\u{2019}t work in this window: press Try another way and use your password. Greenroom carries on after."
+        case .fill(_, let text): return text + " Greenroom carries on by itself."
         default: return nil
         }
     }
     private var blocking: Bool { window.autopilotLine != nil && needsYou == nil }
+    private var needsYouTitle: String? {
+        if case .fill(.infoField(.contactEmail), _)? = window.step?.cta { return "Type your email to continue" }
+        if case .fill? = window.step?.cta { return "Fill this in to continue" }
+        return nil
+    }
 }

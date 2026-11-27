@@ -117,12 +117,17 @@ final class SetupForMe {
     /// A reading to decide from (live run, 2026-11-27): Zoom fills a page in over a second or two, and an
     /// unfinished page looks like an empty one (no apps, no fields). Settled = the same reading twice in a row
     /// with something on it. Sign-in pages are taken as they are. Nil: it never settled.
+    /// Created apps shows + about a second before its list (live run 3): an EMPTY list must hold still for
+    /// longer (about 3s live) before Greenroom believes there are no apps.
     private func settledRead() async -> ZoomPageSnapshot? {
-        var last: ZoomPageSnapshot?
-        for _ in 0..<max(8, pacing.polls * 2) {
+        var last: ZoomPageSnapshot?, same = 0
+        let emptyListNeeds = max(6, pacing.polls / 2)
+        for _ in 0..<max(12, pacing.polls * 3) {
             guard let s = await page.read() else { return nil }
             if s.isSignedOut { return s }
-            if !s.controls.isEmpty, s == last { return s }
+            same = (s == last) ? same + 1 : 0
+            let needs = (s.address == .createdApps && s.appList.isEmpty) ? emptyListNeeds : 1
+            if !s.controls.isEmpty, same >= needs { return s }
             last = s
             if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }
         }

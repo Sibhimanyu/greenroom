@@ -271,4 +271,17 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(step.number, 5)
         XCTAssertEqual(step.cta, .checkAgain)
     }
+
+    /// Live run 3, 2026-11-27: Created apps showed + with no apps for two readings in a row, then its list. The run took
+    /// that for an empty account and built a third hosting app. An app list is only believed once it has held still.
+    func testAnAppListThatFillsLateIsWaitedFor() async {
+        let zoom = FixturePage.freshAccount().existing(finishedMeetingApp()).existing(finishedHostingApp())
+        zoom.listLateReads = 4
+        zoom.address = .signIn
+        zoom.address = .createdApps
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.count, 2, "nothing new was built")
+    }
 }

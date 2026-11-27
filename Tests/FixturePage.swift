@@ -32,11 +32,15 @@ final class FixturePage: ZoomPage {
     }
 
     var apps: [App] = []
-    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads } } }
+    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads } } }
     /// Live finding, 2026-11-27: right after a page opens Zoom shows nothing yet (no switch state, no keys)
     /// for a second or two. The next `loadingReads` reads after a page change come back empty.
     var loadingReads = 0
     private var blankReads = 0
+    /// Live finding, 2026-11-27: Created apps shows its + button about a second before it fills the list.
+    /// The next `listLateReads` reads of Created apps after a page change show + and no apps.
+    var listLateReads = 0
+    private var lateListReads = 0
     var signedIn = true
     /// Every action the page performed, in order (a press, a type, a navigation), for tests that watch for forbidden ones.
     private(set) var log: [ZoomPageAction] = []
@@ -79,8 +83,9 @@ final class FixturePage: ZoomPage {
         func nav(_ links: [ZoomNavLink]) { links.forEach { s.controls.insert(.navLink($0)) } }
         switch address {
         case .createdApps:
-            s.appList = apps.map(\.kind)
             s.controls.insert(.plus)
+            if lateListReads > 0 { lateListReads -= 1; if menuOpen { s.controls.insert(.buildApp); s.menuItems = ["Build app"] }; return s }
+            s.appList = apps.map(\.kind)
             for i in apps.indices { s.controls.insert(.appRow(i)) }
             if menuOpen { s.controls.insert(.buildApp); s.menuItems = ["Build app"] }
             if case .appType = dialog { s.controls.formUnion([.typeRadio(.meeting), .typeRadio(.hosting), .create, .cancel]) }

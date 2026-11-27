@@ -36,28 +36,28 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 - R1.3 The settings file carries the camera state inside each layout. The old app-wide key is import-only: an old file's value is applied to every layout it brings in that has none.
 
 **R2. One module owns the meeting setup.** (D5) planned
-- R2.1 A pure module (Foundation only, compiled by the test target) holds, for camera state, camera piece and what's shared: the saved value (from the active layout) and an optional for-this-meeting change.
-- R2.2 It answers, per setting: the value in use (the for-this-meeting change if there is one, else the saved value) and whether a for-this-meeting change is in effect.
-- R2.3 Every change goes through it as one call naming the setting, the new value and whether a meeting is live. It returns what changed: the saved layout, the value in use, or both.
+- R2.1 A pure module (Foundation only, compiled by the test target) holds, for camera state, camera piece and what's shared: the saved value (from the active layout) and an optional for-this-meeting change. (module built in P1)
+- R2.2 It answers, per setting: the value in use (the for-this-meeting change if there is one, else the saved value) and whether a for-this-meeting change is in effect. (module built in P1)
+- R2.3 Every change goes through it as one call naming the setting, the new value and whether a meeting is live. It returns what changed: the saved layout, the value in use, or both. (module built in P1)
 - R2.4 The coordinator keeps no other stored copy of these three values. Any `@Published` mirror kept for `$` sinks is written only from the module, as `SessionPhase.syncFlags` does for the phase.
 - R2.5 When the value in use changes, the Stage gets it. No caller has to call `requestShapeApply()` for these three settings.
 
 **R3. Before a meeting, a change is saved.** (D1) planned
-- R3.1 Given no meeting is live, when the camera state, camera piece or share is changed on Home, the present menu, a shortcut or Settings → Layouts, then the active layout's saved value changes and no for-this-meeting change exists.
+- R3.1 Given no meeting is live, when the camera state, camera piece or share is changed on Home, the present menu, a shortcut or Settings → Layouts, then the active layout's saved value changes and no for-this-meeting change exists. (module built in P1)
 - R3.2 Home's camera, share and camera-piece controls show one line naming the active layout, for example "Saved to Raj San Mode". "Only for this meeting" is never shown while no meeting is live.
 - R3.3 Settings → Layouts and Home show the same value at all times while no meeting is live.
 
 **R4. During a meeting, a change is for this meeting.** (D2) planned
-- R4.1 Given a meeting is live, when the camera state, camera piece or share is changed on Home, the bar, the toolbar or the present menu, then the meeting gets it, and the saved layout does not change.
-- R4.2 Given a meeting is live, when it is changed in Settings → Layouts, then the saved value changes. If there is no for-this-meeting change for that setting, the meeting gets it as well.
+- R4.1 Given a meeting is live, when the camera state, camera piece or share is changed on Home, the bar, the toolbar or the present menu, then the meeting gets it, and the saved layout does not change. (module built in P1)
+- R4.2 Given a meeting is live, when it is changed in Settings → Layouts, then the saved value changes. If there is no for-this-meeting change for that setting, the meeting gets it as well. (module built in P1)
 - R4.3 Home's line reads "For this meeting" while a for-this-meeting change is in effect.
-- R4.4 Settings → Layouts shows the saved value. Where a for-this-meeting change is in effect for the active layout, it shows one line, for example "For this meeting: Only me", with **Keep** (saves the change into the layout and clears it) and **Reset** (clears it, so the meeting gets the saved value).
+- R4.4 Settings → Layouts shows the saved value. Where a for-this-meeting change is in effect for the active layout, it shows one line, for example "For this meeting: Only me", with **Keep** (saves the change into the layout and clears it) and **Reset** (clears it, so the meeting gets the saved value). (Keep and Reset: module built in P1)
 - R4.5 The Layouts canvas draws the saved camera piece, never a for-this-meeting change, so its drawing and its rows always agree.
 
 **R5. When for-this-meeting changes end.** (D4) planned
-- R5.1 Start, Snap Back, a layout switch (by any route: Home, menu bar, present menu, shortcut, Layouts) and the meeting ending each drop every for-this-meeting change.
+- R5.1 Start, Snap Back, a layout switch (by any route: Home, menu bar, present menu, shortcut, Layouts) and the meeting ending each drop every for-this-meeting change. (module built in P1)
 - R5.2 A layout switch brings in the new layout's camera state, camera piece and share. Given a meeting is live, the meeting gets them at once.
-- R5.3 The camera's "last on" state (`CameraStateSession.lastOn`) resets to the active layout's on-state at the same moments.
+- R5.3 The camera's "last on" state (`CameraStateSession.lastOn`) resets to the active layout's on-state at the same moments. (lastOn reset: module built in P1)
 
 **R6. No other copies.** (D6) planned
 - R6.1 The no-layout fallback writes for `webcamShape` and `shareTarget` are removed after a search confirms nothing reads them. The old keys become import-only in the settings file.
@@ -67,7 +67,7 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 
 | Phase | Delivers | Status | Commit |
 | --- | --- | --- | --- |
-| P1 | The pure Meeting setup module and its tests: R2.1 to R2.3, R3.1, R4.1, R4.2, R5.1 (as module behaviour) | planned | |
+| P1 | The pure Meeting setup module and its tests: R2.1 to R2.3, R3.1, R4.1, R4.2, R5.1 (as module behaviour) | built | 91f9e11 |
 | P2 | Camera state per layout, migration, settings file: R1 | planned | |
 | P3 | Wire the coordinator to the module; remove the working copies; layout switch brings the layout in: R2.4, R2.5, R5.2, R5.3, R6 | planned | |
 | P4 | Screens: Home's layout line, Layouts' "For this meeting" line with Keep and Reset, canvas from saved: R3.2, R3.3, R4.3 to R4.5 | planned | |

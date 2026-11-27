@@ -199,9 +199,26 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     /// The bar's Sign in: Marketplace itself redirects to Zoom's sign-in. Nothing is pressed on the page.
     private var sentToSignIn = false
-    /// Zoom's own sign-in page (Created apps doesn't always redirect there: owner, 2026-11-27). After it the
-    /// window goes back to where setup was heading (`resumeAfterSignIn`, Marketplace or Zoom's main site).
-    func goToSignIn() { webView?.load(URLRequest(url: URL(string: "https://zoom.us/signin")!)) }
+    /// Sign-in starts from Marketplace's own Sign In button (live, 2026-11-27): only that start carries
+    /// Marketplace's return details, so Zoom's sign-in (Google included) comes back to Marketplace signed in.
+    /// A direct zoom.us/signin signed in to Zoom but left Marketplace signed out. The press only opens the
+    /// sign-in page; typing stays the person's. Not on Marketplace: open its home first, then press.
+    func goToSignIn() {
+        guard let webView else { return }
+        if let url = webView.url, ZoomMarketplacePages.isMarketplace(url) { pressMarketplaceSignIn(); return }
+        pendingSignInPress = true
+        webView.load(URLRequest(url: URL(string: "https://marketplace.zoom.us/")!))
+    }
+    private var pendingSignInPress = false
+    private func pressMarketplaceSignIn() {
+        let js = "(function () { \(ZoomPageScript.library) var el = resolve('signIn'); if (!el) return 'none'; el.click(); return 'ok'; })();"
+        webView?.evaluateJavaScript(js, in: nil, in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                // The button draws late: try again on the next look.
+                if case .success(let v) = result, (v as? String) == "none" { self?.pendingSignInPress = true }
+            }
+        }
+    }
 
     /// The same address in Safari (R8).
     func openInSafari() {
@@ -258,6 +275,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         if ZoomRecorder.coachOff { return }   // a recording run sees Zoom's pages untouched
         #endif
         guard let webView, let url = webView.url else { return }
+        if pendingSignInPress, ZoomMarketplacePages.isMarketplace(url) { pendingSignInPress = false; pressMarketplaceSignIn() }
         if let back = ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: sawSignIn, now: url, heading: heading) {
             sawSignIn = false
             webView.load(URLRequest(url: back))

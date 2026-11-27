@@ -52,7 +52,7 @@ final class SetupForMe {
     private var actor: ZoomActor
     private let pacing: ZoomPacing
     private(set) var evidence = Evidence()
-    private let answers: SetupAnswers
+    var answers: SetupAnswers
     private let keys: any ZoomKeyStore
     private let checker: any ZoomChecker
     private var stopRequested = false
@@ -103,47 +103,71 @@ final class SetupForMe {
         }
     }
 
+    /// Reads the page, folds it into the evidence and tells `onStep` where setup stands. Does nothing on the page.
+    @discardableResult
+    func refresh() async -> SetupStep? {
+        guard let snapshot = await page.read() else { return nil }
+        nilReads = 0
+        evidence = ZoomSetupFlow.absorb(snapshot, into: evidence)
+        let step = ZoomSetupFlow.step(for: facts(snapshot))
+        onStep(step)
+        return step
+    }
+
+    /// The whole one-button loop.
     func run() async -> SetupForMeEnd {
+        stopRequested = false
+        attempts = [:]
         for _ in 0..<60 {
-            guard let snapshot = await page.read() else {
-                nilReads += 1
-                if nilReads > 40 { return .handedOver(ZoomSetupFlow.step(for: facts(nil)), why: "Greenroom could not read Zoom\u{2019}s page.") }
-                try? await Task.sleep(nanoseconds: pacing.pause)
-                continue
-            }
-            nilReads = 0
-            evidence = ZoomSetupFlow.absorb(snapshot, into: evidence)
-            let step = ZoomSetupFlow.step(for: facts(snapshot))
-            onStep(step)
-            if stopRequested { return .stopped }
-            switch step.cta {
-            case .doThisStep(let plan):
-                // Greenroom did this step and Zoom (the check) still says it is not right: stop, don't go round again.
-                attempts[step.number ?? 0, default: 0] += 1
-                if attempts[step.number ?? 0, default: 0] > 3 {
-                    return .handedOver(step, why: "Greenroom did this step, but Zoom still says it isn\u{2019}t right.")
-                }
-                switch await actor.run(plan) {
-                case .done(let captured):
-                    apply(plan, captured)
-                    if pendingCheck, !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
-                case .stopped(let reason): return .handedOver(step, why: reason.words)
-                }
-            case .goTo(let place, _):
-                _ = await page.perform(.navigate(place))
-            case .press(.appRow(let row), _):
-                // Using an app that is already there: the plan is one press and a wait to land on its page.
-                guard let app = step.app else { return .handedOver(step, why: "That one is yours to do.") }
-                let plan = ActionPlan(app: app, effect: .nothing, steps: [.press(.appRow(row)), .waitFor(.onApp(app))])
-                if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: reason.words) }
-            case .checkAgain where step.number == nil:
-                if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
-            case .backToGreenroom:
-                return .done
-            default:
-                return .handedOver(step, why: "That one is yours to do.")
-            }
+            if let end = await advance() { return end }
         }
         return .handedOver(ZoomSetupFlow.step(for: facts(nil)), why: "Greenroom kept going round in circles.")
+    }
+
+    /// One turn: look, pick the step, do what it says if Greenroom may (nil: carry on). The guided "Do this step"
+    /// is one turn of this same loop, so both paths use the same steps, plans and safety.
+    func advance() async -> SetupForMeEnd? {
+        guard let step = await refresh() else {
+            nilReads += 1
+            if nilReads > 40 { return .handedOver(ZoomSetupFlow.step(for: facts(nil)), why: "Greenroom could not read Zoom\u{2019}s page.") }
+            try? await Task.sleep(nanoseconds: pacing.pause)
+            return nil
+        }
+        if stopRequested { return .stopped }
+        switch step.cta {
+        case .doThisStep(let plan):
+            // Greenroom did this step and Zoom (the check) still says it is not right: stop, don't go round again.
+            attempts[step.number ?? 0, default: 0] += 1
+            if attempts[step.number ?? 0, default: 0] > 3 {
+                return .handedOver(step, why: "Greenroom did this step, but Zoom still says it isn\u{2019}t right.")
+            }
+            switch await actor.run(plan) {
+            case .done(let captured):
+                apply(plan, captured)
+                if pendingCheck, !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
+            case .stopped(let reason): return .handedOver(step, why: reason.words)
+            }
+        case .goTo(let place, _):
+            _ = await page.perform(.navigate(place))
+        case .press(.appRow(let row), _):
+            // Using an app that is already there: the plan is one press and a wait to land on its page.
+            guard let app = step.app else { return .handedOver(step, why: "That one is yours to do.") }
+            let plan = ActionPlan(app: app, effect: .nothing, steps: [.press(.appRow(row)), .waitFor(.onApp(app))])
+            if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: reason.words) }
+        case .checkAgain where step.number == nil:
+            if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
+        case .backToGreenroom:
+            return .done
+        default:
+            return .handedOver(step, why: "That one is yours to do.")
+        }
+        return nil
+    }
+
+    /// Forget what was learned about one app (the person chose a different one, or started over).
+    func forget(_ app: ZoomApp) {
+        evidence.apps[app] = AppEvidence()
+        checks[app] = nil
+        attempts = [:]
     }
 }

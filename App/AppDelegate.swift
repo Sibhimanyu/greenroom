@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DebugTour.start()
             ZoomMarketplaceProbe.startIfRequested()
             ZoomDomDump.startCommandsIfRequested()
-            if let url = ZoomDomDump.startURL { DispatchQueue.main.async { ZoomMarketplaceWindow.shared.show(url: url, part: nil, guideWindow: nil) } }
+            if let url = ZoomDomDump.startURL { DispatchQueue.main.async { ZoomMarketplaceWindow.shared.show(url: url, guideWindow: nil) } }
             #endif
         }
     }

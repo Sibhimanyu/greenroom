@@ -193,8 +193,6 @@ struct OnboardingView: View {
             jump: $zoomJump,
             assist: coordinator.zoomAssist.state,
             onOpenZoom: { url, part in coordinator.zoomAssist.open(url, part: part) },
-            onUseKeys: { coordinator.zoomAssist.useOffer($0) },
-            onUndoFill: { coordinator.zoomAssist.undoFill($0) },
             onStartOver: { coordinator.zoomAssist.startOver() },
             onUseDifferentApp: { coordinator.zoomAssist.useDifferentApp($0) },
             onUndoRemoved: { coordinator.zoomAssist.undoRemoved($0) },

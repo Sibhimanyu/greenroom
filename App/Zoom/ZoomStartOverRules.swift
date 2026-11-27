@@ -18,8 +18,6 @@ enum ZoomStartOverRules {
 
     static let useDifferentAppTitle = "Use a different app"
     static let removedNotice = "Keys removed"
-    static let findMyAppTitle = "Find my app"
-    static let coachFindMyApp = "Click the app you made for Greenroom."
 
     /// Quiet button in the Zoom step whenever any key is filled.
     static func isShown(_ facts: ZoomGuideFlowFacts) -> Bool { facts.anythingFilled }

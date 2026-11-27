@@ -2,14 +2,12 @@
 //  ZoomSetupAssist.swift
 //  Greenroom
 //
-//  Joins the Zoom window to the setup guide (docs/specs/zoom-setup-assist.md,
-//  R3 to R5, R7): remembers each kind's app ID, fills the guide's key fields
-//  from the window's credential pages (or offers to, when something else is
-//  typed), and starts Check Zoom setup once when both parts become complete.
-//  The decisions are pure (`ZoomKeyFillRules`, `ZoomGuideFollowRules`); this
-//  only applies them. Key values pass through here into the same fields typing
-//  uses (so the same Keychain save) and are never logged or kept elsewhere
-//  than the pending offer, in memory, until it is used or the page changes.
+//  Joins the Zoom window to the setup flow (docs/specs/zoom-setup-flow.md). It owns ONE `SetupForMe`
+//  session: the evidence about the person's two Zoom apps, the stored keys and the check. Every time the
+//  window looks again it reads the page into that session, takes the step `ZoomSetupFlow` returns and hands
+//  it to the window to show (bar and coach); the person's press on the step's button, or Set up for me, runs
+//  the same loop (`advance`), so guided and automatic setup use the same steps, plans and safety. Key values
+//  pass through here into the same fields typing uses (so the same Keychain save) and are never logged.
 //
 import AppKit
 import Combine
@@ -22,25 +20,22 @@ final class ZoomSetupAssist: ObservableObject {
     private static let meetingKey = "zoomSDKAppID"
     private static let hostingKey = "zoomS2SAppID"
 
-    /// What the guide shows (the page, the IDs, the notices).
+    /// What the guide shows (the page, the app IDs, "Keys removed").
     @Published private(set) var state: ZoomGuideAssistState {
-        didSet { if state != oldValue { coordinator?.objectWillChange.send(); ZoomMarketplaceWindow.shared.updateBar() } }
+        didSet { if state != oldValue { coordinator?.objectWillChange.send() } }
     }
-    private var offerValues: [ZoomGuidePart: [ZoomKeyField: String]] = [:]
-    private var filledFields: [ZoomGuidePart: [ZoomKeyField]] = [:]
-    /// Parts the person undid on this visit to the page: not filled again until the page changes.
-    private var undone: Set<ZoomGuidePart> = []
-    private var checkWatch: [AnyCancellable] = []
-    private var lastRecheck = Date.distantPast
-    /// What "Use a different app" took away, until Undo or the next change (in memory only).
-    private var removedBackup: [ZoomGuidePart: (values: [ZoomKeyField: String], id: String?)] = [:]
-
-    // MARK: Set up for me
-
     @Published private(set) var setUpForMe = ZoomSetUpForMeState.idle {
         didSet { if setUpForMe != oldValue { coordinator?.objectWillChange.send() } }
     }
-    private var runner: SetupForMe?
+
+    private var session: SetupForMe?
+    private var answers = SetupAnswers(info: InfoValues(name: NSFullUserName()))
+    private var stepNow: SetupStep?
+    private var working = false
+    /// Why the last turn handed over (shown on the step's card until the page moves on).
+    private var handoverNote: String?
+    private var refreshing = false
+    private var removedBackup: [ZoomGuidePart: (values: [ZoomKeyField: String], id: String?)] = [:]
 
     init(coordinator: CoordinatorController) {
         self.coordinator = coordinator
@@ -48,58 +43,80 @@ final class ZoomSetupAssist: ObservableObject {
                                                      hosting: defaults.string(forKey: Self.hostingKey)))
         let window = ZoomMarketplaceWindow.shared
         window.onPage = { [weak self] in self?.pageChanged($0) }
-        window.onKeys = { [weak self] page, found in self?.keysFound(page, found) }
-        window.barState = { [weak self] in
-            guard let self, let c = self.coordinator else { return (false, false, ZoomAppIDs(), [], false) }
-            return (self.isComplete(.sdk, c), self.isComplete(.s2s, c), self.state.ids,
-                    c.zoomSetupChecker.lines, c.zoomSetupChecker.isRunning)
-        }
-        window.onStepDone = { [weak self] in self?.recheck() }
-        // The check is the judge: whenever its lines change, the bar and the coach look again.
-        checkWatch = [coordinator.zoomSetupChecker.$lines.sink { _ in
-            DispatchQueue.main.async { ZoomMarketplaceWindow.shared.updateBar(); ZoomMarketplaceWindow.shared.refresh() }
-        }, coordinator.zoomSetupChecker.$isRunning.sink { _ in
-            DispatchQueue.main.async { ZoomMarketplaceWindow.shared.updateBar() }
-        }]
-        window.onBackToGreenroom = { [weak self] in self?.backToGreenroom() }
+        window.onRefresh = { [weak self] in self?.refresh() }
+        window.onAct = { [weak self] in self?.act() }
         window.onStop = { [weak self] in self?.stopSetUpForMe() }
-        window.missingKeys = { [weak self] page in self?.missingKeys(on: page) }
-        window.onCopied = { [weak self] page, text in self?.copied(on: page, text: text) }
-        window.needsApp = { [weak self] part in self?.needsApp(part) ?? false }
-        window.keysFilled = { [weak self] in
-            guard let self, let page = self.state.page, let app = page.app else { return false }
-            return self.state.filled.contains(Self.part(of: app))
-        }
     }
 
-    /// Opens the Zoom window beside the guide, at `url`, for the guide part being worked on.
-    func open(_ url: URL?, part: ZoomGuidePart?) {
-        ZoomMarketplaceWindow.shared.show(url: url, part: part, guideWindow: OnboardingWindowController.shared.guideWindow)
+    /// Opens the Zoom window beside the guide, at `url` (Created apps when nil).
+    func open(_ url: URL?, part: ZoomGuidePart? = nil) {
+        ZoomMarketplaceWindow.shared.show(url: url ?? ZoomMarketplaceGuide.builderURL, guideWindow: OnboardingWindowController.shared.guideWindow)
     }
 
     static func part(of app: ZoomOwnApp) -> ZoomGuidePart { app == .sdk ? .meetingApp : .hostingApp }
-    private static func app(of part: ZoomGuidePart) -> ZoomOwnApp? {
-        switch part { case .meetingApp: return .sdk; case .hostingApp: return .s2s; case .check: return nil }
+
+    // MARK: The session
+
+    private func makeSession() -> SetupForMe? {
+        if let session { return session }
+        guard let coordinator else { return nil }
+        let s = SetupForMe(page: ZoomMarketplaceWindow.shared, keys: CoordinatorZoomKeys(assist: self, coordinator: coordinator),
+                           checker: CoordinatorZoomChecker(coordinator: coordinator), answers: answers)
+        s.onStep = { [weak self] step in self?.stepChanged(step) }
+        session = s
+        return s
+    }
+
+    private func stepChanged(_ step: SetupStep) {
+        if step != stepNow { handoverNote = step.number == stepNow?.number ? handoverNote : nil }
+        stepNow = step
+        showStep()
+    }
+
+    private func showStep() {
+        var shown = stepNow
+        if let note = handoverNote { shown?.status = note }
+        ZoomMarketplaceWindow.shared.present(step: shown, signedIn: session?.evidence.signedIn, working: working)
+    }
+
+    /// The window looked again: read the page into the flow and show the step. One look at a time.
+    private func refresh() {
+        guard !refreshing, !working, setUpForMe.isIdleForGuided, let session = makeSession() else { return }
+        refreshing = true
+        Task { @MainActor in
+            await session.refresh()
+            refreshing = false
+        }
+    }
+
+    /// The bar's or the card's button: do what the current step says (the guided "Do this step").
+    private func act() {
+        guard let step = stepNow, !working, let session = makeSession() else { return }
+        switch step.cta {
+        case .backToGreenroom:
+            ZoomMarketplaceWindow.shared.close()
+            coordinator?.openZoomSetupGuide(at: .zoomStep)
+        case .doThisStep, .goTo, .checkAgain:
+            working = true; handoverNote = nil; showStep()
+            Task { @MainActor in
+                let end = await session.advance()
+                working = false
+                if case .handedOver(_, let why)? = end { handoverNote = why }
+                if case .done? = end { act(); return }
+                await session.refresh()
+                showStep()
+            }
+        case .press, .fill, .wait:
+            break   // the person's to do, on Zoom's page
+        }
     }
 
     // MARK: The page
 
     private func pageChanged(_ page: ZoomMarketplacePage?) {
         var next = state
-        let moved = next.page != page
         next.page = page
         if let page { next.ids.see(page) }
-        if moved {
-            undone = []
-            // An offer belongs to the page that made it.
-            if let part = page?.app.map(Self.part(of:)) {
-                next.offers = next.offers.filter { $0 == part }
-            } else {
-                next.offers = []
-            }
-            if next.offers.isEmpty { offerValues = [:] }
-            next.filled = next.filled.filter { part in page?.app.map(Self.part(of:)) == part }
-        }
         state = next
         defaults.set(next.ids.meeting, forKey: Self.meetingKey)
         defaults.set(next.ids.hosting, forKey: Self.hostingKey)
@@ -117,7 +134,6 @@ final class ZoomSetupAssist: ObservableObject {
             if fields(app, coordinator).values.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }),
                next.ids.id(for: app) != nil, state.page?.appID != next.ids.id(for: app) {
                 next.ids.forget(app)
-                next.filled.remove(part); next.offers.remove(part)
             }
         }
         guard next != state else { return }
@@ -148,145 +164,21 @@ final class ZoomSetupAssist: ObservableObject {
         }
     }
 
-    /// R18: when a part's keys become complete, the check runs for it by itself (not in a session, not twice).
-    private func checkIfPartCompleted(_ app: ZoomOwnApp, before: Bool) {
-        guard let coordinator else { return }
-        if ZoomRunRules.shouldCheckAfterKeys(completeBefore: before, completeAfter: isComplete(app, coordinator),
-                                             inSession: coordinator.phase.isInMeeting, running: coordinator.zoomSetupChecker.isRunning) {
-            coordinator.checkZoomSetup()
-        }
-    }
-
-    /// After a completed step (or leaving a fixed place): check again while something fails, at most every 4s.
-    func recheck() {
-        guard let coordinator, Date().timeIntervalSince(lastRecheck) > 4 else { return }
-        let lines = coordinator.zoomSetupChecker.lines
-        let hasFix = [ZoomOwnApp.sdk, .s2s].contains { ZoomRunRules.fix($0, lines: lines, keysComplete: isComplete($0, coordinator)) != nil }
-        if ZoomRunRules.shouldRecheck(hasFix: hasFix, running: coordinator.zoomSetupChecker.isRunning, inSession: coordinator.phase.isInMeeting) {
-            lastRecheck = Date()
-            coordinator.checkZoomSetup()
-        }
-    }
-
-    private func isComplete(_ app: ZoomOwnApp, _ c: CoordinatorController) -> Bool {
-        fields(app, c).values.allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    }
-
-    /// The bar's "Back to Greenroom": the guide comes forward and the check starts once.
-    private func backToGreenroom() {
-        guard let coordinator else { return }
-        coordinator.openZoomSetupGuide(at: .zoomStep)
-        if ZoomBarRules.shouldCheckOnReturn(checkRunning: coordinator.zoomSetupChecker.isRunning,
-                                            hasResults: !coordinator.zoomSetupChecker.lines.isEmpty,
-                                            inSession: coordinator.phase.isInMeeting) {
-            coordinator.checkZoomSetup()
-        }
-    }
-
-    private var bothFilled: Bool {
-        guard let c = coordinator else { return false }
-        return [fields(.sdk, c), fields(.s2s, c)].allSatisfy { $0.values.allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
-    }
-
-    private func keysFound(_ page: ZoomMarketplacePage, _ found: [ZoomKeyField: String]) {
-        guard let coordinator, let app = page.app, state.page == page else { return }
-        let part = Self.part(of: app)
-        guard !undone.contains(part) else { return }
-        apply(app, found)
-    }
-
-    /// A key copied with Zoom's own copy button (R17): the clipboard text becomes the field the coach points at.
-    /// Never logged and never kept: it goes straight into the same fill/offer path as a page read.
-    func copied(on page: ZoomMarketplacePage, text: String) {
-        guard let coordinator, let app = page.app, let wanted = ZoomMarketplacePages.keyFields(on: page) else { return }
-        let part = Self.part(of: app)
-        guard !undone.contains(part) else { return }
-        coordinator.loadSecretsIfNeeded()
-        let have = fields(app, coordinator).filter { !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }
-        let missing = wanted.filter { have[$0] == nil }
-        guard let field = ZoomClipboardRules.assign(copied: text, found: have, missing: missing, pointedAt: missing.first),
-              let key = ZoomClipboardRules.clean(text) else { return }
-        apply(app, [field: key])
-    }
-
-    /// The page's key fields Greenroom does not have yet, in the page's order (nil off the credentials pages).
-    func missingKeys(on page: ZoomMarketplacePage) -> [ZoomKeyField]? {
-        guard let coordinator, let app = page.app, let wanted = ZoomMarketplacePages.keyFields(on: page) else { return nil }
-        coordinator.loadSecretsIfNeeded()
-        let have = fields(app, coordinator)
-        return wanted.filter { (have[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
-    }
-
-    private func apply(_ app: ZoomOwnApp, _ found: [ZoomKeyField: String]) {
-        guard let coordinator else { return }
-        let part = Self.part(of: app)
-        // A secret not loaded yet would look empty, and be overwritten.
-        coordinator.loadSecretsIfNeeded()
-        let partBefore = isComplete(app, coordinator)
-        var next = state
-        switch ZoomKeyFillRules.decide(current: fields(app, coordinator), found: found) {
-        case .nothing:
-            return
-        case .fill(let values):
-            write(app, values, coordinator)
-            filledFields[part] = Array(Set((filledFields[part] ?? []) + values.keys))
-            next.filled.insert(part); next.offers.remove(part); offerValues[part] = nil
-        case .offer(let values):
-            offerValues[part] = values
-            next.offers.insert(part)
-        }
-        state = next
-        // The coach says "Got it" now.
-        ZoomMarketplaceWindow.shared.refresh()
-        checkIfPartCompleted(app, before: partBefore)
-    }
-
-    /// "Use the keys from this page".
-    func useOffer(_ part: ZoomGuidePart) {
-        guard let coordinator, let app = Self.app(of: part), let values = offerValues[part] else { return }
-        let partBefore = isComplete(app, coordinator)
-        write(app, values, coordinator)
-        filledFields[part] = Array(values.keys)
-        offerValues[part] = nil
-        var next = state
-        next.offers.remove(part); next.filled.insert(part)
-        state = next
-        ZoomMarketplaceWindow.shared.refresh()
-        checkIfPartCompleted(app, before: partBefore)
-    }
-
-    /// "Undo" on "Filled in from Zoom": empties what the window filled.
-    func undoFill(_ part: ZoomGuidePart) {
-        guard let coordinator, let app = Self.app(of: part), let fields = filledFields[part] else { return }
-        write(app, Dictionary(uniqueKeysWithValues: fields.map { ($0, "") }), coordinator)
-        filledFields[part] = nil
-        undone.insert(part)
-        var next = state
-        next.filled.remove(part)
-        state = next
-        ZoomMarketplaceWindow.shared.refresh()
-    }
-
     // MARK: Ways back (R10 to R12)
 
-    /// The part's keys are filled in (any of them) but the window has not seen its app yet.
-    func needsApp(_ part: ZoomGuidePart) -> Bool {
-        guard let coordinator, let app = Self.app(of: part), state.ids.id(for: app) == nil else { return false }
-        return fields(app, coordinator).values.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    }
-
     /// Start over: forget all five keys (the secrets leave the Keychain through the same save path
-    /// typing uses), both app IDs, the last check and the notices; sign the Zoom window out; open part 1.
+    /// typing uses), both app IDs, the last check and what the flow learned; sign the Zoom window out; open the guide.
     func startOver() {
         guard let coordinator else { return }
         coordinator.loadSecretsIfNeeded()
         for app in [ZoomOwnApp.sdk, .s2s] {
             write(app, Dictionary(uniqueKeysWithValues: fields(app, coordinator).keys.map { ($0, "") }), coordinator)
         }
-        offerValues = [:]; filledFields = [:]; removedBackup = [:]; undone = []
+        removedBackup = [:]
+        session = nil; stepNow = nil; handoverNote = nil
         var next = state
         next.ids = ZoomAppIDs()
-        next.filled = []; next.offers = []; next.removed = []
+        next.removed = []
         state = next
         defaults.removeObject(forKey: Self.meetingKey)
         defaults.removeObject(forKey: Self.hostingKey)
@@ -297,24 +189,26 @@ final class ZoomSetupAssist: ObservableObject {
 
     /// "Use a different app": clears this part's keys and app ID, remembers them for Undo, opens Created apps.
     func useDifferentApp(_ part: ZoomGuidePart) {
-        guard let coordinator, let app = Self.app(of: part) else { return }
+        guard let coordinator, let app: ZoomOwnApp = part == .meetingApp ? .sdk : part == .hostingApp ? .s2s : nil else { return }
         coordinator.loadSecretsIfNeeded()
         removedBackup[part] = (fields(app, coordinator), state.ids.id(for: app))
         write(app, Dictionary(uniqueKeysWithValues: fields(app, coordinator).keys.map { ($0, "") }), coordinator)
-        filledFields[part] = nil; offerValues[part] = nil
-        undone.insert(part)   // the old app's page must not fill them straight back
+        // The person is choosing another app: what the flow knew about this one is not the new one's.
+        answers.buildNew.remove(app == .sdk ? .meeting : .hosting)
+        session?.forget(app == .sdk ? .meeting : .hosting)
         var next = state
         next.ids.forget(app)
-        next.filled.remove(part); next.offers.remove(part); next.removed.insert(part)
+        next.removed.insert(part)
         state = next
         defaults.set(next.ids.meeting, forKey: Self.meetingKey)
         defaults.set(next.ids.hosting, forKey: Self.hostingKey)
         open(ZoomMarketplaceGuide.builderURL, part: part)
     }
 
-    /// "Keys removed · Undo".
+    /// "Keys removed \u{00B7} Undo".
     func undoRemoved(_ part: ZoomGuidePart) {
-        guard let coordinator, let app = Self.app(of: part), let backup = removedBackup[part] else { return }
+        guard let coordinator, let app: ZoomOwnApp = part == .meetingApp ? .sdk : part == .hostingApp ? .s2s : nil,
+              let backup = removedBackup[part] else { return }
         write(app, backup.values, coordinator)
         removedBackup[part] = nil
         var next = state
@@ -331,7 +225,7 @@ final class ZoomSetupAssist: ObservableObject {
 
     /// The main button: open the Zoom window at Created apps, look at what is there, then ask the one small form.
     func beginSetUpForMe() {
-        guard runner == nil, setUpForMe != .preparing else { return }
+        guard setUpForMe == .idle || setUpForMe.isHandedOverOrDone else { return }
         setUpForMe = .preparing
         open(ZoomMarketplaceGuide.builderURL, part: .meetingApp)
         Task { @MainActor in
@@ -347,28 +241,27 @@ final class ZoomSetupAssist: ObservableObject {
         }
     }
 
-    func cancelSetUpForMe() { if runner == nil { setUpForMe = .idle } }
+    func cancelSetUpForMe() { if case .asking = setUpForMe { setUpForMe = .idle } else if setUpForMe == .preparing { setUpForMe = .idle } }
 
     func startSetUpForMe(_ info: InfoValues, buildNew: Set<ZoomApp>) {
-        guard let coordinator, runner == nil else { return }
+        guard let coordinator, let run = makeSession() else { return }
         coordinator.loadSecretsIfNeeded()
-        var answers = SetupAnswers()
         answers.info = info
         answers.buildNew = buildNew
+        run.answers = answers
+        handoverNote = nil
         let window = ZoomMarketplaceWindow.shared
-        let run = SetupForMe(page: window, keys: CoordinatorZoomKeys(assist: self, coordinator: coordinator),
-                             checker: CoordinatorZoomChecker(coordinator: coordinator), answers: answers)
-        runner = run
         run.onStep = { [weak self] step in
-            let line = (step.number.map { "Step \($0) of \(SetupStep.total) \u{00B7} " } ?? "") + step.title + "\u{2026}"
+            let line = step.barTitle + "\u{2026}"
             window.setAutopilot(line)
             self?.setUpForMe = .running(line)
+            self?.stepChanged(step)
         }
         window.setAutopilot("Setting up\u{2026}")
         setUpForMe = .running("Setting up\u{2026}")
         Task { @MainActor in
             let end = await run.run()
-            runner = nil
+            run.onStep = { [weak self] step in self?.stepChanged(step) }
             window.setAutopilot(nil)
             switch end {
             case .done:
@@ -378,17 +271,27 @@ final class ZoomSetupAssist: ObservableObject {
             case .stopped:
                 setUpForMe = .handedOver("You stopped Set up for me. The guided steps carry on from here.")
             case .handedOver(let step, let why):
-                let at = (step.number.map { "Step \($0) of \(SetupStep.total) \u{00B7} " } ?? "") + step.title
-                setUpForMe = .handedOver("Greenroom stopped at \(at). \(why) The guided steps carry on from here.")
+                handoverNote = why
+                setUpForMe = .handedOver("Greenroom stopped at \(step.barTitle). \(why) The guided steps carry on from here.")
             }
-            ZoomMarketplaceWindow.shared.refresh()
+            await run.refresh()
         }
     }
 
-    func stopSetUpForMe() { runner?.stop() }
+    func stopSetUpForMe() { session?.stop() }
 }
 
-/// Where Set up for me keeps the keys it copies: the same fields (and Keychain) typing uses.
+extension ZoomSetUpForMeState {
+    var isHandedOverOrDone: Bool {
+        switch self { case .handedOver, .done: return true; default: return false }
+    }
+    /// Guided looks run unless Set up for me is mid-run (it looks for itself).
+    var isIdleForGuided: Bool {
+        switch self { case .running, .preparing: return false; default: return true }
+    }
+}
+
+/// Where Set up for me and the guided steps keep the keys they copy: the same fields (and Keychain) typing uses.
 @MainActor
 final class CoordinatorZoomKeys: ZoomKeyStore {
     private unowned let assist: ZoomSetupAssist

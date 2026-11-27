@@ -3,9 +3,10 @@
 //  Greenroom
 //
 //  The setup guide's Zoom step, "Connect Zoom" (spec R14, owner 2026-11-27):
-//  one button. Top to bottom: title and a one-line intro; ONE large green
-//  button ("Set up Zoom" / "Continue setup") that opens the Zoom window on the
-//  first unfinished part; a calm status list, one line per part (mark, name,
+//  one main button. Top to bottom: title and a one-line intro; ONE large green
+//  button, "Set up for me" (Greenroom builds both apps and copies the keys;
+//  docs/specs/zoom-setup-flow.md), with "Guide me instead" beside it, which opens
+//  the Zoom window on the first unfinished part; a calm status list, one line per part (mark, name,
 //  state words; when done a quiet "Use a different app" and a "..." menu of
 //  shortcuts to that app's pages); the Check row once both parts are done;
 //  a folded "Enter the keys yourself" holding the manual route (steps, key
@@ -17,7 +18,7 @@
 //  Every key field, the scopes and Check Zoom setup live here and only here;
 //  Settings -> Zoom shows the status and one button into this step. Which part
 //  the button opens, the wording and when the check row shows come from
-//  `ZoomConnectRules` and `ZoomGuideFlowRules`.
+//  `ZoomConnect` and `ZoomGuideFlowRules`.
 //
 //  Plain values, bindings and closures only, so it renders off screen with
 //  sample values (scripts/render/zoom-guide.sh). OnboardingView feeds it.
@@ -48,10 +49,6 @@ struct ZoomGuideStep: View {
     var assist = ZoomGuideAssistState()
     /// Opens the Zoom window at an address, for the part being worked on.
     var onOpenZoom: (URL, ZoomGuidePart) -> Void = { _, _ in }
-    /// "Use the keys from this page".
-    var onUseKeys: (ZoomGuidePart) -> Void = { _ in }
-    /// "Undo" on "Filled in from Zoom".
-    var onUndoFill: (ZoomGuidePart) -> Void = { _ in }
     /// "Start over" (confirmed), "Use a different app" and its Undo.
     var onStartOver: () -> Void = {}
     var onUseDifferentApp: (ZoomGuidePart) -> Void = { _ in }
@@ -92,9 +89,9 @@ struct ZoomGuideStep: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header.id(Self.topID)
-                    if let button = ZoomConnectRules.button(facts) { setUpArea(button) }
+                    if let part = ZoomConnect.nextPart(facts) { setUpArea(part) }
                     statusList
-                    if ZoomConnectRules.showsCheckRow(facts) { check.id(Self.checkID) }
+                    if ZoomConnect.showsCheckRow(facts) { check.id(Self.checkID) }
                     manualRoute
                     footer
                 }
@@ -116,7 +113,7 @@ struct ZoomGuideStep: View {
     private func useJump() {
         guard let spot = jump else { return }
         jump = nil
-        if ZoomConnectRules.opensManual(spot) { manualRequest = true }
+        if ZoomConnect.opensManual(spot) { manualRequest = true }
         // After the route unfolds, so the anchor exists.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             scrollTarget = spot == .zoomStep ? AnyHashable(Self.topID) : AnyHashable(spot)
@@ -128,7 +125,7 @@ struct ZoomGuideStep: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Connect Zoom").font(.title.bold())
-            Text(ZoomConnectRules.intro)
+            Text(ZoomConnect.intro)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -136,7 +133,7 @@ struct ZoomGuideStep: View {
 
     /// Set up for me is the main button; the guided steps are "Guide me instead" and what Set up for me hands over to.
     @ViewBuilder
-    private func setUpArea(_ button: ZoomConnectButton) -> some View {
+    private func setUpArea(_ part: ZoomGuidePart) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             switch setUp {
             case .preparing:
@@ -161,7 +158,7 @@ struct ZoomGuideStep: View {
                     .controlSize(.large)
                     .tint(Brand.buttonFill)
                     .help("Greenroom builds both apps in your Zoom account and copies the keys. You can stop at any time.")
-                    connectButton(button, title: "Guide me instead", prominent: false)
+                    guideButton(part)
                 }
             }
         }
@@ -173,15 +170,16 @@ struct ZoomGuideStep: View {
         }
     }
 
-    private func connectButton(_ button: ZoomConnectButton, title: String? = nil, prominent: Bool = true) -> some View {
-        let page = ZoomConnectRules.entryPage(button.part, ids: assist.ids, filled: filledCount(button.part))
+    /// "Guide me instead": the Zoom window opens at the first unfinished part and its bar and tips take you step by step.
+    private func guideButton(_ part: ZoomGuidePart) -> some View {
+        let page = ZoomConnect.entryPage(part, ids: assist.ids, filled: filledCount(part))
         let url = ZoomMarketplacePages.url(for: page) ?? ZoomMarketplaceGuide.builderURL
-        return Button { onOpenZoom(url, button.part) } label: {
-            Text(title ?? button.title).font(prominent ? .headline : .body).frame(minWidth: prominent ? 180 : 0)
+        return Button { onOpenZoom(url, part) } label: {
+            Text("Guide me instead").font(.body)
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
-        .help("Opens Zoom App Marketplace in its own window, at \(button.part.title)")
+        .help("Opens Zoom App Marketplace in its own window, at \(part.title)")
     }
 
     // MARK: The status list
@@ -195,21 +193,18 @@ struct ZoomGuideStep: View {
     private func statusLine(_ part: ZoomGuidePart) -> some View {
         let state = flow.state(part)
         let label = ZoomGuideFlowRules.label(part, facts)
-        let step = state == .done ? nil : ZoomGuideFollowRules.step(part: part, page: assist.page)
-        // A failed check line is the current step (R18): "Step 7 of 8 \u{00B7} Add 8 missing permissions".
-        let app: ZoomOwnApp = part == .meetingApp ? .sdk : .s2s
-        let keysDone = part == .meetingApp ? facts.sdkFilled == 2 : facts.s2sFilled == 3
-        let fixWords = ZoomRunRules.fix(app, lines: checkLines, keysComplete: keysDone)
-            .map { ZoomRun.counter(ZoomRunRules.step($0, app: app)) + " \u{00B7} " + ZoomRunRules.title($0) }
-        let words = step.map { ZoomRun.counter($0) } ?? (label == "Needs a fix" ? (fixWords ?? label) : label)
-        let shortcuts = ZoomConnectRules.shortcuts(part, ids: assist.ids)
+        // Where setup stands now, when it is in this part (the one step ZoomSetupFlow returned).
+        let app: ZoomApp = part == .meetingApp ? .meeting : .hosting
+        let current = state == .done ? nil : assist.step.flatMap { $0.number != nil && $0.app == app ? $0 : nil }
+        let words = current.map { $0.barTitle } ?? label
+        let shortcuts = ZoomConnect.shortcuts(part, ids: assist.ids)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 marker(part, state, needsFix: label == "Needs a fix")
                 Text(part.title).font(.headline)
                 Text(words)
                     .font(.callout)
-                    .foregroundStyle(label == "Needs a fix" && step == nil ? AnyShapeStyle(Brand.netText) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(label == "Needs a fix" && current == nil ? AnyShapeStyle(Brand.netText) : AnyShapeStyle(.secondary))
                 Spacer(minLength: 8)
                 if ZoomStartOverRules.showsUseDifferentApp(state) {
                     Button(ZoomStartOverRules.useDifferentAppTitle) { onUseDifferentApp(part) }
@@ -238,7 +233,7 @@ struct ZoomGuideStep: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// "Filled in from Zoom" with Undo, the offer to use the page's keys, or "Keys removed" with Undo.
+    /// "Keys removed" with Undo.
     @ViewBuilder
     private func notice(_ part: ZoomGuidePart) -> some View {
         Group {
@@ -246,17 +241,6 @@ struct ZoomGuideStep: View {
                 HStack(spacing: 6) {
                     Text("\(ZoomStartOverRules.removedNotice) \u{00B7}").foregroundStyle(.secondary)
                     Button("Undo") { onUndoRemoved(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
-                }
-            } else if assist.filled.contains(part) {
-                HStack(spacing: 8) {
-                    Label("Filled in from Zoom", systemImage: "checkmark.circle").foregroundStyle(Brand.text)
-                    Button("Undo") { onUndoFill(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
-                }
-            } else if assist.offers.contains(part) {
-                HStack(spacing: 10) {
-                    Button("Use the keys from this page") { onUseKeys(part) }.buttonStyle(.bordered).controlSize(.small)
-                    Text("Different from the keys you have. Nothing changes until you press this.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -304,7 +288,7 @@ struct ZoomGuideStep: View {
     // MARK: The manual route
 
     private var manualRoute: some View {
-        AdvancedDisclosure(ZoomConnectRules.manualTitle, open: manualOpen, openRequest: $manualRequest) {
+        AdvancedDisclosure(ZoomConnect.manualTitle, open: manualOpen, openRequest: $manualRequest) {
             VStack(alignment: .leading, spacing: 28) {
                 manualPart(.meetingApp) {
                     fields([("Client ID", $sdkClientID, false), ("Client Secret", $sdkClientSecret, true)])

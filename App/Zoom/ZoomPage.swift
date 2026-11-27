@@ -30,7 +30,7 @@ enum ZoomActionResult: Equatable {
 }
 
 /// What the coach shows: a ring around one control (when it is on the page), a card, one action button.
-struct CoachDrawing: Equatable {
+struct CoachDrawing: Equatable, Codable {
     var control: ZoomControl?
     var counter: String
     var title: String

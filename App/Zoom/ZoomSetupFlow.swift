@@ -114,6 +114,50 @@ struct SetupStep: Equatable {
     var cta: CallToAction
 }
 
+extension CallToAction {
+    /// The label of the one button the bar and the card show; nil when the person acts on Zoom's page (nothing to press here).
+    var buttonLabel: String? {
+        switch self {
+        case .goTo(_, let text): return text
+        case .doThisStep: return "Do this step"
+        case .checkAgain: return "Check again"
+        case .backToGreenroom: return "Back to Greenroom"
+        case .press, .fill, .wait: return nil
+        }
+    }
+
+    /// The control the person is asked to use (the coach rings it).
+    var control: ZoomControl? {
+        switch self {
+        case .press(let c, _), .fill(let c, _): return c
+        default: return nil
+        }
+    }
+
+    /// What to say when the person (not Greenroom) is the one acting.
+    var instruction: String? {
+        switch self {
+        case .press(_, let text), .fill(_, let text), .wait(let text): return text
+        default: return nil
+        }
+    }
+}
+
+extension SetupStep {
+    var isSignIn: Bool { number == nil && cta.control == .signIn }
+
+    /// "Step 3 of 8"; empty for sign-in and the final check.
+    var counter: String { number.map { "Step \($0) of \(Self.total)" } ?? "" }
+
+    /// The bar's left side: "Step 3 of 8 \u{00B7} Copy its keys".
+    var barTitle: String { number == nil ? title : counter + " \u{00B7} " + title }
+
+    /// What the coach draws for this step.
+    var coach: CoachDrawing {
+        CoachDrawing(control: cta.control, counter: counter, title: title, why: why, status: status ?? cta.instruction, button: cta.buttonLabel)
+    }
+}
+
 // MARK: - Evidence
 
 struct AppEvidence: Equatable {

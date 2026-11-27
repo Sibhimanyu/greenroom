@@ -2,21 +2,18 @@
 //  ZoomMarketplaceWindow.swift
 //  Greenroom
 //
-//  The "Zoom window" (docs/specs/zoom-setup-assist.md, R1, R5, R6, R8): Zoom
-//  App Marketplace in a normal macOS window beside the setup guide. It uses the
-//  default website data store (the sign-in is kept in Greenroom, separate from
-//  Safari, until Zoom ends it) and a Safari user agent; links that ask for a
-//  new window load in place. Above the page is the Greenroom bar
-//  (`ZoomBarView`, content from `ZoomBarRules`): part and step, Copy scopes,
-//  Next / Back to Greenroom, Back, Forward, Reload, Tips and a menu with Open in
-//  Safari and (only when signed in) Sign out of Zoom. It opens large and
-//  centred on the guide's screen; the guide is not moved.
+//  The "Zoom window" (docs/specs/zoom-setup-assist.md R1, R8; docs/specs/zoom-setup-flow.md): Zoom
+//  App Marketplace in a normal macOS window beside the setup guide. It uses the default website data
+//  store (the sign-in is kept in Greenroom, separate from Safari, until Zoom ends it) and a Safari user
+//  agent; links that ask for a new window load in place. Above the page is the Greenroom bar
+//  (`ZoomBarView`): "Step n of 8 \u{00B7} title", the step's one button, Back, Forward, Reload, Tips and a menu
+//  with Open in Safari and (only when signed in) Sign out of Zoom. It opens large and centred on the
+//  guide's screen; the guide is not moved.
 //
-//  Greenroom never clicks or submits anything on Zoom's pages. It does two
-//  things there: draw the coach (ZoomCoachScript, pointer-events none) and, on
-//  the two credential pages only, read the key inputs (ZoomKeyReaderScript).
-//  Values go straight to `onKeys`; they are not logged, not put in the title
-//  and not kept here. The window's title is always "Zoom".
+//  This is the real adapter of the `ZoomPage` seam (read, perform, draw) and nothing else: it decides no
+//  steps. `ZoomSetupAssist` owns the flow and hands the window the step to show. Greenroom clicks on
+//  Zoom's pages only through `ZoomActor` plans (`perform`). Key values come back through the copy hook,
+//  in memory; they are never logged, put in the title or kept here. The window's title is always "Zoom".
 //
 import AppKit
 import SwiftUI
@@ -33,125 +30,69 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var location = ""
-    /// What the bar shows, from `ZoomBarRules`.
-    @Published private(set) var bar = ZoomBar(title: "", context: .none, primary: .none, offersSignOut: false)
-    @Published private(set) var signIn = ZoomSignInState.unknown
+    /// The step the flow is on (the bar and the coach show it) and what the page says about sign-in.
+    @Published private(set) var step: SetupStep?
+    @Published private(set) var signedIn: Bool?
     @Published private(set) var copied = false
-    /// A "Do this step" run is under way, and the words after the last one (cleared when the page changes).
+    /// A step is being done (a plan is running); the bar shows it.
     @Published private(set) var working = false
-    private var actorNote: String?
     @Published private(set) var loadFailed = false
-    /// "Set up for me" is driving the page: the older coach and key reader stay quiet, and the bar shows this line and Stop.
+    /// "Set up for me" is driving the page: the coach stays quiet, and the bar shows this line and Stop.
     @Published private(set) var autopilotLine: String?
-    var onStop: () -> Void = {}
-    func setAutopilot(_ line: String?) {
-        let was = autopilotLine != nil
-        autopilotLine = line
-        if (line != nil) != was { if line == nil { refresh() } else { drawCoachNothing() } }
-    }
-    private var autopilotOn: Bool { autopilotLine != nil }
-    private var loadWaiter: CheckedContinuation<Void, Never>?
     /// The coach on or off for this setup; "Hide tips" and the toolbar's Tips both set it.
-    @Published var tipsOn = true { didSet { if tipsOn != oldValue { refresh() } } }
+    @Published var tipsOn = true { didSet { if tipsOn != oldValue { redraw() } } }
 
     /// Told when the window shows a different page (nil: not a Marketplace page, or closed).
     var onPage: (ZoomMarketplacePage?) -> Void = { _ in }
-    /// Told what the credential page's inputs hold. Never logged.
-    var onKeys: (ZoomMarketplacePage, [ZoomKeyField: String]) -> Void = { _, _ in }
-    /// Whether the keys on this page are already in Greenroom (the coach says "Got it").
-    var keysFilled: () -> Bool = { false }
-    /// Whether a part has keys filled in but no remembered app ID (the coach asks which app).
-    var needsApp: (ZoomGuidePart) -> Bool = { _ in false }
-    /// The page's key fields Greenroom still lacks (the coach points at the first); nil off the credentials pages.
-    var missingKeys: (ZoomMarketplacePage) -> [ZoomKeyField]? = { _ in nil }
-    /// A key copied with Zoom's own copy button while a credentials page is (or just was) shown. Never logged.
-    var onCopied: (ZoomMarketplacePage, String) -> Void = { _, _ in }
-    /// Which parts have all their keys in Greenroom, and the remembered app IDs, for the bar.
-    var barState: () -> (meeting: Bool, hosting: Bool, ids: ZoomAppIDs, lines: [ZoomCheckLine], running: Bool) = { (false, false, ZoomAppIDs(), [], false) }
-    /// A "Do this step" run finished: look at the check again while something fails.
-    var onStepDone: () -> Void = {}
-    /// The bar's "Back to Greenroom" hands over to the guide.
-    var onBackToGreenroom: () -> Void = {}
+    /// Told to look again (Marketplace is a single-page app that draws late).
+    var onRefresh: () -> Void = {}
+    /// The card's or the bar's button: do what the current step's call to action says.
+    var onAct: () -> Void = {}
+    /// Stop pressed while Set up for me runs, or the window closed during it.
+    var onStop: () -> Void = {}
 
     private var window: NSWindow?
     private var webView: WKWebView?
     private var observers: [NSKeyValueObservation] = []
-    private var requestedPart: ZoomGuidePart = .meetingApp
     /// Where setup sent the window, and whether a sign-in page has shown since:
     /// after a sign-in, Zoom's home page sends the window back there once.
     private var heading: URL?
     private var sawSignIn = false
-    /// The Type text of each row on Created apps (nil until scanned, and on every other page).
-    private var appRows: [String]?
     private var lastPage: ZoomMarketplacePage?
     private var timers: [DispatchWorkItem] = []
+    private var loadWaiter: CheckedContinuation<Void, Never>?
+    private var lastDrawing: CoachDrawing?
     #if DEBUG
     private var recorderWork: DispatchWorkItem?
     private var lastRecorded: ZoomPageSnapshot?
     #endif
 
-    /// Clears whatever the older coach drew on the page.
-    private func drawCoachNothing() {
-        webView?.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { [weak self] _ in
-            self?.webView?.evaluateJavaScript(ZoomCoachScript.call(nil, ring: "", mark: nil, fill: ""), in: nil, in: .defaultClient) { _ in }
-        }
-    }
-
-    // MARK: Clipboard pickup (R17)
-
-    private var credentialsPage: ZoomMarketplacePage?
-    private var leftCredentialsAt: Date?
-    private var pasteboardCount = NSPasteboard.general.changeCount
-    private var pasteboardTimer: Timer?
-
-    /// Called whenever the page changes: remember a credentials page, and when it was left.
-    private func trackCredentialsPage(_ page: ZoomMarketplacePage?) {
-        if let page, ZoomMarketplacePages.keyFields(on: page) != nil {
-            credentialsPage = page; leftCredentialsAt = nil
-        } else if credentialsPage != nil, leftCredentialsAt == nil {
-            leftCredentialsAt = Date()
-        }
-        if pasteboardTimer == nil {
-            pasteboardCount = NSPasteboard.general.changeCount
-            pasteboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.pollPasteboard() }
-            }
-        }
-    }
-
-    private func pollPasteboard() {
-        let pb = NSPasteboard.general
-        let count = pb.changeCount
-        let onPage = lastPage.map { ZoomMarketplacePages.keyFields(on: $0) != nil } ?? false
-        let since = leftCredentialsAt.map { Date().timeIntervalSince($0) }
-        #if DEBUG
-        if ZoomRecorder.coachOff { pasteboardCount = count; return }
-        #endif
-        if autopilotOn { pasteboardCount = count; return }
-        guard ZoomClipboardRules.isWatching(onCredentialsPage: onPage, secondsSinceLeaving: since), let page = credentialsPage else {
-            pasteboardCount = count   // not watching: a copy made elsewhere never counts
-            return
-        }
-        guard count != pasteboardCount else { return }
-        pasteboardCount = count
-        if let text = pb.string(forType: .string) { onCopied(page, text) }
-    }
-
     var isOpen: Bool { window != nil }
-    func close() { window?.close() }
     var currentURL: URL? { webView?.url }
+    func close() { window?.close() }
+    private var autopilotOn: Bool { autopilotLine != nil }
+
+    /// What the flow says now: the bar shows it and the coach draws it (unless tips are off or Set up for me is running).
+    func present(step: SetupStep?, signedIn: Bool?, working: Bool) {
+        self.step = step; self.signedIn = signedIn; self.working = working
+        redraw()
+    }
+
+    func setAutopilot(_ line: String?) {
+        let was = autopilotOn
+        autopilotLine = line
+        if autopilotOn != was { redraw() }
+    }
 
     /// Opens the window (beside the guide) or brings it forward, and goes to `url` when given.
-    /// `part` is the guide part the person is working on, so the coach knows which radio to point at.
-    func show(url: URL?, part: ZoomGuidePart?, guideWindow: NSWindow?) {
-        if let part { requestedPart = part }
+    func show(url: URL?, guideWindow: NSWindow?) {
         if let url { heading = url }
         if window == nil { make(guideWindow: guideWindow) }
         window?.makeKeyAndOrderFront(nil)
         if let url, let webView {
             if webView.url == nil || webView.url != url { webView.load(URLRequest(url: url)) }
         }
-        refresh()
+        scheduleRefresh()
     }
 
     private func make(guideWindow: NSWindow?) {
@@ -221,11 +162,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         webView = nil
         window = nil
         lastPage = nil
-        pasteboardTimer?.invalidate(); pasteboardTimer = nil
-        credentialsPage = nil; leftCredentialsAt = nil
+        lastDrawing = nil
         location = ""
-        signIn = .unknown
-        updateBar()
+        step = nil; signedIn = nil
         onPage(nil)
     }
 
@@ -246,29 +185,6 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// The bar's Sign in: Marketplace itself redirects to Zoom's sign-in. Nothing is pressed on the page.
     func goToSignIn() { webView?.load(URLRequest(url: ZoomMarketplaceGuide.builderURL)) }
 
-    func pressPrimary() {
-        switch bar.primary {
-        case .none: break
-        case .next(let part, let page):
-            requestedPart = part
-            if let url = ZoomMarketplacePages.url(for: page) { webView?.load(URLRequest(url: url)) }
-        case .backToGreenroom:
-            window?.close()
-            onBackToGreenroom()
-        }
-    }
-
-    private var requestedPartForBar: ZoomGuidePart { lastPage?.app.map { $0 == .sdk ? .meetingApp : .hostingApp } ?? requestedPart }
-
-    /// Recomputes the bar from the page, the keys in Greenroom and the sign-in state.
-    func updateBar() {
-        let s = barState()
-        bar = ZoomBarRules.bar(ZoomBarFacts(part: requestedPart, page: lastPage, ids: s.ids, meetingComplete: s.meeting,
-                                            hostingComplete: s.hosting, signIn: signIn,
-                                            hasMatchingRow: appRows.map { !ZoomCoachRules.matchingRows(requestedPartForBar, $0).isEmpty } ?? false,
-                                            working: working, checkLines: s.lines, checkRunning: s.running))
-    }
-
     /// The same address in Safari (R8).
     func openInSafari() {
         NSWorkspace.shared.open(webView?.url ?? ZoomMarketplaceGuide.builderURL)
@@ -277,8 +193,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// Clears what Zoom's sites remembered in this window, then starts again at Created Apps.
     func signOut() {
         let reload = webView != nil
-        signIn = ZoomSignInStateRules.afterSignOut
-        updateBar()
+        signedIn = false
         let store = WKWebsiteDataStore.default()
         store.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { [weak self] records in
             let zoom = records.filter { $0.displayName.localizedCaseInsensitiveContains("zoom") }
@@ -297,13 +212,11 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         loadFailed = false
         location = (url.host ?? "") + url.path
         let page = ZoomMarketplacePages.page(for: url)
-        if page != lastPage { lastPage = page; actorNote = nil; onPage(page) }
+        if page != lastPage { lastPage = page; onPage(page) }
+        if page?.isSignIn == true { sawSignIn = true }
         #if DEBUG
         recorderNudge()
         #endif
-        trackCredentialsPage(page)
-        signIn = ZoomSignInStateRules.state(page: page, header: nil, current: signIn)
-        updateBar()
         scheduleRefresh()
     }
 
@@ -320,147 +233,45 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     private func cancelTimers() { timers.forEach { $0.cancel() }; timers = [] }
 
-    /// Draws the coach for this page and, on a credential page, reads the keys.
+    /// Looks again: after a sign-in Zoom's home page sends the window back to where setup was heading, then the flow re-reads.
     func refresh() {
-        updateBar()
-        if autopilotOn { return }
         #if DEBUG
         recorderNudge()
+        if ZoomRecorder.coachOff { return }   // a recording run sees Zoom's pages untouched
         #endif
         guard let webView, let url = webView.url else { return }
-        readSignIn(url)
         if let back = ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: sawSignIn, now: url, heading: heading) {
             sawSignIn = false
-            note(nil, "resume-after-sign-in")
             webView.load(URLRequest(url: back))
             return
         }
-        guard let page = ZoomMarketplacePages.page(for: url) else { note(nil, "no-page"); return }
         #if DEBUG
-        if ZoomDomDump.enabled, ZoomMarketplacePages.isMarketplace(url) {
+        if ZoomDomDump.enabled, ZoomMarketplacePages.isMarketplace(url), let page = ZoomMarketplacePages.page(for: url) {
             let labelsOnly = ZoomMarketplacePages.keyFields(on: page) != nil
             webView.evaluateJavaScript(ZoomDomDump.script(labelsOnly: labelsOnly), in: nil, in: .defaultClient) { result in
                 if case .success(let v) = result, let json = v as? String { ZoomDomDump.append(kind: page.kindName, json: json) }
             }
         }
         #endif
-        if page.isSignIn { sawSignIn = true }
-        if page == .createdApps {
-            scanAppRows(page) { [weak self] in
-                self?.followDialog(page) { self?.drawCoach(page) }
-            }
-        } else {
-            if appRows != nil { appRows = nil; updateBar() }
-            drawCoach(page)
-        }
-        readKeys(on: page)
+        onRefresh()
     }
 
-    /// Computes the coach for the page and draws (or clears) it; the script's one-word answer is noted in DEBUG.
-    private func drawCoach(_ page: ZoomMarketplacePage) {
-        guard let webView else { return }
-        #if DEBUG
-        if ZoomRecorder.coachOff { return }   // a recording run sees Zoom's pages untouched
-        #endif
-        let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
-        var coach = ZoomCoachRules.offeringAction(
-            ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
-                                 needsApp: needsApp(part), appRows: appRows, missingKeys: missingKeys(page)), part: part, page: page)
-        coach?.busy = working
-        coach?.note = actorNote
+    // MARK: The coach (draw)
+
+    /// Draws the current step's card, or clears it (tips off, Set up for me running, nothing to say).
+    private func redraw() {
+        var drawing: CoachDrawing?
+        if tipsOn, !autopilotOn, !working, let step { drawing = step.coach }
+        lastDrawing = drawing
+        draw(drawing)
+    }
+
+    func draw(_ coach: CoachDrawing?) {
+        guard let webView, ZoomMarketplacePages.isMarketplace(webView.url ?? URL(fileURLWithPath: "/")) else { return }
         let ring = Self.ringColor, mark = Self.markDataURI, fill = Self.fillColor
-        webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { [weak self] result in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                if case .failure(let error) = result { self.note(page, "coach-source-error " + Self.describe(error)) }
-                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring, mark: mark, fill: fill), in: nil, in: .defaultClient) { result in
-                    MainActor.assumeIsolated {
-                        switch result {
-                        case .success(let value): self.note(page, coach == nil ? "no-coach" : "coach " + ((value as? String) ?? "?"))
-                        case .failure(let error): self.note(page, "coach-call-error " + Self.describe(error))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// A dialog that names a type ("Create a Server-to-Server OAuth app", or the type picked in "What kind of app")
-    /// moves the coach, the bar and the next pages to that part (spec R16).
-    private func followDialog(_ page: ZoomMarketplacePage, then done: @escaping () -> Void) {
-        webView?.evaluateJavaScript(ZoomDialogScript.source, in: nil, in: .defaultClient) { [weak self] result in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                if case .success(let value) = result, let json = value as? String, json != "null",
-                   let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
-                   let part = ZoomCoachRules.partFollowing(obj["heading"] as? String, obj["chosen"] as? String), part != self.requestedPart {
-                    self.requestedPart = part
-                    self.note(page, "part follows dialog")
-                    self.updateBar()
-                }
-                done()
-            }
-        }
-    }
-
-    /// Reads the Created apps table's Type column (never an app's name) and remembers it for the coach and the bar.
-    private func scanAppRows(_ page: ZoomMarketplacePage, then done: @escaping () -> Void) {
-        webView?.evaluateJavaScript(ZoomAppListScript.source, in: nil, in: .defaultClient) { [weak self] result in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                var types: [String]?
-                switch result {
-                case .success(let value):
-                    if let json = value as? String, let data = json.data(using: .utf8),
-                       let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                        types = list.compactMap { $0["typeText"] as? String }
-                    }
-                case .failure(let error):
-                    self.note(page, "scan-error " + Self.describe(error))
-                }
-                self.note(page, "scan rows=\(types?.count ?? -1)")
-                if self.appRows != types { self.appRows = types; self.updateBar() }
-                done()
-            }
-        }
-    }
-
-    /// Looks at Marketplace's header (read only) for a "Sign In" link or an account menu.
-    private func readSignIn(_ url: URL) {
-        guard ZoomMarketplacePages.isMarketplace(url), ZoomMarketplacePages.page(for: url)?.isSignIn != true else { return }
-        webView?.evaluateJavaScript(ZoomSignInHeaderScript.source, in: nil, in: .defaultClient) { [weak self] result in
-            MainActor.assumeIsolated {
-                if case .failure(let error) = result { self?.note(self?.lastPage, "header-error " + Self.describe(error)) }
-                guard let self, case .success(let value) = result, let word = value as? String,
-                      let report = ZoomHeaderReport(rawValue: word),
-                      self.webView?.url == url else { return }
-                let next = ZoomSignInStateRules.state(page: self.lastPage, header: report, current: self.signIn)
-                if next != self.signIn { self.signIn = next; self.updateBar() }
-            }
-        }
-    }
-
-    private func readKeys(on page: ZoomMarketplacePage, then done: (() -> Void)? = nil) {
-        #if DEBUG
-        if ZoomRecorder.coachOff { done?(); return }   // no automatic key fill in a recording run
-        #endif
-        guard let fields = ZoomMarketplacePages.keyFields(on: page), let webView else { done?(); return }
-        webView.evaluateJavaScript(ZoomKeyReaderScript.call(fields: fields), in: nil, in: .defaultClient) { [weak self] result in
-            MainActor.assumeIsolated {
-                if case .failure(let error) = result { self?.note(page, "reader-error " + Self.describe(error)) }
-                guard let self, case .success(let value) = result, let json = value as? String,
-                      let data = json.data(using: .utf8),
-                      let raw = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-                      self.webView?.url.flatMap(ZoomMarketplacePages.page(for:)) == page else { done?(); return }
-                // Lengths only: how each field was read ("accountID=input22;clientID=missing").
-                if let diag = raw["_diag"] { self.note(page, "read " + diag) }
-                var found: [ZoomKeyField: String] = [:]
-                if let v = raw["accountID"] { found[.accountID] = v }
-                if let v = raw["clientID"] { found[.clientID] = v }
-                if let v = raw["clientSecret"] { found[.clientSecret] = v }
-                if !found.isEmpty { self.onKeys(page, found) }
-                done?()
-            }
+        let json = coach.map { ZoomCoachScript.json($0) }
+        webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { [weak self] _ in
+            self?.webView?.evaluateJavaScript(ZoomCoachScript.call(json, ring: ring, mark: mark, fill: fill), in: nil, in: .defaultClient) { _ in }
         }
     }
 
@@ -540,13 +351,6 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     // MARK: DEBUG log (never page text, never values)
 
-    /// A script error as its domain, code and our own script's exception text; nothing from the page.
-    private static func describe(_ error: Error) -> String {
-        let e = error as NSError
-        let message = (e.userInfo["WKJavaScriptExceptionMessage"] as? String).map { String($0.prefix(120)) } ?? ""
-        return "\(e.domain) \(e.code) \(message)"
-    }
-
     /// DEBUG builds append "time, page kind, what" to ~/Library/Logs/Greenroom/zoom-window.log. Release builds do nothing.
     private func note(_ page: ZoomMarketplacePage?, _ what: String) {
         #if DEBUG
@@ -563,84 +367,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         #endif
     }
 
-    // MARK: Do this step (R16)
-
-    /// Runs the page's one safe step, on the person's press only (the coach card's button).
-    private func runStep(_ name: String) {
-        guard !working, let webView, let url = webView.url, ZoomMarketplacePages.isMarketplace(url),
-              let page = ZoomMarketplacePages.page(for: url) else { return }
-        let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
-        // The card names the step it is offering; Swift only runs a known step on that step's own pages.
-        guard let step = ZoomActorStep(rawValue: name), ZoomActorRules.pageAllows(step, page) else { note(page, "step refused"); return }
-        working = true; actorNote = nil
-        updateBar(); drawCoach(page)
-        note(page, "step:\(step.logName) start")
-        if step == .readKeys { runReadKeys(page, part: part); return }
-        webView.callAsyncJavaScript(ZoomActorScript.body, arguments: ZoomActorScript.arguments(step, part: part), in: nil,
-                                    in: .defaultClient) { [weak self] result in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                var r = ZoomActorResult(code: "error")
-                switch result {
-                case .success(let value):
-                    if let json = value as? String, let decoded = try? JSONDecoder().decode(ZoomActorResult.self, from: Data(json.utf8)) { r = decoded }
-                case .failure(let error):
-                    self.note(page, "step:\(step.logName) error " + Self.describe(error))
-                }
-                for line in r.log ?? [] { self.note(page, "step:\(step.logName) \(line)") }
-                self.note(page, "step:\(step.logName) result \(r.code)")
-                self.actorNote = ZoomActorRules.message(step, r)
-                self.working = false
-                self.updateBar()
-                self.refresh()
-                self.onStepDone()
-            }
-        }
-    }
-
-    /// Do this step on a keys page: read what the page shows, then press the page's OWN Copy control for each key still
-    /// missing (Greenroom picks each up from the clipboard), and put the clipboard back as it was. Nothing else is pressed.
-    private func runReadKeys(_ page: ZoomMarketplacePage, part: ZoomGuidePart) {
-        readKeys(on: page) { [weak self] in
-            guard let self else { return }
-            Task { @MainActor in
-                let pb = NSPasteboard.general
-                let plain = (pb.types ?? []).allSatisfy { $0 == .string }
-                let previous = plain ? pb.string(forType: .string) : nil
-                var missing = self.missingKeys(page) ?? []
-                let wanted = missing.count
-                var copied = 0
-                var code = missing.isEmpty ? "done" : "no-copy"
-                for field in missing {
-                    let args = ZoomActorScript.arguments(.readKeys, part: part, field: ZoomCoachRules.keyLabel(field))
-                    let r = try? await self.webView?.callAsyncJavaScript(ZoomActorScript.body, arguments: args, in: nil, contentWorld: .defaultClient)
-                    if let json = r as? String, let d = try? JSONDecoder().decode(ZoomActorResult.self, from: Data(json.utf8)) {
-                        for line in d.log ?? [] { self.note(page, "step:keys \(line)") }
-                        guard d.code == "copied" else { break }
-                    } else { break }
-                    // The clipboard pickup fills the field; wait for it (at most 3s).
-                    for _ in 0..<10 {
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        if !(self.missingKeys(page) ?? []).contains(field) { copied += 1; break }
-                    }
-                }
-                missing = self.missingKeys(page) ?? []
-                if wanted > 0 { code = missing.isEmpty ? "done" : (copied > 0 || missing.count < wanted ? "partial" : "no-copy") }
-                // Put the clipboard back as it was (or clear it): the secret must not stay on it.
-                pb.clearContents()
-                if case .restore(let text) = ZoomActorRules.restoration(previous: previous) { pb.setString(text, forType: .string) }
-                self.pasteboardCount = pb.changeCount
-                self.note(page, "step:keys result \(code)")
-                self.actorNote = ZoomActorRules.message(.readKeys, ZoomActorResult(code: code))
-                self.working = false
-                self.updateBar()
-                self.refresh()
-                self.onStepDone()
-            }
-        }
-    }
-
-    /// Brand.buttonFill as a CSS colour: the coach's "Do this step" fill (white label).
+    /// Brand.buttonFill as a CSS colour: the coach's button fill (white label).
     private static var fillColor: String {
         let c = NSColor(Brand.buttonFill).usingColorSpace(.sRGB) ?? .systemGreen
         return String(format: "rgb(%d,%d,%d)", Int((c.redComponent * 255).rounded()), Int((c.greenComponent * 255).rounded()),
@@ -694,11 +421,11 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
             recorderNudge()
         #endif
         case "route": scheduleRefresh()
-        case "zoomCopy": copied(message.body as? String)
+        case "zoomCopy": copiedByZoom(message.body as? String)
         case "coach":
             switch message.body as? String {
             case "hide": tipsOn = false
-            case .some(let body) where body.hasPrefix("do:"): runStep(String(body.dropFirst(3)))
+            case "act": onAct()
             default: break
             }
         default: break
@@ -709,15 +436,13 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// page's clipboard write without a real click, so a pressed Copy copied nothing). Kept only on a
     /// credentials page and only when key-shaped; in memory, never logged.
     fileprivate(set) var lastCopiedKey: (text: String, at: Date)?
-    var onCopiedKey: ((String) -> Void)?
-    private func copied(_ text: String?) {
-        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), let url = webView?.url,
-              let page = ZoomMarketplacePages.page(for: url), page.isCredentialsPage, ZoomMarketplacePages.isKey(text) else { return }
-        lastCopiedKey = (text, Date())
+    private func copiedByZoom(_ text: String?) {
+        guard let text, let key = ZoomClipboardRules.clean(text), let url = webView?.url,
+              let page = ZoomMarketplacePages.page(for: url), page.isCredentialsPage else { return }
+        lastCopiedKey = (key, Date())
         #if DEBUG
-        note(page, "copied key len=\(text.count)")
+        note(page, "copied key len=\(key.count)")
         #endif
-        onCopiedKey?(text)
     }
 
     /// Page world, document start: wraps navigator.clipboard.writeText and the copy event so the text a
@@ -800,8 +525,6 @@ extension ZoomMarketplaceWindow: ZoomPage {
         lastCopiedKey = nil
         return k.text
     }
-
-    func draw(_ coach: CoachDrawing?) {}
 }
 
 private struct ZoomWebView: NSViewRepresentable {
@@ -816,11 +539,12 @@ private struct ZoomWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZoomBarView(bar: window.bar, canGoBack: window.canGoBack, canGoForward: window.canGoForward,
+            ZoomBarView(step: window.step, signedIn: window.signedIn, working: window.working,
+                        canGoBack: window.canGoBack, canGoForward: window.canGoForward,
                         tipsOn: $window.tipsOn, loadFailed: window.loadFailed, copied: window.copied, address: window.location,
                         onBack: { window.goBack() }, onForward: { window.goForward() }, onReload: { window.reload() },
                         onCopyScopes: { window.copyScopes() }, onSignIn: { window.goToSignIn() },
-                        onPrimary: { window.pressPrimary() }, onOpenInSafari: { window.openInSafari() },
+                        onAct: { window.onAct() }, onOpenInSafari: { window.openInSafari() },
                         onSignOut: { window.signOut() },
                         autopilot: window.autopilotLine, onStop: { window.onStop() })
             Divider()

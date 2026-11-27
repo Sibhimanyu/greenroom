@@ -49,31 +49,4 @@ final class ZoomStartOverRulesTests: XCTestCase {
     }
 
     // MARK: R12
-
-    func testStepOneSaysFindMyAppWhenKeysAreFilledButNoIDIsKnown() {
-        for part in [ZoomGuidePart.meetingApp, .hostingApp] {
-            let find = ZoomMarketplaceGuide.rows(part: part, ids: ZoomAppIDs(), keysFilled: true)
-            XCTAssertEqual(find.first?.link, ZoomGuideRowLink(title: "Find my app", page: .createdApps))
-            XCTAssertTrue(find.dropFirst().allSatisfy { $0.link == nil })
-            let create = ZoomMarketplaceGuide.rows(part: part, ids: ZoomAppIDs(), keysFilled: false)
-            XCTAssertEqual(create.first?.link?.title, "Create the app")
-        }
-    }
-
-    func testAKnownIDWinsOverKeysFilled() {
-        let rows = ZoomMarketplaceGuide.rows(part: .hostingApp, ids: ZoomAppIDs(hosting: id), keysFilled: true)
-        XCTAssertEqual(rows.map { $0.link?.title }, [nil, "Open Scopes", "Open Activation", "Open App Credentials"])
-    }
-
-    func testTheCoachAsksForTheAppOnCreatedApps() {
-        let c = ZoomCoachRules.coach(part: .hostingApp, page: .createdApps, keysFilled: false, tipsOn: true, needsApp: true)
-        XCTAssertEqual(c, ZoomCoach(label: nil, kind: .none, counter: "", text: "Click the app you made for Greenroom."))
-        XCTAssertNotNil(ZoomCoachRules.coach(part: .meetingApp, page: .createdApps, keysFilled: false, tipsOn: true, needsApp: true))
-        XCTAssertNil(ZoomCoachRules.coach(part: .hostingApp, page: .createdApps, keysFilled: false, tipsOn: true, needsApp: false))
-        XCTAssertNil(ZoomCoachRules.coach(part: .hostingApp, page: .createdApps, keysFilled: false, tipsOn: false, needsApp: true))
-        XCTAssertNil(ZoomCoachRules.coach(part: .check, page: .createdApps, keysFilled: false, tipsOn: true, needsApp: true))
-        // Other pages ignore it.
-        XCTAssertEqual(ZoomCoachRules.coach(part: .hostingApp, page: .chooseType(id), keysFilled: false, tipsOn: true, needsApp: true)?.label,
-                       "Server to server OAuth app")
-    }
 }

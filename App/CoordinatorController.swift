@@ -698,12 +698,12 @@ final class CoordinatorController: ObservableObject {
     func openZoomSetupWindow() {
         openZoomSetupGuide(at: .zoomStep)
         let facts = zoomGuideFacts
-        guard let button = ZoomConnectRules.button(facts) else { return }
-        let filled = button.part == .meetingApp ? facts.sdkFilled : facts.s2sFilled
-        let page = ZoomConnectRules.entryPage(button.part, ids: zoomAssist.state.ids, filled: filled)
+        guard let part = ZoomConnect.nextPart(facts) else { return }
+        let filled = part == .meetingApp ? facts.sdkFilled : facts.s2sFilled
+        let page = ZoomConnect.entryPage(part, ids: zoomAssist.state.ids, filled: filled)
         let url = ZoomMarketplacePages.url(for: page) ?? ZoomMarketplaceGuide.builderURL
         // After the guide window exists, so the Zoom window centres on its screen and sits above it.
-        DispatchQueue.main.async { [weak self] in self?.zoomAssist.open(url, part: button.part) }
+        DispatchQueue.main.async { [weak self] in self?.zoomAssist.open(url, part: part) }
     }
 
     /// Where the guide's flow stands, from the keys and the last check.

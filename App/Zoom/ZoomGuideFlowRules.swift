@@ -177,3 +177,63 @@ enum ZoomGuideFlowRules {
         return filled >= total ? .done : .inProgress
     }
 }
+
+/// What the guide needs to know about the Zoom window, as plain values (the render feeds samples).
+struct ZoomGuideAssistState: Equatable {
+    var page: ZoomMarketplacePage?
+    var ids = ZoomAppIDs()
+    /// Where setup stands now (the step `ZoomSetupFlow` returned for the page last read); nil before the window has looked.
+    var step: SetupStep?
+    /// Parts whose keys were just removed by "Use a different app" ("Keys removed", with Undo).
+    var removed: Set<ZoomGuidePart> = []
+}
+
+/// The Connect Zoom step's words and small decisions (the steps themselves come from `ZoomSetupFlow`).
+enum ZoomConnect {
+    static let intro = "Greenroom needs two small apps in your Zoom account. Set up for me builds both and copies the keys. Or follow the steps yourself; Greenroom shows each click."
+    static let manualTitle = "Enter the keys yourself"
+
+    /// The first unfinished part (Meeting app first); nil once both are done.
+    static func nextPart(_ f: ZoomGuideFlowFacts) -> ZoomGuidePart? {
+        let flow = ZoomGuideFlowRules.flow(f)
+        if flow.meetingApp != .done { return .meetingApp }
+        if flow.hostingApp != .done { return .hostingApp }
+        return nil
+    }
+
+    /// Where "Guide me instead" opens the window: Created apps, or the remembered app's next page.
+    static func entryPage(_ part: ZoomGuidePart, ids: ZoomAppIDs, filled: Int) -> ZoomMarketplacePage {
+        switch part {
+        case .meetingApp:
+            guard let id = ids.meeting else { return .createdApps }
+            return .general(id, filled > 0 ? .information : .embed)
+        case .hostingApp:
+            guard let id = ids.hosting else { return .createdApps }
+            return .s2s(id, filled > 0 ? .credentials : .scopes)
+        case .check:
+            return .createdApps
+        }
+    }
+
+    static func showsCheckRow(_ f: ZoomGuideFlowFacts) -> Bool {
+        let flow = ZoomGuideFlowRules.flow(f)
+        return (flow.meetingApp == .done && flow.hostingApp == .done) || f.check != .notRun
+    }
+
+    /// A deep link to the keys, scopes or activation unfolds the manual route.
+    static func opensManual(_ spot: ZoomGuideSpot) -> Bool { spot != .zoomStep }
+
+    /// The "..." menu's shortcuts on a part's line: only the pages whose app ID is known.
+    static func shortcuts(_ part: ZoomGuidePart, ids: ZoomAppIDs) -> [(title: String, page: ZoomMarketplacePage)] {
+        switch part {
+        case .meetingApp:
+            guard let id = ids.meeting else { return [] }
+            return [("Open Embed", .general(id, .embed)), ("Open Basic information", .general(id, .information))]
+        case .hostingApp:
+            guard let id = ids.hosting else { return [] }
+            return [("Open Scopes", .s2s(id, .scopes)), ("Open Activation", .s2s(id, .activation)), ("Open App Credentials", .s2s(id, .credentials))]
+        case .check:
+            return []
+        }
+    }
+}

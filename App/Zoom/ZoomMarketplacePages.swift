@@ -54,7 +54,7 @@ enum ZoomMarketplacePage: Equatable, Hashable {
 }
 
 /// The fields a credentials page shows, in the order Zoom lays them out.
-enum ZoomKeyField: Equatable, Hashable { case accountID, clientID, clientSecret }
+enum ZoomKeyField: String, Equatable, Hashable, Codable { case accountID, clientID, clientSecret }
 
 enum ZoomMarketplacePages {
     /// After a sign-in Zoom lands on Marketplace's home page (owner live test, 2026-11-27).

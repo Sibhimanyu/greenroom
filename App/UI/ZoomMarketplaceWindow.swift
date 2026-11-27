@@ -75,6 +75,10 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     private var appRows: [String]?
     private var lastPage: ZoomMarketplacePage?
     private var timers: [DispatchWorkItem] = []
+    #if DEBUG
+    private var recorderWork: DispatchWorkItem?
+    private var lastRecorded: ZoomPageSnapshot?
+    #endif
 
     // MARK: Clipboard pickup (R17)
 
@@ -103,6 +107,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         let count = pb.changeCount
         let onPage = lastPage.map { ZoomMarketplacePages.keyFields(on: $0) != nil } ?? false
         let since = leftCredentialsAt.map { Date().timeIntervalSince($0) }
+        #if DEBUG
+        if ZoomRecorder.coachOff { pasteboardCount = count; return }
+        #endif
         guard ZoomClipboardRules.isWatching(onCredentialsPage: onPage, secondsSinceLeaving: since), let page = credentialsPage else {
             pasteboardCount = count   // not watching: a copy made elsewhere never counts
             return
@@ -135,6 +142,12 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         ucc.add(self, name: "route")
         ucc.add(self, contentWorld: .defaultClient, name: "coach")
         ucc.addUserScript(WKUserScript(source: Self.routeScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        #if DEBUG
+        if ZoomRecorder.enabled {
+            ucc.add(self, contentWorld: .defaultClient, name: "zoomRecord")
+            ucc.addUserScript(WKUserScript(source: ZoomRecorder.clickScript, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
+        }
+        #endif
 
         let web = WKWebView(frame: .zero, configuration: config)
         web.customUserAgent = Self.safariUA
@@ -172,6 +185,12 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         cancelTimers()
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "route")
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "coach", contentWorld: .defaultClient)
+        #if DEBUG
+        if ZoomRecorder.enabled {
+            webView?.configuration.userContentController.removeScriptMessageHandler(forName: "zoomRecord", contentWorld: .defaultClient)
+            recorderWork?.cancel(); recorderWork = nil; lastRecorded = nil
+        }
+        #endif
         webView?.navigationDelegate = nil
         webView?.uiDelegate = nil
         observers = []
@@ -255,6 +274,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         location = (url.host ?? "") + url.path
         let page = ZoomMarketplacePages.page(for: url)
         if page != lastPage { lastPage = page; actorNote = nil; onPage(page) }
+        #if DEBUG
+        recorderNudge()
+        #endif
         trackCredentialsPage(page)
         signIn = ZoomSignInStateRules.state(page: page, header: nil, current: signIn)
         updateBar()
@@ -277,6 +299,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// Draws the coach for this page and, on a credential page, reads the keys.
     func refresh() {
         updateBar()
+        #if DEBUG
+        recorderNudge()
+        #endif
         guard let webView, let url = webView.url else { return }
         readSignIn(url)
         if let back = ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: sawSignIn, now: url, heading: heading) {
@@ -309,6 +334,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// Computes the coach for the page and draws (or clears) it; the script's one-word answer is noted in DEBUG.
     private func drawCoach(_ page: ZoomMarketplacePage) {
         guard let webView else { return }
+        #if DEBUG
+        if ZoomRecorder.coachOff { return }   // a recording run sees Zoom's pages untouched
+        #endif
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
         var coach = ZoomCoachRules.offeringAction(
             ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
@@ -388,6 +416,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     }
 
     private func readKeys(on page: ZoomMarketplacePage, then done: (() -> Void)? = nil) {
+        #if DEBUG
+        if ZoomRecorder.coachOff { done?(); return }   // no automatic key fill in a recording run
+        #endif
         guard let fields = ZoomMarketplacePages.keyFields(on: page), let webView else { done?(); return }
         webView.evaluateJavaScript(ZoomKeyReaderScript.call(fields: fields), in: nil, in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
@@ -424,7 +455,44 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         return "data:image/png;base64," + png.base64EncodedString()
     }()
 
+    /// Reads the page into a `ZoomPageSnapshot` (one read-only script). The values in it stay in memory.
+    func readSnapshot(_ done: @escaping (ZoomPageSnapshot?) -> Void) {
+        guard let webView, let url = webView.url else { done(nil); return }
+        webView.evaluateJavaScript(ZoomPageScript.source, in: nil, in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard case .success(let value) = result, let json = value as? String,
+                      self?.webView?.url == url else {
+                    if case .success(let value) = result, let text = value as? String { self?.note(nil, "snapshot " + String(text.prefix(60))) }
+                    done(nil); return
+                }
+                done(ZoomPageSnapshot.decode(reading: json, address: ZoomMarketplacePages.page(for: url)))
+            }
+        }
+    }
+
     #if DEBUG
+    // MARK: Recorder (-zoomRecord YES): see ZoomRecorder
+
+    /// Something may have changed: read once, about 700ms from now (further nudges meanwhile are folded in).
+    private func recorderNudge() {
+        guard ZoomRecorder.enabled, recorderWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.recorderWork = nil
+                self.readSnapshot { snapshot in
+                    guard let snapshot else { return }
+                    let redacted = snapshot.redacted()
+                    guard redacted != self.lastRecorded else { return }
+                    self.lastRecorded = redacted
+                    ZoomRecorder.append(ZoomRecordingLine.snapshot(snapshot, at: Date()))
+                }
+            }
+        }
+        recorderWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
+    }
+
     /// DEBUG probe only (`ZoomDomDump.commands` whitelist): run a look-only command, then look again.
     func debugRun(_ js: String) {
         webView?.evaluateJavaScript(js, in: nil, in: .defaultClient) { [weak self] _ in
@@ -579,6 +647,15 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         // The page's own messages are only a nudge to look again; the web view's address is the truth.
         switch message.name {
+        #if DEBUG
+        case "zoomRecord":
+            guard ZoomRecorder.enabled, let body = message.body as? [String: Any] else { break }
+            if body["click"] != nil {
+                ZoomRecorder.append(ZoomRecordingLine.click(control: body["control"] as? String, role: body["role"] as? String,
+                                                            text: body["text"] as? String, at: Date()))
+            }
+            recorderNudge()
+        #endif
         case "route": scheduleRefresh()
         case "coach":
             switch message.body as? String {

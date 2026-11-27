@@ -49,22 +49,26 @@ struct ZoomBarView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(title)
-                .font(.callout.weight(.medium))
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if let autopilot {
+                // Set up for me runs: its line takes the title's place (the step's own title would say the same twice).
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(autopilot).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.tail)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help(address.isEmpty ? title : address)
+            } else {
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(address.isEmpty ? title : address)
+            }
             if loadFailed {
                 Text("Couldn\u{2019}t load this page.")
                     .font(.caption).foregroundStyle(Brand.netText).lineLimit(1).fixedSize()
             }
-            if let autopilot {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text(autopilot).font(.callout).lineLimit(1)
-                }
-                .fixedSize()
+            if autopilot != nil {
                 Button("Stop", action: onStop)
                     .buttonStyle(.borderedProminent)
                     .tint(Brand.buttonFill)

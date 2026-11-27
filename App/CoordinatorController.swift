@@ -687,7 +687,7 @@ final class CoordinatorController: ObservableObject {
     /// (the setup guide for someone who used Sign in with Zoom while it is coming soon).
     func openZoomFix() {
         switch ZoomRouteWords.homeFix(zoomRoute) {
-        case .setupGuide: openZoomSetupGuide()
+        case .setupGuide: openZoomSetupGuide(at: .zoomStep)
         case .settings: openZoomSettings()
         case .zoomWindow: openZoomSetupWindow()
         }

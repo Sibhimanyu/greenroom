@@ -111,8 +111,10 @@ final class ZoomSignInComingSoonTests: XCTestCase {
     /// open the Zoom window straight away (owner, 2026-11-27: skip Settings); the rest opens Settings.
     func testTheGapOpensTheSetupGuide() {
         XCTAssertEqual(ZoomRouteWords.homeFix(.none(.signInComingSoon)), .setupGuide)
-        XCTAssertEqual(ZoomRouteWords.homeFix(.none(.ownAppsNotSetUp)), .zoomWindow)
-        XCTAssertEqual(ZoomRouteWords.homeFix(.none(.ownAppsIncomplete)), .zoomWindow)
+        // Owner, 2026-11-27: the chip opens the setup guide's Connect Zoom step, not the Zoom window; the person
+        // starts Set up for me from there.
+        XCTAssertEqual(ZoomRouteWords.homeFix(.none(.ownAppsNotSetUp)), .setupGuide)
+        XCTAssertEqual(ZoomRouteWords.homeFix(.none(.ownAppsIncomplete)), .setupGuide)
         for other: ZoomRoute in [.none(.notSignedIn), .none(.signInNotFinished), Self.own, .greenroomApp(account: "A")] {
             XCTAssertEqual(ZoomRouteWords.homeFix(other), .settings, "\(other)")
         }

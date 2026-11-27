@@ -184,7 +184,8 @@ enum ZoomRouteWords {
     static func homeFix(_ route: ZoomRoute) -> ZoomHomeFix {
         switch route {
         case .none(.signInComingSoon): return .setupGuide
-        case .none(.ownAppsNotSetUp), .none(.ownAppsIncomplete): return .zoomWindow
+        // The setup guide's Connect Zoom step; Set up for me starts from there (owner, 2026-11-27).
+        case .none(.ownAppsNotSetUp), .none(.ownAppsIncomplete): return .setupGuide
         default: return .settings
         }
     }

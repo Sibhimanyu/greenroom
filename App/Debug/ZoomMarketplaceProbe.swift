@@ -97,7 +97,7 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
             var entry: [String: Any] = [
                 "ts": ISO8601DateFormatter().string(from: Date()),
                 "reason": reason,
-                "url": webView.url?.absoluteString ?? "",
+                "url": Self.safeURL(webView.url?.absoluteString ?? ""),
             ]
             if let s = result as? String,
                let data = s.data(using: .utf8),
@@ -108,6 +108,15 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
             }
             Self.append(entry)
         }
+    }
+
+    /// Scheme, host and path only; each query value becomes its length and the
+    /// fragment is dropped, so sign-in codes and tokens in a redirect never reach the log.
+    static func safeURL(_ s: String) -> String {
+        guard var c = URLComponents(string: s) else { return "" }
+        c.fragment = nil
+        c.queryItems = c.queryItems?.map { URLQueryItem(name: $0.name, value: "[\($0.value?.count ?? 0)]") }
+        return c.string ?? ""
     }
 
     private static func append(_ entry: [String: Any]) {
@@ -130,7 +139,9 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { scheduleRecord("finish") }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        scheduleRecord("route:" + ((message.body as? String) ?? ""))
+        let body = (message.body as? String) ?? ""
+        let parts = body.split(separator: " ", maxSplits: 1).map(String.init)
+        scheduleRecord("route:" + (parts.first ?? "") + (parts.count > 1 ? " " + Self.safeURL(parts[1]) : ""))
     }
 
     // MARK: Scripts
@@ -159,7 +170,10 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
     static let snapshotScript = """
     (function () {
       var CRED = ['Account ID', 'Client ID', 'Client Secret', 'Secret Token', 'Verification Token'];
-      function clip(s, n) { s = (s || '').replace(/\\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '...' : s; }
+      // Every recorded text passes here: any key-like run (16+ letters, digits, _ or -,
+      // no spaces) becomes its length only, so a key shown beside a label never lands in the log.
+      function scrub(s) { return s.replace(/[A-Za-z0-9_\\-]{16,}/g, function (m) { return '[token ' + m.length + ']'; }); }
+      function clip(s, n) { s = scrub((s || '').replace(/\\s+/g, ' ').trim()); return s.length > n ? s.slice(0, n) + '...' : s; }
       function path(el) {
         var parts = [];
         while (el && el.nodeType === 1 && parts.length < 6 && el !== document.body) {
@@ -215,7 +229,7 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKScriptMessag
         var key = href + '|' + el.textContent;
         if (seen[key]) return; seen[key] = 1;
         var d = describe(el);
-        out.links.push({ text: clip(el.textContent, 80), href: href, tag: d.tag, role: el.getAttribute('role') || '',
+        out.links.push({ text: clip(el.textContent, 80), href: href.split('#')[0].split('?')[0] + (href.indexOf('?') >= 0 ? '?[query]' : ''), tag: d.tag, role: el.getAttribute('role') || '',
                          selected: el.getAttribute('aria-selected') || el.getAttribute('aria-current') || '', path: d.path });
       });
 

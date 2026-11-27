@@ -23,7 +23,7 @@ final class ZoomSetupAssist: ObservableObject {
 
     /// What the guide shows (the page, the IDs, the notices).
     @Published private(set) var state: ZoomGuideAssistState {
-        didSet { if state != oldValue { coordinator?.objectWillChange.send() } }
+        didSet { if state != oldValue { coordinator?.objectWillChange.send(); ZoomMarketplaceWindow.shared.updateBar() } }
     }
     private var offerValues: [ZoomGuidePart: [ZoomKeyField: String]] = [:]
     private var filledFields: [ZoomGuidePart: [ZoomKeyField]] = [:]
@@ -39,6 +39,17 @@ final class ZoomSetupAssist: ObservableObject {
         let window = ZoomMarketplaceWindow.shared
         window.onPage = { [weak self] in self?.pageChanged($0) }
         window.onKeys = { [weak self] page, found in self?.keysFound(page, found) }
+        window.barState = { [weak self] in
+            guard let self, let c = self.coordinator else { return (false, false, ZoomAppIDs()) }
+            return (self.isComplete(.sdk, c), self.isComplete(.s2s, c), self.state.ids)
+        }
+        window.onNext = { [weak self] part in
+            guard let self else { return }
+            var next = self.state
+            next.openPart = part; next.openSerial += 1
+            self.state = next
+        }
+        window.onBackToGreenroom = { [weak self] in self?.backToGreenroom() }
         window.needsApp = { [weak self] part in self?.needsApp(part) ?? false }
         window.keysFilled = { [weak self] in
             guard let self, let page = self.state.page, let app = page.app else { return false }
@@ -119,6 +130,21 @@ final class ZoomSetupAssist: ObservableObject {
             case (.s2s, .clientSecret): c.s2sClientSecret = value
             default: break
             }
+        }
+    }
+
+    private func isComplete(_ app: ZoomOwnApp, _ c: CoordinatorController) -> Bool {
+        fields(app, c).values.allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    /// The bar's "Back to Greenroom": the guide comes forward and the check starts once.
+    private func backToGreenroom() {
+        guard let coordinator else { return }
+        coordinator.openZoomSetupGuide(at: .zoomStep)
+        if ZoomBarRules.shouldCheckOnReturn(checkRunning: coordinator.zoomSetupChecker.isRunning,
+                                            hasResults: !coordinator.zoomSetupChecker.lines.isEmpty,
+                                            inSession: coordinator.phase.isInMeeting) {
+            coordinator.checkZoomSetup()
         }
     }
 

@@ -109,6 +109,9 @@ struct ZoomGuideStep: View {
             }
             .onChange(of: jump) { _, _ in useJump() }
             // The Zoom window moved to another page: open its part (unless the other one has typing in it).
+            .onChange(of: assist.openSerial) { _, _ in
+                if let part = assist.openPart { open(part) }
+            }
             .onChange(of: assist.page) { _, page in
                 guard let page else { return }
                 let current = openPart

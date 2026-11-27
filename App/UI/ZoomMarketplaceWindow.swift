@@ -6,8 +6,11 @@
 //  App Marketplace in a normal macOS window beside the setup guide. It uses the
 //  default website data store (the sign-in is kept in Greenroom, separate from
 //  Safari, until Zoom ends it) and a Safari user agent; links that ask for a
-//  new window load in place. Its toolbar: Back, Forward, Reload, where you
-//  are, Tips, Sign out of Zoom and Open in Safari.
+//  new window load in place. Above the page is the Greenroom bar
+//  (`ZoomBarView`, content from `ZoomBarRules`): part and step, Copy scopes,
+//  Next / Back to Greenroom, Back, Forward, Reload, Tips and a menu with Open in
+//  Safari and (only when signed in) Sign out of Zoom. It opens large and
+//  centred on the guide's screen; the guide is not moved.
 //
 //  Greenroom never clicks or submits anything on Zoom's pages. It does two
 //  things there: draw the coach (ZoomCoachScript, pointer-events none) and, on
@@ -30,6 +33,10 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var location = ""
+    /// What the bar shows, from `ZoomBarRules`.
+    @Published private(set) var bar = ZoomBar(title: "", context: .none, primary: .none, offersSignOut: false)
+    @Published private(set) var signIn = ZoomSignInState.unknown
+    @Published private(set) var copied = false
     @Published private(set) var loadFailed = false
     /// The coach on or off for this setup; "Hide tips" and the toolbar's Tips both set it.
     @Published var tipsOn = true { didSet { if tipsOn != oldValue { refresh() } } }
@@ -42,6 +49,11 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     var keysFilled: () -> Bool = { false }
     /// Whether a part has keys filled in but no remembered app ID (the coach asks which app).
     var needsApp: (ZoomGuidePart) -> Bool = { _ in false }
+    /// Which parts have all their keys in Greenroom, and the remembered app IDs, for the bar.
+    var barState: () -> (meeting: Bool, hosting: Bool, ids: ZoomAppIDs) = { (false, false, ZoomAppIDs()) }
+    /// The bar's "Next: <part>" asks the guide to open that part; "Back to Greenroom" hands over to the guide.
+    var onNext: (ZoomGuidePart) -> Void = { _ in }
+    var onBackToGreenroom: () -> Void = {}
 
     private var window: NSWindow?
     private var webView: WKWebView?
@@ -96,13 +108,10 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         webView = web
     }
 
+    /// Large and centred on the guide's screen (the guide is not moved).
     private func place(_ win: NSWindow, beside guideWindow: NSWindow?) {
-        if let guideWindow, guideWindow.isVisible, let screen = guideWindow.screen {
-            let f = ZoomMarketplaceWindowPlacement.frames(screen: screen.visibleFrame, guide: guideWindow.frame)
-            if f.guide != guideWindow.frame { guideWindow.setFrame(f.guide, display: true, animate: true) }
-            win.setFrame(f.zoom, display: false)
-        } else if let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame {
-            win.setFrame(ZoomMarketplaceWindowPlacement.alone(screen: visible), display: false)
+        if let visible = (guideWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame {
+            win.setFrame(ZoomMarketplaceWindowPlacement.frame(screen: visible), display: false)
         } else {
             win.center()
         }
@@ -119,6 +128,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         window = nil
         lastPage = nil
         location = ""
+        signIn = .unknown
+        updateBar()
         onPage(nil)
     }
 
@@ -128,6 +139,37 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     func goForward() { webView?.goForward() }
     func reload() { loadFailed = false; webView?.reload() }
 
+    /// Copy scopes: the same text as the guide's (one per line).
+    func copyScopes() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(ZoomScopes.names.joined(separator: "\n"), forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.copied = false }
+    }
+
+    /// The bar's Sign in: Marketplace itself redirects to Zoom's sign-in. Nothing is pressed on the page.
+    func goToSignIn() { webView?.load(URLRequest(url: ZoomMarketplaceGuide.builderURL)) }
+
+    func pressPrimary() {
+        switch bar.primary {
+        case .none: break
+        case .next(let part, let page):
+            requestedPart = part
+            if let url = ZoomMarketplacePages.url(for: page) { webView?.load(URLRequest(url: url)) }
+            onNext(part)
+        case .backToGreenroom:
+            window?.close()
+            onBackToGreenroom()
+        }
+    }
+
+    /// Recomputes the bar from the page, the keys in Greenroom and the sign-in state.
+    func updateBar() {
+        let s = barState()
+        bar = ZoomBarRules.bar(ZoomBarFacts(part: requestedPart, page: lastPage, ids: s.ids, meetingComplete: s.meeting,
+                                            hostingComplete: s.hosting, signIn: signIn))
+    }
+
     /// The same address in Safari (R8).
     func openInSafari() {
         NSWorkspace.shared.open(webView?.url ?? ZoomMarketplaceGuide.builderURL)
@@ -136,6 +178,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// Clears what Zoom's sites remembered in this window, then starts again at Created Apps.
     func signOut() {
         let reload = webView != nil
+        signIn = ZoomSignInStateRules.afterSignOut
+        updateBar()
         let store = WKWebsiteDataStore.default()
         store.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { [weak self] records in
             let zoom = records.filter { $0.displayName.localizedCaseInsensitiveContains("zoom") }
@@ -155,6 +199,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         location = (url.host ?? "") + url.path
         let page = ZoomMarketplacePages.page(for: url)
         if page != lastPage { lastPage = page; onPage(page) }
+        signIn = ZoomSignInStateRules.state(page: page, header: nil, current: signIn)
+        updateBar()
         scheduleRefresh()
     }
 
@@ -172,16 +218,33 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     /// Draws the coach for this page and, on a credential page, reads the keys.
     func refresh() {
-        guard let webView, let url = webView.url, let page = ZoomMarketplacePages.page(for: url) else { return }
+        updateBar()
+        guard let webView, let url = webView.url else { return }
+        readSignIn(url)
+        guard let page = ZoomMarketplacePages.page(for: url) else { return }
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
         let coach = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn, needsApp: needsApp(part))
-        let ring = Self.ringColor
+        let ring = Self.ringColor, mark = Self.markDataURI
         webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { _ in
             MainActor.assumeIsolated {
-                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring), in: nil, in: .defaultClient) { _ in }
+                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring, mark: mark), in: nil, in: .defaultClient) { _ in }
             }
         }
         readKeys(on: page)
+    }
+
+    /// Looks at Marketplace's header (read only) for a "Sign In" link or an account menu.
+    private func readSignIn(_ url: URL) {
+        guard ZoomMarketplacePages.isMarketplace(url), ZoomMarketplacePages.page(for: url) != .signIn else { return }
+        webView?.evaluateJavaScript(ZoomSignInHeaderScript.source, in: nil, in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self, case .success(let value) = result, let word = value as? String,
+                      let report = ZoomHeaderReport(rawValue: word),
+                      self.webView?.url == url else { return }
+                let next = ZoomSignInStateRules.state(page: self.lastPage, header: report, current: self.signIn)
+                if next != self.signIn { self.signIn = next; self.updateBar() }
+            }
+        }
     }
 
     private func readKeys(on page: ZoomMarketplacePage) {
@@ -200,6 +263,22 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
             }
         }
     }
+
+    /// The Greenroom app icon at 64px as a PNG data URI, for the coach card's header (never an address).
+    /// The small-size app icon, since DESIGN.md's mark minimum is 24px tall and the card shows it at 16pt.
+    private static let markDataURI: String? = {
+        let side = 64
+        guard let icon = NSApp?.applicationIconImage,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        icon.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        return "data:image/png;base64," + png.base64EncodedString()
+    }()
 
     /// Brand.green as a CSS colour for the coach's ring (never a literal in code).
     private static var ringColor: String {
@@ -274,34 +353,12 @@ private struct ZoomWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button { window.goBack() } label: { Image(systemName: "chevron.left") }
-                    .disabled(!window.canGoBack).help("Back").accessibilityLabel("Back")
-                Button { window.goForward() } label: { Image(systemName: "chevron.right") }
-                    .disabled(!window.canGoForward).help("Forward").accessibilityLabel("Forward")
-                Button { window.reload() } label: { Image(systemName: "arrow.clockwise") }
-                    .help("Reload").accessibilityLabel("Reload")
-                Text(window.location)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(window.location)
-                if window.loadFailed {
-                    Text("Couldn\u{2019}t load this page.").font(.caption).foregroundStyle(Brand.netText)
-                }
-                Toggle("Tips", isOn: $window.tipsOn)
-                    .toggleStyle(.button)
-                    .help("Show or hide Greenroom\u{2019}s tips on Zoom\u{2019}s page")
-                Button("Sign out of Zoom") { window.signOut() }
-                    .help("Clears the sign-in Greenroom remembers for Zoom, then starts again")
-                Button("Open in Safari") { window.openInSafari() }
-                    .help("Opens this page in Safari")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            ZoomBarView(bar: window.bar, canGoBack: window.canGoBack, canGoForward: window.canGoForward,
+                        tipsOn: $window.tipsOn, loadFailed: window.loadFailed, copied: window.copied, address: window.location,
+                        onBack: { window.goBack() }, onForward: { window.goForward() }, onReload: { window.reload() },
+                        onCopyScopes: { window.copyScopes() }, onSignIn: { window.goToSignIn() },
+                        onPrimary: { window.pressPrimary() }, onOpenInSafari: { window.openInSafari() },
+                        onSignOut: { window.signOut() })
             Divider()
             ZoomWebView(web: web)
         }

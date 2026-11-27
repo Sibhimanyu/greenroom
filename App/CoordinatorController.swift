@@ -777,6 +777,8 @@ final class CoordinatorController: ObservableObject {
     let zoomSignInChecker = ZoomSignInChecker()
     /// "Check Zoom setup": your own Zoom apps. One checker for the setup guide and Settings.
     let zoomSetupChecker = ZoomSetupChecker()
+    /// The Zoom window and what it fills into the setup guide.
+    lazy var zoomAssist = ZoomSetupAssist(coordinator: self)
     var zoomSetupCredentials: ZoomSetupChecker.Credentials {
         [sdkClientID, sdkClientSecret, s2sAccountID, s2sClientID, s2sClientSecret]
     }

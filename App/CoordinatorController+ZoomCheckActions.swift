@@ -11,13 +11,16 @@ import AppKit
 extension CoordinatorController {
     /// The client IDs the check buttons' tooltips name your own apps by.
     var zoomCheckIDs: ZoomCheckActionContext {
-        ZoomCheckActionContext(sdkClientID: sdkClientID, s2sClientID: s2sClientID)
+        let ids = zoomAssist.state.ids
+        return ZoomCheckActionContext(sdkClientID: sdkClientID, s2sClientID: s2sClientID,
+                                      sdkAppID: ids.meeting ?? "", s2sAppID: ids.hosting ?? "")
     }
 
     /// `kind` says which check to run again.
     func performZoomCheckAction(_ action: ZoomCheckAction, kind: ZoomCheckKind) {
-        if let url = action.url {
-            NSWorkspace.shared.open(url)
+        // Marketplace places open in the Zoom window, at the exact page once the app's ID is known.
+        if let url = action.url(ids: zoomCheckIDs) {
+            zoomAssist.open(url, part: action.zoomPart)
             return
         }
         switch action {

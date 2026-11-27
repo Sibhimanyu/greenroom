@@ -107,6 +107,7 @@ struct OnboardingView: View {
         .onAppear { coordinator.loadSecretsIfNeeded() }
         .onChange(of: zoomCredentials) { _, _ in
             setupChecker.credentialsChanged()
+            coordinator.zoomAssist.credentialsChanged()
         }
         .onAppear { goToGuideSpot() }
         .onChange(of: coordinator.zoomGuideSpot) { _, _ in goToGuideSpot() }
@@ -190,6 +191,10 @@ struct OnboardingView: View {
             importStatus: importStatus,
             importFailed: importStatusIsError,
             jump: $zoomJump,
+            assist: coordinator.zoomAssist.state,
+            onOpenZoom: { url, part in coordinator.zoomAssist.open(url, part: part) },
+            onUseKeys: { coordinator.zoomAssist.useOffer($0) },
+            onUndoFill: { coordinator.zoomAssist.undoFill($0) },
             onImport: { importSettingsFile() },
             onCheck: { setupChecker.showingIn = .guide; runConnectionTest() },
             onViewResults: { setupChecker.showingIn = .guide })

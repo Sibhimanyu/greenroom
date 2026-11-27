@@ -19,6 +19,8 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     static let shared = OnboardingWindowController()
 
     private var window: NSWindow?
+    /// The guide's window, when open: the Zoom window sits beside it.
+    var guideWindow: NSWindow? { window }
     private weak var coordinator: CoordinatorController?
 
     /// Open or close the guide to match `show`. `atLaunch` is the first sync

@@ -2,6 +2,36 @@
 
 Branch: feat/zoom-setup-assist. Replaces the patchwork in R1–R20 of `zoom-setup-assist.md` (keep that file as the record of what Zoom's pages taught us). Decision record: `docs/adr/0003-one-setup-flow.md`. Owner, 2026-11-27: "you seem to overcomplicate this whole flow … go proper arch", "this should be a comprehensive guide", "test the whole flow".
 
+## Status (2026-11-27)
+
+Plan steps 1 to 5 are built and committed on this branch. Step 6, the live end-to-end run, is still to do. The spec has no R-IDs; each item below is a plan step or a named part of the spec.
+
+| Item | State |
+|---|---|
+| Plan 1: reader (`ZoomPageSnapshot`, `ZoomPageScript`) and DEBUG recorder | Done. The reader is tested against mock HTML by `scripts/render/zoom-page.sh`. The recorder exists (`-zoomRecord YES`) but nothing recorded is checked in. |
+| Plan 2: `ZoomSetupFlow` (`absorb`, `step(for:)`, `CallToAction`) with table tests | Done (`Tests/ZoomSetupFlowTests.swift`). |
+| Plan 3: `ZoomPage` seam, WKWebView and `FixturePage` adapters, `ZoomActor`, whole-flow replay tests | Done (`ZoomActorTests`, `ZoomSetupForMeTests`). `FixturePage` is hand-written, not recorded. |
+| Plan 4: guide, bar and coach render `SetupStep`; old modules deleted | Done. Deleted: ZoomCoachRules, ZoomBarRules, ZoomGuideFollowRules, ZoomRunRules, ZoomConnectRules, ZoomSignInStateRules and the finder, dialog, app-list, key-reader, sign-in-header and actor scripts, with their tests. `ZoomActorRules` is only the deny-list. Three render scripts (`zoom-guide.sh`, `zoom-coach.sh`, `zoom-bar.sh`) still name deleted files and need moving to `SetupStep`. |
+| Plan 5: Set up for me (`SetupForMe`) with its replay tests | Done. Tests cover fresh account to done, existing apps, build new, a failing check re-opening its step, the person-opened app winning, the permission blocker, Stop, the sign-in hand over and a stubborn failure hand over. |
+| Plan 6: live end-to-end run on fresh test apps (guided and Set up for me) | NOT done. |
+| Testing: flow table tests, whole-flow replay tests | Done on `FixturePage`. |
+| Testing: recorder and recorded fixtures | Partly. `Tests/Fixtures/zoom/` is empty; the replay tests run on a scripted Zoom written from the live run's facts, so they prove the loop, not that Zoom still behaves that way. |
+| Step 5's Zoom-profile prefill of name and email | NOT done. The form uses the Mac account's full name (`NSFullUserName()`) and an empty email the person types. |
+| Existing apps: "Use this app" on Created apps, "Build a new one" in the form | Done as far as Created apps rows. |
+| "Use the keys from this app" with Undo when stored keys belong to a different app | NOT done. Replaced keys are not offered or undone by the flow; the older guide's offer/undo notices (`ZoomSetupAssist.undoRemoved`) remain for Start over and Use a different app only. |
+| Steps 6 to 8 against the real Zoom | NOT seen live: the Add scopes dialog path, Activate, the Server-to-Server credentials page, and the General app's row click that opens an existing app. The reader's mock pages and `FixturePage` stand in for them. |
+
+### What changed from the spec, and why
+
+- **Key values arrive through the window's copy hook, not the clipboard.** Zoom's Copy on the General app puts the secret in the page's own copy handler (a plain press copies nothing; the actor presses deep), so the window hands the text over in memory. The clipboard is never touched, so the spec's "restore the clipboard" is gone.
+- **The actor takes a plan with `unless` conditions.** A press can be skipped when the page already shows the right state (Meeting SDK already on, a dialog already open), so Greenroom never toggles what is already right. Plans are `[press | pressDeep | hover | type | waitFor | capture]`, and a plan's `effect` says what it means for evidence.
+- **The check also runs after each app's keys are copied** (the spec said it runs by itself at steps 3 and 8, and after any fix; it now runs as part of `SetupForMe` whenever a plan copies keys).
+- **Evidence has a logical clock** (`tick`, `lastChange`, `keysAt`). Keys copied before the app's last change are stale, and a check older than a change is ignored. This replaces the spec's "reading time against last change" with one counter that tests can control.
+- **The permission blocker uses the `disabled` state added to the snapshot.** An account without the Server-to-Server edit permission shows every Information field disabled. That makes step 5 a blocker ("Ask your Zoom admin for permission", Check again), not a form to fill.
+- **Set up for me gives up on a step after 3 tries.** If Greenroom did a step and the check still says it is wrong, the loop hands over to the guided step instead of going round again. It also gives up after 60 turns or 40 unreadable pages.
+- **The guided "Do this step" is one turn of the same loop** (`SetupForMe.advance()`), so there is one set of steps, plans and safety.
+- **General-app Create makes the app at once** with no name dialog (live run), so step 1 has no name step; only the hosting app is named ("Greenroom Hosting"). Zoom's Meeting SDK switch starts off, so step 2 always has work to do.
+
 ## Problem
 
 Twelve small rule files (Coach, Bar, Follow, Run, Connect, GuideFlow, MarketplaceGuide, CheckAction, StartOver, SignInState, Clipboard, Actor) each decide "which step is this and what should the person do", and six page scripts each read Zoom's page their own way. They disagree: the guide said "Needs a fix" while the bar said "set up ✓"; the counter drifted; a card had no action. The step is derived from the current address, so in-page flows (menus, dialogs) and Zoom's own tab order broke it every time. No test runs the whole flow.

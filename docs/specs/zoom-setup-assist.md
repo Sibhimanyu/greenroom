@@ -1,5 +1,7 @@
 # Zoom setup, guided: Marketplace in its own window
 
+> v2 supersedes this file's steps: the flow, the coach and "Do this step" are now `docs/specs/zoom-setup-flow.md` (decision: `docs/adr/0003-one-setup-flow.md`). Keep this file as the record of what Zoom's pages taught us.
+
 Branch: feat/zoom-setup-assist (stacked on feat/personal-room). Code: `App/UI/ZoomGuideStep.swift`, `App/Zoom/ZoomMarketplaceGuide.swift`, `App/Zoom/ZoomGuideFlowRules.swift`, new `App/Zoom/ZoomMarketplacePages.swift` (pure) and `App/UI/ZoomMarketplaceWindow.swift`. Evidence: `App/Debug/ZoomMarketplaceProbe.swift` (DEBUG only) and its log, 2026-11-27.
 
 ## Problem

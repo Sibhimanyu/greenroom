@@ -26,13 +26,17 @@ final class FixturePage: ZoomPage {
         var accountID = ""
         var sdkOn = false
         var scopes: Set<String> = []
+        /// Live run 4, 2026-11-27: scopes added in the Add scopes window show on the page but are only kept when
+        /// the Scopes page's own Continue is pressed; leaving the page any other way drops them.
+        var unsavedScopes: Set<String> = []
         var activated = false
         var info: [ZoomInfoField: String] = [:]
         var infoDisabled = false
     }
 
     var apps: [App] = []
-    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads; lockedInfoReads = infoLockedReads } } }
+    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads; lockedInfoReads = infoLockedReads; dropUnsaved() } } }
+    private func dropUnsaved() { for i in apps.indices { apps[i].unsavedScopes = [] } }
     /// Live finding, 2026-11-27: right after a page opens Zoom shows nothing yet (no switch state, no keys)
     /// for a second or two. The next `loadingReads` reads after a page change come back empty.
     var loadingReads = 0
@@ -121,17 +125,17 @@ final class FixturePage: ZoomPage {
                 s.controls.insert(.continue)
             case .feature: s.controls.insert(.continue)
             case .scopes:
-                s.scopesOnPage = a.scopes.sorted()
+                s.scopesOnPage = a.scopes.union(a.unsavedScopes).sorted()
                 if case .addScopes = dialog {
                     s.controls.formUnion([.scopeSearch, .scopesDone])
                     for n in ZoomScopes.names where !search.isEmpty && n.contains(search) { s.controls.insert(.scopeCheckbox(n)) }
                     s.dialog = .addScopes(searchPresent: true, ticked: ticked.sorted())
                 } else {
-                    s.controls.insert(.addScopes)
+                    s.controls.formUnion([.addScopes, .continue])
                 }
             case .activation:
                 s.activated = a.activated
-                s.activationMissing = missingInfo(a)
+                s.activationMissing = missingInfo(a) + (a.scopes.isEmpty ? ["1. Select at least one scopes"] : [])
                 if !a.activated { s.controls.insert(.activate) }
             }
         default: break
@@ -189,14 +193,15 @@ final class FixturePage: ZoomPage {
                 if tab == .credentials { address = .s2s(id, .information) }
                 else if tab == .information, missingInfo(a).isEmpty { address = .s2s(id, .feature) }
                 else if tab == .feature { address = .s2s(id, .scopes) }
+                else if tab == .scopes { edit(id) { $0.scopes.formUnion($0.unsavedScopes); $0.unsavedScopes = [] }; address = .s2s(id, .activation) }
             }
         case .addScopes: dialog = .addScopes(searchPresent: true, ticked: []); search = ""; ticked = []
         case .scopeCheckbox(let n): if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
         case .scopesDone:
-            if case .s2s(let id, _) = address { edit(id) { $0.scopes.formUnion(ticked) } }
+            if case .s2s(let id, _) = address { edit(id) { $0.unsavedScopes.formUnion(ticked) } }
             dialog = .none
         case .activate:
-            if case .s2s(let id, _) = address, let a = app(id), missingInfo(a).isEmpty { edit(id) { $0.activated = true } }
+            if case .s2s(let id, _) = address, let a = app(id), missingInfo(a).isEmpty, !a.scopes.isEmpty { edit(id) { $0.activated = true } }
         case .appRow(let i):
             guard i < apps.count else { return }
             let a = apps[i]

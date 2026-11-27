@@ -23,6 +23,8 @@ enum ZoomCondition: Equatable {
     case onApp(ZoomApp)
     case sdkOn
     case activated
+    /// The Activation page has shown whether the app is on (either way).
+    case activationShown
     case createEnabled
     case scopesOnPage([String])
     case infoFilled(ZoomInfoField)
@@ -53,6 +55,7 @@ enum ZoomCondition: Equatable {
         case .onApp(let a): return s.address?.zoomApp == a
         case .sdkOn: return s.meetingSDKOn == true
         case .activated: return s.activated == true
+        case .activationShown: return s.activated != nil
         case .createEnabled:
             if case .name(_, _, let enabled) = s.dialog { return enabled }
             return false
@@ -285,7 +288,11 @@ enum ZoomSetupFlow {
                 e.apps[.hosting, default: AppEvidence()].infoFilled = locked ? nil : requiredInfo.allSatisfy { s.infoFields[$0] == .filled }
             }
             if tab == .activation {
-                e.apps[.hosting, default: AppEvidence()].infoMissing = s.activationMissing
+                // Activation lists what's missing (live run 4: "1. Select at least one scopes"). Scope lines mean
+                // the scopes weren't kept (step 6); the rest is Information (step 5).
+                let scopeLines = s.activationMissing.filter { $0.lowercased().contains("scope") }
+                e.apps[.hosting, default: AppEvidence()].infoMissing = s.activationMissing.filter { !$0.lowercased().contains("scope") }
+                if !scopeLines.isEmpty { e.apps[.hosting, default: AppEvidence()].scopes = [] }
                 if let on = s.activated {
                     if on, e.app(.hosting).activated != true { e.apps[.hosting, default: AppEvidence()].lastChange = e.tick }
                     e.apps[.hosting, default: AppEvidence()].activated = on
@@ -504,7 +511,9 @@ enum ZoomSetupFlow {
         for name in missing {
             steps += [.type(.scopeSearch, name), .waitFor(.hasControl(.scopeCheckbox(name))), .press(.scopeCheckbox(name), unless: .scopeTicked(name))]
         }
-        steps += [.press(.scopesDone), .waitFor(.scopesOnPage(ZoomScopes.names))]
+        // Zoom keeps scopes only when the Scopes page's own Continue is pressed (live run 4): Done alone shows
+        // them, then leaving the page drops them.
+        steps += [.press(.scopesDone), .waitFor(.scopesOnPage(ZoomScopes.names)), .press(.continue), .waitFor(.activationShown)]
         return ActionPlan(app: .hosting, effect: .changesSettings, steps: steps)
     }
 }

@@ -244,4 +244,31 @@ final class SetupForMeTests: XCTestCase {
         guard case .handedOver(_, let why) = end else { return XCTFail("expected a hand over, got \(end)") }
         XCTAssertTrue(why.contains("still"), why)
     }
+
+    /// Live run, 2026-11-27: Created apps fills its list late. Set up for me looked while it was still empty, saw no
+    /// hosting app and built a new one. It decides only from a page that has settled.
+    func testAPageStillLoadingIsNotMistakenForAnEmptyOne() async {
+        let zoom = FixturePage.freshAccount().existing(finishedMeetingApp()).existing(finishedHostingApp())
+        zoom.loadingReads = 3
+        zoom.address = .signIn
+        zoom.address = .createdApps
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.count, 2, "nothing new was built")
+    }
+
+    /// Live run, 2026-11-27: on the disabled Information page, Set up for me tried to type while the page was still
+    /// loading and reported "couldn't find the Short Description field". A settled page shows the fields disabled,
+    /// and that is the admin blocker, whatever the loading delay.
+    func testTheBlockerIsFoundEvenWhenThePageLoadsSlowly() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.accountCannotEditS2S = true
+        zoom.loadingReads = 3
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        guard case .handedOver(let step, _) = end else { return XCTFail("expected a hand over, got \(end)") }
+        XCTAssertEqual(step.number, 5)
+        XCTAssertEqual(step.cta, .checkAgain)
+    }
 }

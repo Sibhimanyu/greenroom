@@ -9,12 +9,8 @@ NAME=zoom-page; source "$(dirname "$0")/lib.sh"
 write_brand
 export ACTOR_MOCKS="$ROOT/scripts/render/actor-mocks"
 export COACH_DIR="$ROOT/scripts/render"
+# ZoomMarketplacePages only needs this tiny enum from the check rules.
+printf 'enum ZoomOwnApp: Equatable, Hashable { case sdk, s2s }\n' > "$STAGE/OwnAppStub.swift"
 render zoom-page-render zoom-page-main.swift "$STAGE/Brand.swift" \
-  App/Zoom/ZoomPageSnapshot.swift App/Zoom/ZoomPageScript.swift \
-  App/Zoom/ZoomActorRules.swift App/Zoom/ZoomKeyReaderScript.swift App/Zoom/ZoomActorScript.swift App/Zoom/ZoomFinderScript.swift App/Zoom/ZoomDialogScript.swift App/Zoom/ZoomAppListScript.swift \
-  App/Zoom/ZoomCoachRules.swift App/Zoom/ZoomCoachScript.swift App/Zoom/ZoomMarketplacePages.swift App/Zoom/ZoomGuideFollowRules.swift \
-  App/Zoom/ZoomMarketplaceGuide.swift App/Zoom/ZoomStartOverRules.swift App/Zoom/ZoomGuideFlowRules.swift App/Zoom/ZoomSetupCheckRules.swift \
-  App/Zoom/ZoomCheckActionRules.swift App/Zoom/ZoomScopes.swift App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteRules.swift \
-  App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift App/Zoom/ZoomPersonalRoom.swift \
-  App/Zoom/ZoomServerToServerClient.swift App/Zoom/NewMeetingRequest.swift
+  App/Zoom/ZoomPageSnapshot.swift App/Zoom/ZoomPageScript.swift App/Zoom/ZoomActorRules.swift "$STAGE/OwnAppStub.swift" App/Zoom/ZoomMarketplacePages.swift App/Zoom/ZoomScopes.swift
 echo "zoom-page: done"

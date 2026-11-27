@@ -244,7 +244,13 @@ final class ZoomSetupAssist: ObservableObject {
             var existing: Set<ZoomApp> = []
             for _ in 0..<30 {
                 try? await Task.sleep(nanoseconds: 400_000_000)
-                guard let s = await ZoomMarketplaceWindow.shared.read(), s.address == .createdApps, s.has(.plus) else { continue }
+                guard let s = await ZoomMarketplaceWindow.shared.read() else { continue }
+                // Signed out: straight to Zoom's sign-in page; the run starts and waits there (owner, 2026-11-27).
+                if s.signedIn == false || s.address?.isSignIn == true {
+                    if s.address?.isSignIn != true { ZoomMarketplaceWindow.shared.goToSignIn() }
+                    break
+                }
+                guard s.address == .createdApps, s.has(.plus) else { continue }
                 existing = Set(s.appList).intersection([.meeting, .hosting])
                 break
             }

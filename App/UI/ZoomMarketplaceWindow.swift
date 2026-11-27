@@ -199,8 +199,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     /// The bar's Sign in: Marketplace itself redirects to Zoom's sign-in. Nothing is pressed on the page.
     private var sentToSignIn = false
-    /// Created apps, which sends a signed-out window to Zoom's sign-in page and back to Marketplace after it.
-    func goToSignIn() { webView?.load(URLRequest(url: ZoomMarketplaceGuide.builderURL)) }
+    /// Zoom's own sign-in page (Created apps doesn't always redirect there: owner, 2026-11-27). After it the
+    /// window goes back to where setup was heading (`resumeAfterSignIn`, Marketplace or Zoom's main site).
+    func goToSignIn() { webView?.load(URLRequest(url: URL(string: "https://zoom.us/signin")!)) }
 
     /// The same address in Safari (R8).
     func openInSafari() {

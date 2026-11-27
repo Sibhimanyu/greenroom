@@ -33,7 +33,9 @@ struct ZoomAutopilotHUD: View {
             }
             card
                 .padding(needsYou == nil ? .bottom : .top, needsYou == nil ? 28 : 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: needsYou == nil ? .bottom : .top)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.opacity)
     }
 

@@ -209,4 +209,14 @@ final class ZoomMarketplacePagesTests: XCTestCase {
         XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://marketplace.zoom.us/develop/apps/abcdefghijKLMN_-1234/scope")!, heading: created),
                      "a guided page of its own: stay")
     }
+
+    /// Owner, 2026-11-27: Set up for me signed out goes to Zoom's own sign-in page (zoom.us/signin); after it Zoom
+    /// may land on its main site rather than Marketplace. That landing also sends the window back where setup was heading.
+    func testAfterSignInOnZoomsMainSiteTheWindowGoesBackToo() {
+        let created = URL(string: "https://marketplace.zoom.us/user/build")!
+        XCTAssertEqual(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us/profile")!, heading: created), created)
+        XCTAssertEqual(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://us05web.zoom.us/myhome")!, heading: created), created)
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us/signin")!, heading: created), "still signing in")
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us.evil.example/profile")!, heading: created), "not Zoom")
+    }
 }

@@ -384,7 +384,7 @@ struct ZoomGuideStep: View {
                             }
                             .buttonStyle(.link)
                             .font(.caption)
-                            .foregroundStyle(Brand.green)
+                            .foregroundStyle(Brand.text)
                         }
                     }
                     .padding(.horizontal, 6).padding(.vertical, 3)
@@ -405,7 +405,7 @@ struct ZoomGuideStep: View {
             HStack(spacing: 8) {
                 Label("Filled in from Zoom", systemImage: "checkmark.circle")
                     .foregroundStyle(Brand.text)
-                Button("Undo") { onUndoFill(part) }.buttonStyle(.link)
+                Button("Undo") { onUndoFill(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
             }
             .font(.callout)
         } else if assist.offers.contains(part) {

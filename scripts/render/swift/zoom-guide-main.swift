@@ -48,8 +48,13 @@ struct Guide: View {
     @State var s2sSecret: String
     @State var jump: ZoomGuideSpot? = nil
     let lines: [ZoomCheckLine]
+    let assist: ZoomGuideAssistState
+    let open: ZoomGuidePart?
 
-    init(sdk: Bool = false, s2s: Bool = false, lines: [ZoomCheckLine] = []) {
+    init(sdk: Bool = false, s2s: Bool = false, lines: [ZoomCheckLine] = [],
+         assist: ZoomGuideAssistState = ZoomGuideAssistState(), open: ZoomGuidePart? = nil) {
+        self.assist = assist
+        self.open = open
         _sdkID = State(initialValue: sdk ? "SampleClientID9z7Q" : "")
         _sdkSecret = State(initialValue: sdk ? "secret" : "")
         _acct = State(initialValue: s2s ? "SampleAccount" : "")
@@ -67,7 +72,7 @@ struct Guide: View {
         VStack(spacing: 0) {
             ZoomGuideStep(sdkClientID: $sdkID, sdkClientSecret: $sdkSecret, s2sAccountID: $acct,
                           s2sClientID: $s2sID, s2sClientSecret: $s2sSecret,
-                          checkLines: lines, isChecking: false, jump: $jump)
+                          checkLines: lines, isChecking: false, jump: $jump, assist: assist, initiallyOpen: open)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(24)
             Divider()
@@ -83,6 +88,9 @@ struct Guide: View {
     }
 }
 
+let appID = "AbC_123-xyZ789qrstuvw1"
+let hostID = "ZzZ_999-aaBBcc1122"
+
 MainActor.assumeIsolated {
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
@@ -91,5 +99,17 @@ MainActor.assumeIsolated {
         shoot(Guide(sdk: true, s2s: true), "3-parts-1-and-2-done-\(tag)", dark: dark, height: 640)
         shoot(Guide(sdk: true, s2s: true, lines: passedLines), "4-all-done-and-checked-\(tag)", dark: dark, height: 560)
         shoot(Guide(sdk: true, s2s: true, lines: failedLines), "5-check-with-failures-\(tag)", dark: dark, height: 1340)
+        // The Zoom window's part. Nothing known yet: step 1 offers "Create the app".
+        shoot(Guide(open: .hostingApp), "6-no-app-id-known-hosting-\(tag)", dark: dark, height: 1340)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .general(appID, .embed), ids: ZoomAppIDs(meeting: appID)), open: .meetingApp),
+              "7-ids-known-meeting-step-2-\(tag)", dark: dark, height: 900)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .s2s(hostID, .scopes), ids: ZoomAppIDs(meeting: appID, hosting: hostID)), open: .hostingApp),
+              "8-ids-known-hosting-step-2-\(tag)", dark: dark, height: 1340)
+        shoot(Guide(sdk: true, s2s: true, assist: ZoomGuideAssistState(page: .s2s(hostID, .credentials), ids: ZoomAppIDs(meeting: appID, hosting: hostID),
+                                                                       filled: [.hostingApp]), open: .hostingApp),
+              "9-filled-in-from-zoom-\(tag)", dark: dark, height: 1340)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .general(appID, .information), ids: ZoomAppIDs(meeting: appID),
+                                                            offers: [.meetingApp]), open: .meetingApp),
+              "10-offer-use-keys-\(tag)", dark: dark, height: 900)
     }
 }

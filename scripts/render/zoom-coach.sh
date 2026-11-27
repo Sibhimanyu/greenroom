@@ -6,6 +6,7 @@
 # Usage: scripts/render/zoom-coach.sh [outdir]   (default $TMPDIR/greenroom-render/zoom-coach)
 NAME=zoom-coach; source "$(dirname "$0")/lib.sh"
 write_brand
+export COACH_MARK="$ROOT/Branding/greenroom-mark/png/App-icon-64.png"
 export COACH_HTML="$ROOT/scripts/render/zoom-coach-page.html"
 render zoom-coach-render zoom-coach-main.swift "$STAGE/Brand.swift" \
   App/Zoom/ZoomCoachRules.swift App/Zoom/ZoomCoachScript.swift App/Zoom/ZoomMarketplacePages.swift \

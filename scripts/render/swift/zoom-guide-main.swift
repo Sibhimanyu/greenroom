@@ -29,13 +29,14 @@ func own(_ id: String, _ title: String, _ status: ZoomCheckStatus, _ detail: Str
     ZoomCheckLine(id: id, title: title, status: status, detail: detail,
                   actions: ZoomCheckActionRules.buttons(.ownApps, check: id, status: status, problem: problem, ids: ids))
 }
-let passedLines = (0..<11).map { own("p\($0)", "check", .passed) }
+let passedLines = (0..<12).map { own("p\($0)", "check", .passed) }
 let failedLines: [ZoomCheckLine] = [
     own("sdk", "Meeting and chat credentials", .passed),
     own("account", "Hosting credentials and app activation", .passed),
     own("update", "Permission to edit scheduled meetings", .failed, "Missing", .missingScopes(["meeting:update:meeting:admin"])),
     own("delete", "Permission to delete scheduled meetings", .failed, "Missing", .missingScopes(["meeting:delete:meeting:admin"])),
     own("host", "Permission to get the hosting token", .passed),
+    ZoomScopeLineRules.line(ZoomScopes.scope(.personalRoom), granted: [], ids: ids),
 ]
 
 /// The step inside the guide's frame (24pt padding), with the footer's note line under it.

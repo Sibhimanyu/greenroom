@@ -341,6 +341,16 @@ final class ZoomUserAuth: ObservableObject {
         return token
     }
 
+    /// The personal room (PMI) from GET /users/me (`user:read:user`, already asked for).
+    func personalRoom() async -> ZoomPersonalRoom.Lookup {
+        do {
+            let (data, status) = try await call("GET", "/users/me")
+            return ZoomPersonalRoom.lookup(status: status, body: data)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
     func startInstantMeeting(topic: String) async throws -> ZoomServerToServerClient.CreatedMeeting {
         let body = try JSONSerialization.data(withJSONObject: ["topic": topic, "type": 1])
         let json = try object(try ok(try await call("POST", "/users/me/meetings", body: body)))

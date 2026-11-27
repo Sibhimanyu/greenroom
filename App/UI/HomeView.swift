@@ -1275,23 +1275,28 @@ struct HomeView: View {
 
     // MARK: Scheduled picker
 
+    /// The entry the meeting number in the field is (the personal room by its PMI).
+    private var chosenScheduledEntry: ScheduledEntry? {
+        ScheduledListRules.chosen(digits: coordinator.meetingNumberDigits, in: coordinator.scheduledEntries)
+    }
+
+    /// The chosen entry when it is a scheduled meeting Greenroom may edit.
     private var selectedScheduledMeeting: ZoomServerToServerClient.ScheduledMeeting? {
-        let digits = coordinator.meetingNumberDigits
-        guard !digits.isEmpty else { return nil }
-        return coordinator.scheduledMeetings.first { String($0.id) == digits }
+        if case .meeting(let m) = chosenScheduledEntry { return m }
+        return nil
     }
 
     private var hasS2SCredentials: Bool {
         coordinator.zoomHostingReady
     }
 
-    /// One full-width picker in the field's own look: calendar symbol, the
-    /// chosen meeting (or the placeholder), a chevron.
+    /// One full-width picker in the field's own look (`ScheduledPickerField`).
+    /// The personal room is pinned first, with its note as a grey line under it.
     private var scheduledPicker: some View {
-        let chosen = selectedScheduledMeeting
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let chosen = chosenScheduledEntry
+        let entries = coordinator.scheduledEntries
         return Menu {
-            if coordinator.scheduledMeetings.isEmpty {
+            if entries.isEmpty {
                 if coordinator.isLoadingScheduled {
                     Text("Loading\u{2026}")
                 } else if !hasS2SCredentials {
@@ -1300,15 +1305,13 @@ struct HomeView: View {
                     Text("No scheduled meetings on this Zoom account. Schedule one in Zoom, then Refresh.")
                 }
             } else {
-                ForEach(coordinator.scheduledMeetings) { meeting in
-                    Button {
-                        coordinator.selectScheduledMeeting(meeting)
-                    } label: {
-                        if chosen?.id == meeting.id {
-                            Label(scheduledMeetingLabel(meeting), systemImage: "checkmark")
-                        } else {
-                            Text(scheduledMeetingLabel(meeting))
-                        }
+                ForEach(entries) { entry in
+                    if entry.canEdit {
+                        scheduledMenuItem(entry, chosen: chosen)
+                    } else {
+                        scheduledMenuItem(entry, chosen: chosen).help(ZoomPersonalRoom.help)
+                        Text(ZoomPersonalRoom.note)
+                        if entries.count > 1 { Divider() }
                     }
                 }
             }
@@ -1316,34 +1319,27 @@ struct HomeView: View {
             Button("Refresh") { coordinator.refreshScheduledMeetings() }
             Text(MeetingMode.scheduledHelp)
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Text(chosen.map(scheduledMeetingLabel) ?? scheduledPlaceholder)
-                    .font(.system(size: 14))
-                    .foregroundStyle(chosen == nil ? .secondary : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 11)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.fieldHeight)
-            .background { shape.fill(.quinary) }
-            .overlay { shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 0.5) }
-            .contentShape(shape)
+            ScheduledPickerField(chosen: chosen, placeholder: scheduledPlaceholder, height: Self.fieldHeight)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .disabled(isLive)
         .opacity(isLive ? 0.6 : 1)
-        .help("Choose one of the meetings scheduled on your Zoom account")
+        .help(chosen?.canEdit == false ? ZoomPersonalRoom.help : "Choose one of the meetings scheduled on your Zoom account")
         .accessibilityLabel("Scheduled meeting")
+    }
+
+    private func scheduledMenuItem(_ entry: ScheduledEntry, chosen: ScheduledEntry?) -> some View {
+        Button {
+            coordinator.selectScheduledEntry(entry)
+        } label: {
+            if chosen?.id == entry.id {
+                Label(ScheduledListRules.label(entry), systemImage: "checkmark")
+            } else {
+                Text(ScheduledListRules.label(entry))
+            }
+        }
     }
 
     /// Nothing scheduled yet (loaded, credentials present): say so, and the +
@@ -1353,7 +1349,7 @@ struct HomeView: View {
     }
 
     private var scheduledPlaceholder: String {
-        noScheduledYet ? "No scheduled meetings yet" : "Choose a scheduled meeting"
+        noScheduledYet && coordinator.personalRoom == nil ? "No scheduled meetings yet" : "Choose a scheduled meeting"
     }
 
     /// The row: the picker, then Edit and New as square buttons in the same
@@ -1362,7 +1358,11 @@ struct HomeView: View {
         HStack(spacing: 8) {
             scheduledPicker
             if hasS2SCredentials {
-                scheduledSquare("pencil", help: "Edit this meeting", highlight: false,
+                // The personal room is the account's: never edited or deleted here.
+                scheduledSquare("pencil",
+                                help: chosenScheduledEntry?.canEdit == false
+                                    ? "Your personal room is set in Zoom, not here" : "Edit this meeting",
+                                highlight: false,
                                 disabled: isLive || selectedScheduledMeeting == nil) {
                     if let m = selectedScheduledMeeting { scheduledSheet = .edit(m.id) }
                 }
@@ -1392,21 +1392,6 @@ struct HomeView: View {
         .opacity(disabled ? 0.5 : 1)
         .help(help)
         .accessibilityLabel(help)
-    }
-
-    /// Recurring meetings' times come from the per-meeting details call (their
-    /// real next occurrence) - never from the list endpoint, whose recurring
-    /// timestamps are the series' original anchor. No time means "no fixed
-    /// time", no upcoming occurrence, or a missing details scope.
-    private func scheduledMeetingLabel(_ meeting: ZoomServerToServerClient.ScheduledMeeting) -> String {
-        let when = meeting.startTime?.formatted(
-            .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
-        switch (meeting.isRecurring, when) {
-        case (true, let when?): return "\(meeting.topic) \u{2014} recurring, next \(when)"
-        case (true, nil): return "\(meeting.topic) \u{2014} recurring"
-        case (false, let when?): return "\(meeting.topic) \u{2014} \(when)"
-        case (false, nil): return meeting.topic
-        }
     }
 
     // MARK: Refresh

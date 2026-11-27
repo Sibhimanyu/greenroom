@@ -451,6 +451,7 @@ targets:
       - path: App/Zoom/ZoomScopes.swift
       - path: App/Zoom/ZoomMarketplaceGuide.swift
       - path: App/Zoom/ZoomServerToServerClient.swift
+      - path: App/Zoom/ZoomPersonalRoom.swift
       - path: App/YouTube/YouTubeOAuth.swift
       - path: App/YouTube/YouTubeRouteRules.swift
       - path: App/YouTube/YouTubeAccountChoiceRules.swift

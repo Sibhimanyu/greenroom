@@ -585,6 +585,7 @@ final class CoordinatorController: ObservableObject {
             defaults.set(zoomPrefersSignIn, forKey: Self.zoomPrefersSignInKey)
             // The list and a warmed host key belong to the other account.
             scheduledMeetings = []
+            personalRoom = nil
             prefetchedZAK = nil
         }
     }
@@ -726,6 +727,7 @@ final class CoordinatorController: ObservableObject {
             objectWillChange.send()
             UserDefaults.standard.set(newValue, forKey: ZoomSignInAvailability.debugSignInOnKey)
             scheduledMeetings = []
+            personalRoom = nil
             prefetchedZAK = nil
         }
     }
@@ -815,6 +817,7 @@ final class CoordinatorController: ObservableObject {
     func signOutOfZoom() async -> Bool {
         let revoked = await zoomUser.signOut()
         scheduledMeetings = []
+        personalRoom = nil
         prefetchedZAK = nil
         return revoked
     }
@@ -3924,7 +3927,9 @@ final class CoordinatorController: ObservableObject {
             ])
         }
         do {
-            log("Starting your scheduled meeting as host\u{2026}")
+            // The personal room starts the same way: its PMI with a fresh ZAK.
+            // The host needs no passcode and skips the waiting room.
+            log(ScheduledListRules.startLine(digits: meetingNumberDigits, room: personalRoom))
             let zak: String
             if let prefetched = validPrefetchedZAK() {
                 // Warmed when the meeting was picked from the Scheduled
@@ -4957,7 +4962,15 @@ final class CoordinatorController: ObservableObject {
     // user paste an ID every morning.
 
     @Published private(set) var scheduledMeetings: [ZoomServerToServerClient.ScheduledMeeting] = []
+    /// The account's personal room (PMI), pinned first on the Scheduled list.
+    /// nil without the scope or a PMI: the list works without it.
+    @Published private(set) var personalRoom: ZoomPersonalRoom?
     @Published private(set) var isLoadingScheduled = false
+
+    /// What the Scheduled picker lists: the personal room first, then the meetings.
+    var scheduledEntries: [ScheduledEntry] {
+        ScheduledListRules.entries(room: personalRoom, meetings: scheduledMeetings)
+    }
 
     func refreshScheduledMeetings() {
         loadSecretsIfNeeded()
@@ -4968,11 +4981,22 @@ final class CoordinatorController: ObservableObject {
         }
         isLoadingScheduled = true
         Task {
+            // Its own call, so a missing user scope never costs the list.
+            switch await access.personalRoom() {
+            case .room(let room): personalRoom = room
+            case .noRoom: personalRoom = nil
+            case .missingScope:
+                personalRoom = nil
+                log("Your personal room isn\u{2019}t listed: Zoom didn\u{2019}t allow reading it. Check Zoom setup shows the permission to add.")
+            case .failed(let message):
+                personalRoom = nil
+                log("Couldn\u{2019}t read your personal room: \(message)")
+            }
             do {
                 let result = try await access.listScheduledMeetings()
                 scheduledMeetings = result.meetings
                 if let warning = result.warning { log(warning) }
-                if scheduledMeetings.isEmpty {
+                if scheduledMeetings.isEmpty && personalRoom == nil {
                     log("No scheduled meetings on this Zoom account. Recurring ones scheduled at zoom.us/meeting/schedule will show up here.")
                 }
             } catch {
@@ -5000,6 +5024,23 @@ final class CoordinatorController: ObservableObject {
         // meetings get host-started with a ZAK, and this fetch is pure
         // network time otherwise sitting inside the start.
         prefetchZAK(for: meetingNumberDigits)
+    }
+
+    /// Fills the meeting number from the personal room: its PMI, and the
+    /// passcode its link carries, if any (the host start needs none).
+    func selectPersonalRoom(_ room: ZoomPersonalRoom) {
+        Analytics.feature("personal_room_pick")
+        meetingNumber = room.meetingNumber
+        meetingPassword = ZoomMeetingLinkParser.parse(room.joinURL)?.password ?? ""
+        log("Selected your personal room (\(room.spacedNumber)).")
+        prefetchZAK(for: meetingNumberDigits)
+    }
+
+    func selectScheduledEntry(_ entry: ScheduledEntry) {
+        switch entry {
+        case .personalRoom(let room): selectPersonalRoom(room)
+        case .meeting(let meeting): selectScheduledMeeting(meeting)
+        }
     }
 
     /// Schedules a meeting on the Zoom account, then refreshes the list,

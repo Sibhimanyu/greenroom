@@ -126,13 +126,13 @@ final class NewMeetingParseTests: XCTestCase {
 }
 
 final class ZoomScopesTests: XCTestCase {
-    func testSevenScopesWithUniqueNamesAndEveryKeyOnce() {
-        XCTAssertEqual(ZoomScopes.count, 7)
-        XCTAssertEqual(Set(ZoomScopes.names).count, 7)
+    func testEightScopesWithUniqueNamesAndEveryKeyOnce() {
+        XCTAssertEqual(ZoomScopes.count, 8)
+        XCTAssertEqual(Set(ZoomScopes.names).count, 8)
         XCTAssertEqual(Set(ZoomScopes.all.map(\.key)), Set(ZoomScopes.Key.allCases))
         XCTAssertTrue(ZoomScopes.names.contains("meeting:update:meeting:admin"))
         XCTAssertTrue(ZoomScopes.names.contains("meeting:delete:meeting:admin"))
-        XCTAssertEqual(ZoomScopes.countWord, "seven")
+        XCTAssertEqual(ZoomScopes.countWord, "eight")
     }
 
     func testGrantedByNameOrLegacy() {

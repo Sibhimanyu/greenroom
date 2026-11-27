@@ -373,6 +373,22 @@ enum ZoomServerToServerClient {
         }
     }
 
+    /// The account's personal room (PMI) from GET /users/me. Never throws: a
+    /// missing `user:read:user:admin` scope or any failure just means no entry.
+    static func personalRoom(accountID: String, clientID: String, clientSecret: String) async -> ZoomPersonalRoom.Lookup {
+        guard let url = URL(string: "https://api.zoom.us/v2/users/me") else { return .noRoom }
+        do {
+            let (data, response) = try await authorized(accountID: accountID, clientID: clientID, clientSecret: clientSecret) { token in
+                var request = URLRequest(url: url)
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                return request
+            }
+            return ZoomPersonalRoom.lookup(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
     /// The account owner's ZAK (host key token) - what startMeetingWithZAK
     /// needs to START an existing meeting as its host. The create flow
     /// gets one embedded in the fresh meeting's start_url; meetings that

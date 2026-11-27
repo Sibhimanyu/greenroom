@@ -10,7 +10,7 @@ import Foundation
 
 enum ZoomScopes {
     enum Key: String, CaseIterable {
-        case create, list, details, update, delete, host, end
+        case create, list, details, update, delete, host, end, personalRoom
     }
 
     struct Scope: Identifiable {
@@ -20,6 +20,20 @@ enum ZoomScopes {
         /// The older scope name Zoom's classic apps grant instead.
         let legacy: String
         var id: String { name }
+
+        /// The line's title in Check Zoom setup.
+        var checkTitle: String {
+            switch key {
+            case .create: "Permission to create meetings"
+            case .list: "Permission to list meetings"
+            case .details: "Permission to read meeting details"
+            case .update: "Permission to edit scheduled meetings"
+            case .delete: "Permission to delete scheduled meetings"
+            case .host: "Permission to get the hosting token"
+            case .end: "Permission to end meetings"
+            case .personalRoom: "Permission to read your personal room"
+            }
+        }
     }
 
     static let all: [Scope] = [
@@ -30,6 +44,9 @@ enum ZoomScopes {
         Scope(key: .delete, name: "meeting:delete:meeting:admin", purpose: "Delete scheduled meetings", legacy: "meeting:write:admin"),
         Scope(key: .host, name: "user:read:token:admin", purpose: "Get your hosting token", legacy: "user:read:admin"),
         Scope(key: .end, name: "meeting:update:status:admin", purpose: "End meetings for everyone", legacy: "meeting:write:admin"),
+        // GET /users/me: the personal room (PMI) pinned on Home's Scheduled list.
+        // Zoom's granular-scope table, "Get a user": user:read:user / user:read:user:admin.
+        Scope(key: .personalRoom, name: "user:read:user:admin", purpose: "Read your personal room", legacy: "user:read:admin"),
     ]
 
     static var names: [String] { all.map(\.name) }

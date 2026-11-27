@@ -39,6 +39,15 @@ enum ZoomRESTAccess {
         }
     }
 
+    /// The personal room (PMI) for the Scheduled list's pinned entry.
+    func personalRoom() async -> ZoomPersonalRoom.Lookup {
+        switch self {
+        case .signedIn(let user): return await user.personalRoom()
+        case .ownApps(let a, let c, let s):
+            return await ZoomServerToServerClient.personalRoom(accountID: a, clientID: c, clientSecret: s)
+        }
+    }
+
     func createScheduledMeeting(_ spec: NewMeetingRequest) async throws -> ZoomServerToServerClient.CreatedScheduledMeeting {
         switch self {
         case .signedIn(let user): return try await user.createScheduledMeeting(spec)

@@ -24,20 +24,15 @@ final class ZoomSetupChecker: ObservableObject {
     typealias Credentials = [String]
 
     enum Check: String, CaseIterable {
-        case sdk, account, create, list, details, update, delete, host, end, meetings, hostToken
+        case sdk, account, create, list, details, update, delete, host, end, personalRoom, meetings, hostToken
         var title: String {
+            if let key = ZoomScopes.Key(rawValue: rawValue) { return ZoomScopes.scope(key).checkTitle }
             switch self {
-            case .sdk: "Meeting and chat credentials"
-            case .account: "Hosting credentials and app activation"
-            case .create: "Permission to create meetings"
-            case .list: "Permission to list meetings"
-            case .details: "Permission to read meeting details"
-            case .update: "Permission to edit scheduled meetings"
-            case .delete: "Permission to delete scheduled meetings"
-            case .host: "Permission to get the hosting token"
-            case .end: "Permission to end meetings"
-            case .meetings: "Scheduled meetings API"
-            case .hostToken: "Hosting token API"
+            case .sdk: return "Meeting and chat credentials"
+            case .account: return "Hosting credentials and app activation"
+            case .meetings: return "Scheduled meetings API"
+            case .hostToken: return "Hosting token API"
+            default: return rawValue
             }
         }
     }
@@ -86,11 +81,9 @@ final class ZoomSetupChecker: ObservableObject {
                 let scopes = try await ZoomServerToServerClient.grantedScopes(accountID: account, clientID: clientID, clientSecret: secret)
                 update(.account, .passed, "Zoom issued an access token. The hosting app is active.")
                 for scope in ZoomScopes.all {
-                    let granted = ZoomScopes.isGranted(scope, in: scopes)
-                    guard let check = Check(rawValue: scope.key.rawValue) else { continue }
-                    update(check, granted ? .passed : .failed,
-                           granted ? "Granted by Zoom." : "Missing \(scope.name). Add it in the Server-to-Server app\u{2019}s Scopes page, save, and check again.",
-                           granted ? .nothing : .missingScopes([scope.name]))
+                    let line = ZoomScopeLineRules.line(scope, granted: scopes, ids: ids)
+                    guard let i = lines.firstIndex(where: { $0.id == line.id }) else { continue }
+                    lines[i] = line
                 }
             } catch {
                 update(.account, .failed, "\(error.localizedDescription) Check the three hosting values and activate the app in Zoom.",

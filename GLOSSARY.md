@@ -91,6 +91,20 @@ While a meeting is live, the controls are in exactly one place. Code:
   switches. A new change while it waits starts the wait again.
 - **Morph**: the shrink or expand animation between Meeting window and Bar.
 
+## Personal room
+
+The Zoom account's own fixed meeting room: its Personal Meeting ID (PMI) and
+personal link, always the same. Say **personal room** in code and UI ("Your
+personal room"), never "PMI" in UI text. Code: `App/Zoom/ZoomPersonalRoom.swift`.
+
+- It is read from `GET /users/me` (`pmi`, `personal_meeting_url`), because Zoom's
+  scheduled-meetings list never includes it. Own apps need `user:read:user:admin`;
+  the sign-in's `user:read:user` already covers it.
+- Home's Scheduled list pins it first (**Scheduled entry**: the personal room or
+  one scheduled meeting, `ScheduledEntry`). It starts like any scheduled meeting:
+  its number with a fresh host key. It is never edited or deleted from Greenroom.
+- No scope or no PMI means no entry, never an error on Home.
+
 ## Layouts
 
 **Layout**: a main-display arrangement, plus optionally a second-display arrangement used only when that display is connected: where each window goes and where the owner's camera sits. What the owner arranges is what everyone in the meeting sees, except windows hidden from everyone. The camera is the one piece that can be in everyone's picture without being on the owner's screen. Exactly one layout is active at a time.

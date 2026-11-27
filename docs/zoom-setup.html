@@ -232,7 +232,7 @@
     </li>
     <li>
       <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open your app's Scopes tab (via the Build App page)</a>
-      <p>Add all 7 scopes below, then save. See the next section.</p>
+      <p>Add all 8 scopes below, then save. See the next section.</p>
     </li>
     <li>
       <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open your app's Activation tab (via the Build App page)</a>
@@ -243,11 +243,11 @@
 
 <section id="scopes">
   <div class="kicker">Scopes</div>
-  <h2>The 7 scopes to add</h2>
+  <h2>The 8 scopes to add</h2>
   <p class="sec-p">Zoom's scope picker searches one name at a time. Copy a scope, paste it into the search, pick the match.</p>
   <div class="scopes-head">
-    <span class="progress" id="progress">0 of 7 added</span>
-    <button type="button" class="copy all" id="copy-all" data-copy="meeting:write:meeting:admin&#10;meeting:read:list_meetings:admin&#10;meeting:read:meeting:admin&#10;meeting:update:meeting:admin&#10;meeting:delete:meeting:admin&#10;user:read:token:admin&#10;meeting:update:status:admin" aria-label="Copy all 7 scopes, one per line">Copy all</button>
+    <span class="progress" id="progress">0 of 8 added</span>
+    <button type="button" class="copy all" id="copy-all" data-copy="meeting:write:meeting:admin&#10;meeting:read:list_meetings:admin&#10;meeting:read:meeting:admin&#10;meeting:update:meeting:admin&#10;meeting:delete:meeting:admin&#10;user:read:token:admin&#10;meeting:update:status:admin&#10;user:read:user:admin" aria-label="Copy all 8 scopes, one per line">Copy all</button>
   </div>
   <ul class="scopes" id="scope-list">
         <li class="scope">
@@ -285,6 +285,11 @@
           <div class="sc-text"><code class="sc-name">meeting:update:status:admin</code><span class="sc-for">End meetings for everyone</span></div>
           <button type="button" class="copy" data-copy="meeting:update:status:admin" aria-label="Copy meeting:update:status:admin">Copy</button>
         </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: user:read:user:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">user:read:user:admin</code><span class="sc-for">Read your personal room</span></div>
+          <button type="button" class="copy" data-copy="user:read:user:admin" aria-label="Copy user:read:user:admin">Copy</button>
+        </li>
   </ul>
   <p class="note">Ticks are for your own tracking. They live on this page only and are gone when you leave it.</p>
   <p class="note" style="color:var(--body)">Zoom's older classic apps grant older names instead. Greenroom accepts those too.</p>
@@ -299,7 +304,7 @@
     <li><p>In the setup guide, press <strong>Check Zoom setup</strong>. End any running session first.</p></li>
     <li><p>Read the results. Press <strong>Check again</strong> after each fix.</p></li>
   </ol>
-  <p class="sec-p">Eleven checks run. The permission checks only read what Zoom granted. No meeting is created, joined or ended.</p>
+  <p class="sec-p">Twelve checks run. The permission checks only read what Zoom granted. No meeting is created, joined or ended.</p>
   <div class="table-scroll">
     <table>
       <thead><tr><th>Check</th><th>If it fails</th></tr></thead>
@@ -313,6 +318,7 @@
         <tr><td>Permission to delete scheduled meetings</td><td>Scope missing: <code>meeting:delete:meeting:admin</code>.</td></tr>
         <tr><td>Permission to get the hosting token</td><td>Scope missing: <code>user:read:token:admin</code>.</td></tr>
         <tr><td>Permission to end meetings</td><td>Scope missing: <code>meeting:update:status:admin</code>.</td></tr>
+        <tr><td>Permission to read your personal room</td><td>Scope missing: <code>user:read:user:admin</code>. Without it, Home's Scheduled list leaves out your personal room; everything else works.</td></tr>
         <tr><td>Scheduled meetings API</td><td>Zoom would not list your meetings. Usually a list scope or the wrong account.</td></tr>
         <tr><td>Hosting token API</td><td>Zoom returned no hosting token. Check the token scope and that the app is activated.</td></tr>
       </tbody>

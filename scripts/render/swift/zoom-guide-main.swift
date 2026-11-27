@@ -111,5 +111,12 @@ MainActor.assumeIsolated {
         shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .general(appID, .information), ids: ZoomAppIDs(meeting: appID),
                                                             offers: [.meetingApp]), open: .meetingApp),
               "10-offer-use-keys-\(tag)", dark: dark, height: 900)
+        // The ways back: Start over (under the parts) and Use a different app (under a Done part's fields).
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID)), open: .meetingApp),
+              "11-start-over-and-use-a-different-app-\(tag)", dark: dark, height: 900)
+        shoot(Guide(assist: ZoomGuideAssistState(removed: [.meetingApp]), open: .meetingApp),
+              "12-keys-removed-undo-\(tag)", dark: dark, height: 900)
+        // Keys filled but no app ID known: step 1 reads Find my app.
+        shoot(Guide(s2s: true, open: .hostingApp), "13-find-my-app-\(tag)", dark: dark, height: 1340)
     }
 }

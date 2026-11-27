@@ -40,6 +40,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     var onKeys: (ZoomMarketplacePage, [ZoomKeyField: String]) -> Void = { _, _ in }
     /// Whether the keys on this page are already in Greenroom (the coach says "Got it").
     var keysFilled: () -> Bool = { false }
+    /// Whether a part has keys filled in but no remembered app ID (the coach asks which app).
+    var needsApp: (ZoomGuidePart) -> Bool = { _ in false }
 
     private var window: NSWindow?
     private var webView: WKWebView?
@@ -133,12 +135,13 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     /// Clears what Zoom's sites remembered in this window, then starts again at Created Apps.
     func signOut() {
+        let reload = webView != nil
         let store = WKWebsiteDataStore.default()
         store.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { [weak self] records in
             let zoom = records.filter { $0.displayName.localizedCaseInsensitiveContains("zoom") }
             store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: zoom) {
                 MainActor.assumeIsolated {
-                    self?.webView?.load(URLRequest(url: ZoomMarketplaceGuide.builderURL))
+                    if reload { self?.webView?.load(URLRequest(url: ZoomMarketplaceGuide.builderURL)) }
                 }
             }
         }
@@ -171,7 +174,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     func refresh() {
         guard let webView, let url = webView.url, let page = ZoomMarketplacePages.page(for: url) else { return }
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
-        let coach = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn)
+        let coach = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn, needsApp: needsApp(part))
         let ring = Self.ringColor
         webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { _ in
             MainActor.assumeIsolated {

@@ -29,6 +29,8 @@ final class ZoomSetupAssist: ObservableObject {
     private var filledFields: [ZoomGuidePart: [ZoomKeyField]] = [:]
     /// Parts the person undid on this visit to the page: not filled again until the page changes.
     private var undone: Set<ZoomGuidePart> = []
+    /// What "Use a different app" took away, until Undo or the next change (in memory only).
+    private var removedBackup: [ZoomGuidePart: (values: [ZoomKeyField: String], id: String?)] = [:]
 
     init(coordinator: CoordinatorController) {
         self.coordinator = coordinator
@@ -37,6 +39,7 @@ final class ZoomSetupAssist: ObservableObject {
         let window = ZoomMarketplaceWindow.shared
         window.onPage = { [weak self] in self?.pageChanged($0) }
         window.onKeys = { [weak self] page, found in self?.keysFound(page, found) }
+        window.needsApp = { [weak self] part in self?.needsApp(part) ?? false }
         window.keysFilled = { [weak self] in
             guard let self, let page = self.state.page, let app = page.app else { return false }
             return self.state.filled.contains(Self.part(of: app))
@@ -82,6 +85,9 @@ final class ZoomSetupAssist: ObservableObject {
         var next = state
         for app in [ZoomOwnApp.sdk, .s2s] {
             let part = Self.part(of: app)
+            if next.removed.contains(part), !fields(app, coordinator).values.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                next.removed.remove(part); removedBackup[part] = nil
+            }
             if fields(app, coordinator).values.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }),
                next.ids.id(for: app) != nil, state.page?.appID != next.ids.id(for: app) {
                 next.ids.forget(app)
@@ -178,5 +184,65 @@ final class ZoomSetupAssist: ObservableObject {
         next.filled.remove(part)
         state = next
         ZoomMarketplaceWindow.shared.refresh()
+    }
+
+    // MARK: Ways back (R10 to R12)
+
+    /// The part's keys are filled in (any of them) but the window has not seen its app yet.
+    func needsApp(_ part: ZoomGuidePart) -> Bool {
+        guard let coordinator, let app = Self.app(of: part), state.ids.id(for: app) == nil else { return false }
+        return fields(app, coordinator).values.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    /// Start over: forget all five keys (the secrets leave the Keychain through the same save path
+    /// typing uses), both app IDs, the last check and the notices; sign the Zoom window out; open part 1.
+    func startOver() {
+        guard let coordinator else { return }
+        coordinator.loadSecretsIfNeeded()
+        for app in [ZoomOwnApp.sdk, .s2s] {
+            write(app, Dictionary(uniqueKeysWithValues: fields(app, coordinator).keys.map { ($0, "") }), coordinator)
+        }
+        offerValues = [:]; filledFields = [:]; removedBackup = [:]; undone = []
+        var next = state
+        next.ids = ZoomAppIDs()
+        next.filled = []; next.offers = []; next.removed = []
+        state = next
+        defaults.removeObject(forKey: Self.meetingKey)
+        defaults.removeObject(forKey: Self.hostingKey)
+        coordinator.zoomSetupChecker.credentialsChanged()
+        ZoomMarketplaceWindow.shared.signOut()
+        coordinator.openZoomSetupGuide(at: .sdkCredentials)
+    }
+
+    /// "Use a different app": clears this part's keys and app ID, remembers them for Undo, opens Created apps.
+    func useDifferentApp(_ part: ZoomGuidePart) {
+        guard let coordinator, let app = Self.app(of: part) else { return }
+        coordinator.loadSecretsIfNeeded()
+        removedBackup[part] = (fields(app, coordinator), state.ids.id(for: app))
+        write(app, Dictionary(uniqueKeysWithValues: fields(app, coordinator).keys.map { ($0, "") }), coordinator)
+        filledFields[part] = nil; offerValues[part] = nil
+        undone.insert(part)   // the old app's page must not fill them straight back
+        var next = state
+        next.ids.forget(app)
+        next.filled.remove(part); next.offers.remove(part); next.removed.insert(part)
+        state = next
+        defaults.set(next.ids.meeting, forKey: Self.meetingKey)
+        defaults.set(next.ids.hosting, forKey: Self.hostingKey)
+        open(ZoomMarketplaceGuide.builderURL, part: part)
+    }
+
+    /// "Keys removed · Undo".
+    func undoRemoved(_ part: ZoomGuidePart) {
+        guard let coordinator, let app = Self.app(of: part), let backup = removedBackup[part] else { return }
+        write(app, backup.values, coordinator)
+        removedBackup[part] = nil
+        var next = state
+        if let id = backup.id, let page = [ZoomMarketplacePage.s2s(id, .information), .general(id, .information)].first(where: { $0.app == app }) {
+            next.ids.see(page)
+        }
+        next.removed.remove(part)
+        state = next
+        defaults.set(next.ids.meeting, forKey: Self.meetingKey)
+        defaults.set(next.ids.hosting, forKey: Self.hostingKey)
     }
 }

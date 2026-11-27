@@ -9,7 +9,7 @@ write_brand
 export COACH_HTML="$ROOT/scripts/render/zoom-coach-page.html"
 render zoom-coach-render zoom-coach-main.swift "$STAGE/Brand.swift" \
   App/Zoom/ZoomCoachRules.swift App/Zoom/ZoomCoachScript.swift App/Zoom/ZoomMarketplacePages.swift \
-  App/Zoom/ZoomGuideFollowRules.swift App/Zoom/ZoomMarketplaceGuide.swift App/Zoom/ZoomGuideFlowRules.swift \
+  App/Zoom/ZoomGuideFollowRules.swift App/Zoom/ZoomStartOverRules.swift App/Zoom/ZoomMarketplaceGuide.swift App/Zoom/ZoomGuideFlowRules.swift \
   App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift App/Zoom/ZoomRouteRules.swift \
   App/Zoom/ZoomScopes.swift App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift \
   App/Zoom/ZoomPersonalRoom.swift App/Zoom/ZoomServerToServerClient.swift App/Zoom/NewMeetingRequest.swift

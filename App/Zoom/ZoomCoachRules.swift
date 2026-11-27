@@ -27,7 +27,11 @@ struct ZoomCoach: Equatable, Codable {
 }
 
 enum ZoomCoachRules {
-    static func coach(part: ZoomGuidePart, page: ZoomMarketplacePage, keysFilled: Bool, tipsOn: Bool) -> ZoomCoach? {
+    /// `needsApp`: the part's keys are filled but its app's ID is not known yet (R12).
+    static func coach(part: ZoomGuidePart, page: ZoomMarketplacePage, keysFilled: Bool, tipsOn: Bool, needsApp: Bool = false) -> ZoomCoach? {
+        if tipsOn, needsApp, part != .check, page == .createdApps {
+            return ZoomCoach(label: nil, kind: .none, counter: "", text: ZoomStartOverRules.coachFindMyApp)
+        }
         guard tipsOn, let step = ZoomGuideFollowRules.step(part: part, page: page) else { return nil }
         let total = part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps.count : ZoomMarketplaceGuide.s2sSteps.count
         let counter = "Step \(step) of \(total)"

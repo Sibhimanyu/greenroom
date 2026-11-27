@@ -123,6 +123,28 @@ Status: built (docs, glossary, codemaps, renders).
 
 The steps in `ZoomMarketplaceGuide` are shortened to match R3. docs/zoom-setup.html and docs/guide.html describe the Zoom window and the fill-in. GLOSSARY gains "Zoom window". The codemaps are updated. scripts/render/zoom-guide.sh gains states: no ID known, IDs known with the current step marked, filled in from Zoom, and the offer to use the page's keys; light and dark. scripts/render/zoom-coach.sh renders the coach.
 
+### R10. Start over
+
+In the Zoom step, whenever any Zoom key is filled, a quiet "Start over\u2026" button (plain, not green) sits under the three parts. It asks "Remove your Zoom keys from Greenroom?" with "Greenroom forgets both apps' keys on this Mac and signs out of Zoom here. Your apps in Zoom stay as they are, and you can fill the keys in again from Zoom.", buttons **Remove keys** (destructive) and Cancel. Remove keys clears all five key bindings (the secrets leave the Keychain through the same save path typing uses; an empty value removes the item's key, pinned by `SecretStoreTests.testSettingEmptyRemoves`), both remembered app IDs, the last check, the "Filled in from Zoom" / Undo state, signs the Zoom window out (Sign out of Zoom) and opens part 1. It is disabled while a meeting or session is live, with "End the meeting first." Settings \u2192 Zoom shows the same button (when a key is filled) beside Set up / Edit setup, through one shared view and one action (`ZoomStartOverButton`, `ZoomSetupAssist.startOver`).
+
+Acceptance: `ZoomStartOverRulesTests` (shown when any key, words, disabled help, the five fields).
+
+Status: built; the confirmation dialog is untested live (it cannot be rendered off screen).
+
+### R11. Each part: Use a different app
+
+In an open part that is Done, a small plain "Use a different app" link under the fields clears only that part's keys and remembered app ID, shows "Keys removed \u00B7 Undo" for that part until the next change, and opens the Zoom window at Created apps. The page that was open cannot fill the keys straight back.
+
+Status: built, untested live.
+
+### R12. Done but no app ID known: Find my app
+
+When a part's keys are filled (any of them) but its app ID is not remembered, step 1's button reads **Find my app** (Created apps) instead of "Create the app", and on Created apps the coach card (no spotlight, no counter) says "Click the app you made for Greenroom." Opening the app remembers its ID, and the R4 buttons appear. Only when the part's keys are empty does step 1 say "Create the app".
+
+Acceptance: `ZoomStartOverRulesTests` (rows and coach).
+
+Status: built, untested live.
+
 ## Plan
 
 1. Pure rules first, red then green: R2, R4 URLs, R3, R5 decide, R1 placement, R7.

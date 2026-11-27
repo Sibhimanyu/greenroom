@@ -162,6 +162,7 @@ enum ZoomCoachScript {
         if (!host.isConnected) (document.documentElement || document.body).appendChild(host);
         var useSearch = cfg.searchText && target && target.tagName === 'INPUT';
         ui.count.textContent = cfg.counter || '';
+        ui.count.style.display = cfg.counter ? 'block' : 'none';
         ui.text.textContent = useSearch ? cfg.searchText : cfg.text;
         var animate = !reduce && ui.placed;
         ui.spot.className = 'spot' + (animate ? ' move' : '');

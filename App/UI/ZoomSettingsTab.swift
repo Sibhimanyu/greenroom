@@ -49,6 +49,8 @@ struct ZoomSettingsTab: View {
             onSignIn: { coordinator.signInWithZoom() },
             onCancelSignIn: { coordinator.cancelZoomSignIn() },
             openGuide: { _ in coordinator.openZoomSetupGuide() },
+            onStartOver: ZoomStartOverRules.isShown(coordinator.zoomGuideFacts) ? { coordinator.zoomAssist.startOver() } : nil,
+            startOverDisabled: coordinator.phase.isInMeeting,
             debugRows: debugRows)
             .onAppear { coordinator.loadSecretsIfNeeded() }
             .onChange(of: coordinator.zoomSetupCredentials) { _, _ in coordinator.zoomSetupChecker.credentialsChanged() }
@@ -88,6 +90,9 @@ struct ZoomPageContent: View {
     var onCancelSignIn: () -> Void = {}
     /// Opens the setup guide's Zoom step at a spot.
     var openGuide: (ZoomGuideSpot) -> Void = { _ in }
+    /// "Start over\u{2026}", the same confirmation and action as the setup guide's; nil hides it (no keys filled).
+    var onStartOver: (() -> Void)? = nil
+    var startOverDisabled = false
     /// A DEBUG build's extra rows (the sign-in override); nil in Release and in renders.
     var debugRows: AnyView? = nil
 
@@ -147,9 +152,14 @@ struct ZoomPageContent: View {
             ZoomRouteStatusLine(choice: choice)
             if choice.check == .setup, let setupCheck { setupCheck }
             ZoomRouteStartNote(choice: choice)
-            Button(setupEntry.title) { openGuide(setupEntry.spot) }
-                .help("Opens the setup guide\u{2019}s Zoom step, where the keys, scopes and the step-by-step setup live.")
-                .padding(.top, 4)
+            HStack(spacing: 16) {
+                Button(setupEntry.title) { openGuide(setupEntry.spot) }
+                    .help("Opens the setup guide\u{2019}s Zoom step, where the keys, scopes and the step-by-step setup live.")
+                if let onStartOver {
+                    ZoomStartOverButton(disabled: startOverDisabled, action: onStartOver)
+                }
+            }
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)

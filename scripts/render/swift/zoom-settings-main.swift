@@ -69,7 +69,8 @@ struct Page: View {
                 onSignIn: {}, onCancel: {}, onSignOut: { true }, compact: true),
             setupCheck: ZoomSetupCheckRow(lines: ownReady ? setupLines : []),
             setupEntry: entry,
-            refusedNote: note)
+            refusedNote: note,
+            onStartOver: entry.title.hasPrefix("Edit") ? {} : nil)
     }
 }
 

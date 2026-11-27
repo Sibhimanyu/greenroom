@@ -28,8 +28,9 @@ enum ZoomMarketplaceGuide {
         "Copy the Account ID, Client ID and Client Secret from App Credentials.",
     ]
 
-    /// The steps with their buttons (R4): before an app ID is known only step 1 has one, "Create the app".
-    static func rows(part: ZoomGuidePart, ids: ZoomAppIDs) -> [ZoomGuideRow] {
+    /// The steps with their buttons (R4): before an app ID is known only step 1 has one, "Create the app"
+    /// (or "Find my app" when the part's keys are already filled in, R12).
+    static func rows(part: ZoomGuidePart, ids: ZoomAppIDs, keysFilled: Bool = false) -> [ZoomGuideRow] {
         let steps: [String]
         let links: [(String, (String) -> ZoomMarketplacePage)?]
         let id: String?
@@ -46,7 +47,7 @@ enum ZoomMarketplaceGuide {
         }
         return steps.enumerated().map { i, text in
             guard let id else {
-                return ZoomGuideRow(text: text, link: i == 0 ? ZoomGuideRowLink(title: "Create the app", page: .createdApps) : nil)
+                return ZoomGuideRow(text: text, link: i == 0 ? ZoomGuideRowLink(title: keysFilled ? ZoomStartOverRules.findMyAppTitle : "Create the app", page: .createdApps) : nil)
             }
             return ZoomGuideRow(text: text, link: links[i].map { ZoomGuideRowLink(title: $0.0, page: $0.1(id)) })
         }

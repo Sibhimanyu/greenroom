@@ -47,6 +47,10 @@ struct ZoomGuideStep: View {
     var onUseKeys: (ZoomGuidePart) -> Void = { _ in }
     /// "Undo" on "Filled in from Zoom".
     var onUndoFill: (ZoomGuidePart) -> Void = { _ in }
+    /// "Start over" (confirmed), "Use a different app" and its Undo.
+    var onStartOver: () -> Void = {}
+    var onUseDifferentApp: (ZoomGuidePart) -> Void = { _ in }
+    var onUndoRemoved: (ZoomGuidePart) -> Void = { _ in }
     /// Returns true when the import filled things in.
     var onImport: () -> Bool = { false }
     var onCheck: () -> Void = {}
@@ -82,6 +86,10 @@ struct ZoomGuideStep: View {
                         ForEach(ZoomGuidePart.allCases, id: \.self) { part in
                             card(part).id(part)
                         }
+                    }
+                    if ZoomStartOverRules.isShown(facts) {
+                        ZoomStartOverButton(disabled: checkDisabled, action: onStartOver)
+                            .padding(.horizontal, 8)
                     }
                     signInRow
                 }
@@ -278,6 +286,7 @@ struct ZoomGuideStep: View {
             fillNotice(.meetingApp)
             fields([("Client ID", $sdkClientID, false), ("Client Secret", $sdkClientSecret, true)])
                 .id(ZoomGuideSpot.sdkCredentials)
+            differentApp(.meetingApp)
             detail {
                 Text("Use the same Zoom account for both apps. You need permission to build apps; ask your Zoom account admin if Build App is missing.")
                 Text("In Zoom, choose Build App \u{2192} General App. Under Features \u{2192} Embed, turn on Meeting SDK. Find the Client ID and Client Secret under Basic Information \u{2192} App Credentials, and paste them above.")
@@ -301,6 +310,7 @@ struct ZoomGuideStep: View {
             fields([("Account ID", $s2sAccountID, false), ("Client ID", $s2sClientID, false),
                     ("Client Secret", $s2sClientSecret, true)])
                 .id(ZoomGuideSpot.s2sCredentials)
+            differentApp(.hostingApp)
             detail {
                 Text("Use the same Zoom account as the Meeting app. Adding admin scopes needs an admin role; ask your Zoom account admin if they are missing.")
                 Text("In Zoom, choose Build App \u{2192} Server-to-Server OAuth and name it. Open Scopes \u{2192} Add Scopes: copy one name above, paste it into the search field and select the matching permission. Repeat for all \(ZoomScopes.countWord), then save.")
@@ -359,7 +369,7 @@ struct ZoomGuideStep: View {
     /// The Zoom window button and the part's steps; the step the window is on is marked, and each
     /// step with a known app has a button to its exact page.
     private func steps(_ part: ZoomGuidePart) -> some View {
-        let rows = ZoomMarketplaceGuide.rows(part: part, ids: assist.ids)
+        let rows = ZoomMarketplaceGuide.rows(part: part, ids: assist.ids, keysFilled: part == .meetingApp ? facts.sdkFilled > 0 : facts.s2sFilled > 0)
         let current = ZoomGuideFollowRules.step(part: part, page: assist.page)
         return VStack(alignment: .leading, spacing: 8) {
             Button { onOpenZoom(ZoomMarketplaceGuide.builderURL, part) } label: {
@@ -401,7 +411,13 @@ struct ZoomGuideStep: View {
     /// "Filled in from Zoom" with Undo, or the offer to use the page's keys.
     @ViewBuilder
     private func fillNotice(_ part: ZoomGuidePart) -> some View {
-        if assist.filled.contains(part) {
+        if assist.removed.contains(part) {
+            HStack(spacing: 6) {
+                Text("\(ZoomStartOverRules.removedNotice) \u{00B7}").foregroundStyle(.secondary)
+                Button("Undo") { onUndoRemoved(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
+            }
+            .font(.callout)
+        } else if assist.filled.contains(part) {
             HStack(spacing: 8) {
                 Label("Filled in from Zoom", systemImage: "checkmark.circle")
                     .foregroundStyle(Brand.text)
@@ -420,6 +436,18 @@ struct ZoomGuideStep: View {
     }
 
     /// The key fields, labels in one column so the fields line up. Secrets are always dotted.
+    /// The small "Use a different app" link under a Done part's fields.
+    @ViewBuilder
+    private func differentApp(_ part: ZoomGuidePart) -> some View {
+        if ZoomStartOverRules.showsUseDifferentApp(flow.state(part)) {
+            Button(ZoomStartOverRules.useDifferentAppTitle) { onUseDifferentApp(part) }
+                .buttonStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .help("Clears this app\u{2019}s keys and opens Zoom\u{2019}s list of your apps")
+        }
+    }
+
     private func fields(_ rows: [(title: String, text: Binding<String>, secure: Bool)]) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
             ForEach(rows, id: \.title) { row in

@@ -70,4 +70,6 @@ struct ZoomGuideAssistState: Equatable {
     var filled: Set<ZoomGuidePart> = []
     /// Parts where the page's keys differ from what is typed ("Use the keys from this page").
     var offers: Set<ZoomGuidePart> = []
+    /// Parts whose keys were just removed by "Use a different app" ("Keys removed", with Undo).
+    var removed: Set<ZoomGuidePart> = []
 }

@@ -51,19 +51,19 @@ Deleted when v2 lands: ZoomCoachRules, ZoomBarRules, ZoomGuideFollowRules, ZoomR
 
 ## The guide: every step
 
-One run, eight steps, in Zoom's own order. "Done when" is the evidence. A check failure re-opens the step it names.
+One run, eight steps. Each app is built completely first and its keys are copied LAST (owner, 2026-11-27: Zoom can change an app's keys as its settings change, so keys copied early go stale). Zoom shows a Server-to-Server app's App Credentials tab first; Greenroom takes the person past it (`.goTo`) and comes back at the end. "Done when" is the evidence. A check failure re-opens the step it names.
 
 | # | Step (card title) | Why (card's second line) | Where | Done when | Call to action | Do this step does |
 |---|---|---|---|---|---|---|
 | 0 | Sign in to Zoom | Greenroom works in your own Zoom account. | any sign-in page | snapshot says signed in | `.press(signIn)` / passkey page: `.press(tryAnotherWay)` | nothing: sign-in is yours |
 | 1 | Create the meeting app | It lets Greenroom join and run meetings. | Created apps → + menu → app type dialog | a General app's ID is in evidence | list has a General app: `.press(appRow)` "Use this app" (or build a new one); else `.doThisStep` | + → Build app → General app → Create (Zoom names it) |
-| 2 | Copy its keys | Greenroom signs in to meetings with them. | general/information | Client ID + Secret stored and equal to the page's ID | `.doThisStep` | reads Client ID; presses the secret row's copy control; takes it from the clipboard, then restores the clipboard |
-| 3 | Turn on Meeting SDK | Without it Zoom won't let the app join meetings. | general/embed | switch on | `.doThisStep` | turns the switch on, verifies |
+| 2 | Turn on Meeting SDK | Without it Zoom won't let the app join meetings. | general/embed | switch on | `.doThisStep` | turns the switch on, verifies |
+| 3 | Copy its keys | Greenroom signs in to meetings with them. Copied last, so they're the final ones. | general/information | Client ID + Secret stored and equal to the page's ID, read after step 2 | `.doThisStep` | reads Client ID; presses the secret row's copy control; takes it from the clipboard, then restores the clipboard |
 | 4 | Create the hosting app | It lets Greenroom create and start your meetings as host. | Created apps → dialogs | an S2S app's ID is in evidence | `.press(appRow)` "Use this app" if one exists, else `.doThisStep` | + → Build app → Server to server OAuth app → Create → types "Greenroom Hosting" → Create |
-| 5 | Copy its keys | Greenroom uses them to talk to Zoom for you. | s2s/credentials | Account ID, Client ID, Secret stored and equal to the page | `.doThisStep` | reads the three fields; presses Copy where a value can't be read |
-| 6 | Fill in Information | Zoom asks for a contact before it turns the app on. | s2s/information | no empty required field, and Continue pressed or Feature/Scopes reached | empty field: `.fill(field)`; else `.doThisStep` | presses Continue (types nothing) |
-| 7 | Add the permissions | These eight let Greenroom create, list, start and end meetings. | s2s/scopes | all eight on the page, or the check passes scopes | `.doThisStep` | Add scopes → for each missing one: search, tick → Done; verifies all eight |
-| 8 | Turn it on | Zoom only answers an app that's switched on. | s2s/activation | activated | `.doThisStep` | presses Activate, verifies |
+| 5 | Fill in Information | Zoom asks for a contact before it turns the app on. | s2s/information (Zoom opens App Credentials first: `.goTo` Information) | no empty required field, and Continue pressed or Feature/Scopes reached | empty field: `.fill(field)`; else `.doThisStep` | presses Continue (types nothing) |
+| 6 | Add the permissions | These eight let Greenroom create, list, start and end meetings. | s2s/scopes | all eight on the page, or the check passes scopes | `.doThisStep` | Add scopes → for each missing one: search, tick → Done; verifies all eight |
+| 7 | Turn it on | Zoom only answers an app that's switched on. | s2s/activation | activated | `.doThisStep` | presses Activate, verifies |
+| 8 | Copy its keys | Greenroom uses them to talk to Zoom for you. Copied last, so they're the final ones. | s2s/credentials | Account ID, Client ID, Secret stored and equal to the page, read after step 7 | `.doThisStep` | reads the three fields; presses Copy where a value can't be read |
 | ✓ | Check | Makes sure both apps really work. | — | both apps' checks pass | `.wait("Checking…")`, then a failure re-opens its step; all pass: `.backToGreenroom` | runs the check |
 
 Rules that apply to every step:
@@ -71,12 +71,12 @@ Rules that apply to every step:
 - **A dialog open on the page** that belongs to the step (app type, name, Add scopes) is part of the step. Any other dialog: `.press(close)` "Close this window to carry on".
 - **The app the person picks wins.** If they choose or open the other type, the evidence goes to that app and the step follows.
 - **Existing apps:** on Created apps, a row of the needed type gives "Use this app"; opening it records its ID. Keys already stored for a different app: step 2/5 shows "Use the keys from this app" (`.doThisStep` replaces them, with Undo), never silently.
-- **The check runs by itself** when an app's keys are complete and after each finished step from 3 on. It never blocks Continue.
+- **The check runs by itself** when an app's keys are copied (steps 3 and 8), and again after any fix. It never blocks Continue.
 - **Card layout:** title (the action, imperative) · why line · status line, if any · the single action button. The bar shows "Step n of 8 · title" and the same action.
 
 ## Testing
 
-- **Flow table tests:** `step(for:)` for every row above and every failure mapping (keys wrong → 2/5, Meeting SDK off → 3, scopes missing → 7, not activated → 8, signed out → 0).
+- **Flow table tests:** `step(for:)` for every row above and every failure mapping (keys wrong → 3/8, Meeting SDK off → 2, scopes missing → 6, not activated → 7, signed out → 0). Keys read before the app's last settings step don't count: evidence records the keys' reading time against the app's last change, and a later change re-opens the keys step.
 - **Whole-flow replay tests:** `FixturePage` scripted with snapshots recorded from the real Zoom pages. One test drives a brand-new setup from step 0 to Back to Greenroom by pressing each step's action. One starts with existing apps, one with a failing check, one where the person picks the other app type. These are the "test the whole flow" tests and run in `scripts/check.sh`.
 - **Recorder:** a DEBUG `-zoomRecord` mode saves each `ZoomPageSnapshot` (key values replaced by their kind and length) to `Tests/Fixtures/zoom/`, so fixtures come from real pages and can be refreshed when Zoom changes.
 - **Live end-to-end run** on the test account (Sibhi -8A): a fresh General app and a fresh S2S app, every step through Do this step, ending in a passing check. Recorded as above. Done by the parent agent, with the owner told what it creates.

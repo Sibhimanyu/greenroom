@@ -181,6 +181,7 @@ enum ZoomCoachScript {
         }
         if (cfg.kind === 'appRow') return findAppRow(cfg.rowIndex);
         if (cfg.kind === 'build') return findBuildButton();
+        if (cfg.kind === 'credRow') { var lab = textElement(cfg.label); var par = lab && lab.parentElement; return par && par.children.length >= 2 && shown(par) ? par : lab; }
         if (!cfg.label) return null;
         if (cfg.kind === 'row') return findRow(cfg.label);
         if (cfg.kind === 'toggle') return findToggle(cfg.label);

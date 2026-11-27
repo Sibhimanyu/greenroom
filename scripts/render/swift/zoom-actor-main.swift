@@ -209,6 +209,22 @@ MainActor.assumeIsolated {
         // The coach for the other part then spotlights the matching row inside the dialog.
         _ = dialogShot("12-type-switch-coach-follows", part: .hostingApp, setup: "show('chooser'); pick('Server to server OAuth app')")
     }
+    print("-- Credentials: the reader and the coach on the real Basic information card")
+    do {
+        let (web, win) = load("credentials")
+        let json = js(web, ZoomKeyReaderScript.call(fields: [.clientID, .clientSecret]), page: false) as? String ?? ""
+        let obj = (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String]) ?? [:]
+        check(obj["clientID"] == "209M70PLQb2LycAbCdEf1", "reader: Client ID read from the card's plain text (label match is case-insensitive)")
+        check(obj["clientSecret"] == nil, "reader: the dotted secret is never read")
+        let missing: [ZoomKeyField] = [.clientSecret]
+        let c = ZoomCoachRules.coach(part: .meetingApp, page: .general(id, .information), keysFilled: false, tipsOn: true, missingKeys: missing)
+        snap(web, "14-credentials-coach-points-at-the-secret-row", coach: c)
+        check(c?.text == "Hover Client secret and press its copy button. Greenroom fills it in.", "coach: card for the missing secret")
+        _ = js(web, "document.getElementById('cid').textContent = '209M70PLQb2Lyc...'")
+        let trunc = js(web, ZoomKeyReaderScript.call(fields: [.clientID]), page: false) as? String ?? ""
+        check(trunc == "{}", "reader: a text that ends with an ellipsis is not readable")
+        win.orderOut(nil)
+    }
     print(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
     exit(failures == 0 ? 0 : 1)
 }

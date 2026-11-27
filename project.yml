@@ -429,6 +429,7 @@ targets:
       - path: App/Zoom/ZoomActorScript.swift
       - path: App/Zoom/ZoomAppListScript.swift
       - path: App/Zoom/ZoomKeyReaderScript.swift
+      - path: App/Zoom/ZoomClipboardRules.swift
       - path: App/UI/ZoomMarketplaceWindowPlacement.swift
       - path: App/UI/MeetingViewsMenu.swift
       - path: App/UI/SessionSelection.swift

@@ -44,6 +44,8 @@ final class ZoomSetupAssist: ObservableObject {
             return (self.isComplete(.sdk, c), self.isComplete(.s2s, c), self.state.ids)
         }
         window.onBackToGreenroom = { [weak self] in self?.backToGreenroom() }
+        window.missingKeys = { [weak self] page in self?.missingKeys(on: page) }
+        window.onCopied = { [weak self] page, text in self?.copied(on: page, text: text) }
         window.needsApp = { [weak self] part in self?.needsApp(part) ?? false }
         window.keysFilled = { [weak self] in
             guard let self, let page = self.state.page, let app = page.app else { return false }
@@ -151,6 +153,34 @@ final class ZoomSetupAssist: ObservableObject {
         guard let coordinator, let app = page.app, state.page == page else { return }
         let part = Self.part(of: app)
         guard !undone.contains(part) else { return }
+        apply(app, found)
+    }
+
+    /// A key copied with Zoom's own copy button (R17): the clipboard text becomes the field the coach points at.
+    /// Never logged and never kept: it goes straight into the same fill/offer path as a page read.
+    func copied(on page: ZoomMarketplacePage, text: String) {
+        guard let coordinator, let app = page.app, let wanted = ZoomMarketplacePages.keyFields(on: page) else { return }
+        let part = Self.part(of: app)
+        guard !undone.contains(part) else { return }
+        coordinator.loadSecretsIfNeeded()
+        let have = fields(app, coordinator).filter { !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }
+        let missing = wanted.filter { have[$0] == nil }
+        guard let field = ZoomClipboardRules.assign(copied: text, found: have, missing: missing, pointedAt: missing.first),
+              let key = ZoomClipboardRules.clean(text) else { return }
+        apply(app, [field: key])
+    }
+
+    /// The page's key fields Greenroom does not have yet, in the page's order (nil off the credentials pages).
+    func missingKeys(on page: ZoomMarketplacePage) -> [ZoomKeyField]? {
+        guard let coordinator, let app = page.app, let wanted = ZoomMarketplacePages.keyFields(on: page) else { return nil }
+        coordinator.loadSecretsIfNeeded()
+        let have = fields(app, coordinator)
+        return wanted.filter { (have[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    private func apply(_ app: ZoomOwnApp, _ found: [ZoomKeyField: String]) {
+        guard let coordinator else { return }
+        let part = Self.part(of: app)
         // A secret not loaded yet would look empty, and be overwritten.
         coordinator.loadSecretsIfNeeded()
         let before = bothFilled
@@ -160,7 +190,7 @@ final class ZoomSetupAssist: ObservableObject {
             return
         case .fill(let values):
             write(app, values, coordinator)
-            filledFields[part] = Array(values.keys)
+            filledFields[part] = Array(Set((filledFields[part] ?? []) + values.keys))
             next.filled.insert(part); next.offers.remove(part); offerValues[part] = nil
         case .offer(let values):
             offerValues[part] = values

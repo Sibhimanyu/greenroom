@@ -52,6 +52,10 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     var keysFilled: () -> Bool = { false }
     /// Whether a part has keys filled in but no remembered app ID (the coach asks which app).
     var needsApp: (ZoomGuidePart) -> Bool = { _ in false }
+    /// The page's key fields Greenroom still lacks (the coach points at the first); nil off the credentials pages.
+    var missingKeys: (ZoomMarketplacePage) -> [ZoomKeyField]? = { _ in nil }
+    /// A key copied with Zoom's own copy button while a credentials page is (or just was) shown. Never logged.
+    var onCopied: (ZoomMarketplacePage, String) -> Void = { _, _ in }
     /// Which parts have all their keys in Greenroom, and the remembered app IDs, for the bar.
     var barState: () -> (meeting: Bool, hosting: Bool, ids: ZoomAppIDs) = { (false, false, ZoomAppIDs()) }
     /// The bar's "Back to Greenroom" hands over to the guide.
@@ -69,6 +73,42 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     private var appRows: [String]?
     private var lastPage: ZoomMarketplacePage?
     private var timers: [DispatchWorkItem] = []
+
+    // MARK: Clipboard pickup (R17)
+
+    private var credentialsPage: ZoomMarketplacePage?
+    private var leftCredentialsAt: Date?
+    private var pasteboardCount = NSPasteboard.general.changeCount
+    private var pasteboardTimer: Timer?
+
+    /// Called whenever the page changes: remember a credentials page, and when it was left.
+    private func trackCredentialsPage(_ page: ZoomMarketplacePage?) {
+        if let page, ZoomMarketplacePages.keyFields(on: page) != nil {
+            credentialsPage = page; leftCredentialsAt = nil
+        } else if credentialsPage != nil, leftCredentialsAt == nil {
+            leftCredentialsAt = Date()
+        }
+        if pasteboardTimer == nil {
+            pasteboardCount = NSPasteboard.general.changeCount
+            pasteboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pollPasteboard() }
+            }
+        }
+    }
+
+    private func pollPasteboard() {
+        let pb = NSPasteboard.general
+        let count = pb.changeCount
+        let onPage = lastPage.map { ZoomMarketplacePages.keyFields(on: $0) != nil } ?? false
+        let since = leftCredentialsAt.map { Date().timeIntervalSince($0) }
+        guard ZoomClipboardRules.isWatching(onCredentialsPage: onPage, secondsSinceLeaving: since), let page = credentialsPage else {
+            pasteboardCount = count   // not watching: a copy made elsewhere never counts
+            return
+        }
+        guard count != pasteboardCount else { return }
+        pasteboardCount = count
+        if let text = pb.string(forType: .string) { onCopied(page, text) }
+    }
 
     var isOpen: Bool { window != nil }
     var currentURL: URL? { webView?.url }
@@ -136,6 +176,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         webView = nil
         window = nil
         lastPage = nil
+        pasteboardTimer?.invalidate(); pasteboardTimer = nil
+        credentialsPage = nil; leftCredentialsAt = nil
         location = ""
         signIn = .unknown
         updateBar()
@@ -211,6 +253,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         location = (url.host ?? "") + url.path
         let page = ZoomMarketplacePages.page(for: url)
         if page != lastPage { lastPage = page; actorNote = nil; onPage(page) }
+        trackCredentialsPage(page)
         signIn = ZoomSignInStateRules.state(page: page, header: nil, current: signIn)
         updateBar()
         scheduleRefresh()
@@ -267,7 +310,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
         var coach = ZoomCoachRules.offeringAction(
             ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
-                                 needsApp: needsApp(part), appRows: appRows), part: part, page: page)
+                                 needsApp: needsApp(part), appRows: appRows, missingKeys: missingKeys(page)), part: part, page: page)
         coach?.busy = working
         coach?.note = actorNote
         let ring = Self.ringColor, mark = Self.markDataURI, fill = Self.fillColor
@@ -419,7 +462,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
               let page = ZoomMarketplacePages.page(for: url) else { return }
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
         let kind = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
-                                        needsApp: needsApp(part), appRows: appRows)?.kind ?? .none
+                                        needsApp: needsApp(part), appRows: appRows, missingKeys: missingKeys(page))?.kind ?? .none
         guard let step = ZoomActorRules.step(part: part, page: page, coachKind: kind) else { note(page, "step refused"); return }
         working = true; actorNote = nil
         updateBar(); drawCoach(page)

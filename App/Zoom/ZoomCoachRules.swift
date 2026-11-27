@@ -41,7 +41,7 @@ struct ZoomCoachStage: Equatable, Codable {
 }
 
 struct ZoomCoach: Equatable, Codable {
-    enum Kind: String, Codable { case none, row, control, toggle, appRow, build }
+    enum Kind: String, Codable { case none, row, control, toggle, appRow, build, credRow }
     /// The visible label of the control to spotlight; nil for a card alone.
     var label: String?
     var kind: Kind
@@ -103,7 +103,7 @@ enum ZoomCoachRules {
     /// `needsApp`: the part's keys are filled but its app's ID is not known yet (R12).
     /// `appRows`: the Type text of each row on Created apps (nil until scanned).
     static func coach(part: ZoomGuidePart, page: ZoomMarketplacePage, keysFilled: Bool, tipsOn: Bool, needsApp: Bool = false,
-                      appRows: [String]? = nil) -> ZoomCoach? {
+                      appRows: [String]? = nil, missingKeys: [ZoomKeyField]? = nil) -> ZoomCoach? {
         if page == .passkey {
             guard tipsOn else { return nil }
             return ZoomCoach(label: "Try another way", kind: .control, counter: "",
@@ -153,6 +153,13 @@ enum ZoomCoachRules {
                                               text: "Meeting SDK is on. Now open Basic information for the keys.",
                                               counter: "Step 3 of 3", switchLabel: "Meeting SDK")])
         case .s2s(_, .credentials), .general(_, .information):
+            // Always speaks once it knows what is missing: point at the row of the first missing key and say to
+            // press Zoom's own copy button (the secret is not in the page); no "Do this step" here.
+            if let missingKeys {
+                guard let first = missingKeys.first else { return make(nil, .none, "Got it: the keys are in Greenroom.") }
+                let name = keyLabel(first)
+                return make(name, .credRow, "Hover \(name) and press its copy button. Greenroom fills it in.")
+            }
             return keysFilled ? make(nil, .none, "Got it: the keys are in Greenroom.") : nil
         default:
             return nil
@@ -165,6 +172,15 @@ enum ZoomCoachRules {
         c.action = step.rawValue
         c.plan = ZoomActorRules.plan(step, part: part)
         return c
+    }
+
+    /// Zoom's own spelling of a key's label (it writes "Client secret").
+    static func keyLabel(_ f: ZoomKeyField) -> String {
+        switch f {
+        case .accountID: return "Account ID"
+        case .clientID: return "Client ID"
+        case .clientSecret: return "Client secret"
+        }
     }
 
     /// Rows whose Type text is the part's kind (Meeting app: General app; Hosting app: Server-to-Server OAuth).

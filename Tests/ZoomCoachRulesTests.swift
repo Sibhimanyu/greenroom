@@ -285,4 +285,47 @@ final class ZoomCoachRulesTests: XCTestCase {
         XCTAssertTrue(scan.contains("openDialog"))
         for banned in [".click(", ".focus(", "dispatchEvent", ".value", "fetch(", "console.", "postMessage"] { XCTAssertFalse(scan.contains(banned), banned) }
     }
+
+    // R17: credentials pages always speak.
+
+    private func creds(_ part: ZoomGuidePart, _ page: ZoomMarketplacePage, missing: [ZoomKeyField]?, filled: Bool = false) -> ZoomCoach? {
+        ZoomCoachRules.coach(part: part, page: page, keysFilled: filled, tipsOn: true, missingKeys: missing)
+    }
+
+    func testAMissingKeySpotlightsItsRowAndSaysToPressZoomsCopyButton() {
+        XCTAssertEqual(creds(.meetingApp, .general(id, .information), missing: [.clientSecret]),
+                       ZoomCoach(label: "Client secret", kind: .credRow, counter: "Step 3 of 3",
+                                 text: "Hover Client secret and press its copy button. Greenroom fills it in."))
+        XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.accountID, .clientID, .clientSecret]),
+                       ZoomCoach(label: "Account ID", kind: .credRow, counter: "Step 4 of 4",
+                                 text: "Hover Account ID and press its copy button. Greenroom fills it in."))
+        XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientID, .clientSecret])?.label, "Client ID")
+        XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [.clientSecret])?.text,
+                       "Hover Client secret and press its copy button. Greenroom fills it in.")
+    }
+
+    func testAllKnownSaysGotIt() {
+        XCTAssertEqual(creds(.meetingApp, .general(id, .information), missing: []),
+                       ZoomCoach(label: nil, kind: .none, counter: "Step 3 of 3", text: "Got it: the keys are in Greenroom."))
+        XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: [], filled: true)?.text, "Got it: the keys are in Greenroom.")
+    }
+
+    func testCredentialsPagesNeverOfferDoThisStep() {
+        let c = ZoomCoachRules.offeringAction(creds(.meetingApp, .general(id, .information), missing: [.clientSecret]),
+                                              part: .meetingApp, page: .general(id, .information))
+        XCTAssertNil(c?.action)
+        XCTAssertNil(c?.plan)
+    }
+
+    func testWithoutKnowledgeOfWhatIsMissingTheOldBehaviourHolds() {
+        XCTAssertNil(creds(.hostingApp, .s2s(id, .credentials), missing: nil))
+        XCTAssertEqual(creds(.hostingApp, .s2s(id, .credentials), missing: nil, filled: true)?.text, "Got it: the keys are in Greenroom.")
+    }
+
+    func testTheCredentialRowKindIsKnownToTheScript() {
+        XCTAssertTrue(ZoomCoachScript.source.contains("credRow"))
+        XCTAssertEqual(ZoomCoachRules.keyLabel(.clientSecret), "Client secret")
+        XCTAssertEqual(ZoomCoachRules.keyLabel(.accountID), "Account ID")
+        XCTAssertEqual(ZoomCoachRules.keyLabel(.clientID), "Client ID")
+    }
 }

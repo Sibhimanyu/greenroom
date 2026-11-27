@@ -13,6 +13,7 @@ final class ZoomKeyReaderScriptTests: XCTestCase {
     /// Real Basic information (2026-11-27): the Client ID is plain text in a sibling div, not an input.
     func testTheReaderAlsoReadsAKeyShownAsPlainTextNextToItsLabel() {
         let js = ZoomKeyReaderScript.source
+        XCTAssertTrue(js.contains("textSibling(LABEL[name].toLowerCase())"), "labels match case-insensitively (Zoom writes Client secret)")
         XCTAssertTrue(js.contains("textSibling"))
         XCTAssertTrue(js.contains("A-Za-z0-9_-"))
     }

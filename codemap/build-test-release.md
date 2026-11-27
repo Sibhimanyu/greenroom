@@ -18,7 +18,7 @@ website (GitHub Pages) and the home of plan/design `.md` files.
 | `Vendor/Apptics/` | Verbatim Apptics 3.3.17 helper scripts (`scripts/run`, `dsym_upload`, `sdk_info`...) run as a pre-build phase | `README.md` explains why vendored |
 | `apptics-config.plist` | LIVE Apptics API key, gitignored, rewritten by builds (`APP_VERSION_META`) | template: `apptics-config.plist.example` |
 | `Bench/` | `CuesBench` tool sources | `main.swift` (detector + resolver scoring), `Console.swift` (participant-window priority-ladder checks), `Resolver.swift`, `fixtures/detector.json` |
-| `Tests/` | 137 Swift files (~7.9k lines), `GreenroomTests` target | see "Tests" below |
+| `Tests/` | XCTest files plus `FixturePage.swift` (the scripted Zoom), `GreenroomTests` target | see "Tests" below |
 | `scripts/release.sh` | Whole release ritual | `release.sh <version> <notes-file>` |
 | `scripts/make-dmg.sh` | Drag-to-install DMG (plain by default; `GREENROOM_DMG_STYLE=styled` needs create-dmg + Pillow) | geometry paired with `scripts/dmg-background.py` |
 | `scripts/dmg-background.py` | Renders `Branding/dmg-background.tiff` (620x400, 1x+2x) | `python3 scripts/dmg-background.py Branding/dmg-background.tiff` |

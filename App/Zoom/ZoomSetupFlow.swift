@@ -85,7 +85,7 @@ extension ZoomPageSnapshot {
     /// Whether the page has drawn its OWN controls, not just the app's menu (live run 7: Information's fields came
     /// seven seconds after its menu links). Pages with nothing of their own to show count as ready.
     var isReady: Bool {
-        if dialog != .none { return true }
+        if dialog != .none || appMissing { return true }
         switch address {
         case .createdApps?: return has(.plus)
         case .general(_, .embed)?: return meetingSDKOn != nil
@@ -298,6 +298,12 @@ enum ZoomSetupFlow {
             if app == .meeting, case .general(_, .information) = page, let v = s.keys[.clientID]?.text {
                 e.apps[app, default: AppEvidence()].clientID = v
             }
+        }
+        // An app deleted in Zoom: forget everything learned about it, so its step builds or picks one again.
+        if s.appMissing, let kind = s.address?.zoomApp {
+            var fresh = AppEvidence(); fresh.lastChange = e.tick
+            e.apps[kind] = fresh
+            return e
         }
         if s.saveRefused, let page = s.address, page.zoomApp == .hosting { e.apps[.hosting, default: AppEvidence()].saveRefused = true }
         if let page = s.address, case .s2s(_, let tab) = page {

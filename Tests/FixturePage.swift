@@ -53,6 +53,8 @@ final class FixturePage: ZoomPage {
     var contentLateReads = 0
     /// The person signs in by themselves after this many reads of the sign-in page (0: never).
     var signsInAfterReads = 0
+    /// Called on every read (a test presses Stop mid-wait from here).
+    var onRead: () -> Void = {}
     /// Live run 9, 2026-11-27: a tick in the Add scopes window registers only once the page redraws; Done pressed
     /// straight after the last tick lost it. With this on, a tick counts after the next read.
     var ticksRegisterOnRead = false
@@ -100,10 +102,18 @@ final class FixturePage: ZoomPage {
     // MARK: ZoomPage
 
     func read() async -> ZoomPageSnapshot? {
+        onRead()
         if !pendingTicks.isEmpty { ticked.formUnion(pendingTicks); pendingTicks = [] }
         if !signedIn, signsInAfterReads > 0 { signsInAfterReads -= 1; if signsInAfterReads == 0 { personSignsIn() } }
         guard signedIn else { return ZoomPageSnapshot(address: address, signedIn: false) }
         if blankReads > 0 { blankReads -= 1; return ZoomPageSnapshot(address: address, signedIn: true, dialog: .none) }
+        // Live, 2026-11-27: the person deleted an app in Zoom; its page now says "The application is not found".
+        if let id = address.appID, app(id) == nil {
+            var gone = ZoomPageSnapshot(address: address, signedIn: true, dialog: .none)
+            gone.appMissing = true
+            gone.controls.insert(.navLink(.basicInformation))
+            return gone
+        }
         if lateContentReads > 0, address != .createdApps {
             lateContentReads -= 1
             var menu = ZoomPageSnapshot(address: address, signedIn: true, dialog: .none)

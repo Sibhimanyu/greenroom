@@ -334,4 +334,39 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(zoom.apps.last?.scopes, Set(ZoomScopes.names))
         XCTAssertEqual(zoom.log.filter { $0 == .press(.addScopes) }.count, 1, "all eight in one pass, no retry")
     }
+
+    /// Live, 2026-11-27: the person deleted an app in Zoom after setup; the next run went to its old page and Zoom said
+    /// "The application is not found". Greenroom forgets an app that's gone and sets it up again.
+    func testAnAppDeletedInZoomIsForgottenAndBuiltAgain() async {
+        let zoom = FixturePage.freshAccount()
+        let keys = MemoryKeys()
+        let (run, _) = start(zoom, keys: keys, answers: person)
+        let first = await run.run()
+        XCTAssertEqual(first, .done)
+        let oldMeetingID = zoom.apps.first { $0.kind == .meeting }?.id
+        zoom.apps.removeAll { $0.kind == .meeting }
+        zoom.address = .general(oldMeetingID ?? "gone", .information)
+        let again = await run.run()
+        XCTAssertEqual(again, .done)
+        let newMeeting = zoom.apps.first { $0.kind == .meeting }
+        XCTAssertNotNil(newMeeting, "a new meeting app was built")
+        XCTAssertNotEqual(newMeeting?.id, oldMeetingID)
+        XCTAssertEqual(keys.keys(for: .meeting)[.clientID], newMeeting?.clientID, "its keys replaced the deleted app's")
+    }
+
+    /// Live, 2026-11-27: Stop did nothing while the run sat in a long wait (a page that never settled); it was only
+    /// checked between steps. Stop ends the run at the next look at the page, even mid-wait.
+    func testStopWorksInTheMiddleOfALongWait() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.infoLockedReads = 10_000
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        var reads = 0, readsAtStop = 0
+        zoom.onRead = {
+            reads += 1
+            if readsAtStop == 0, case .s2s(_, .information) = zoom.address { readsAtStop = reads; run.stop() }
+        }
+        let end = await run.run()
+        XCTAssertEqual(end, .stopped)
+        XCTAssertLessThan(reads - readsAtStop, 5, "it stopped at once, not after the wait")
+    }
 }

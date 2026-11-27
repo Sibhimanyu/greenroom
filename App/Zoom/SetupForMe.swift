@@ -71,10 +71,13 @@ final class SetupForMe {
         self.actor = ZoomActor(page: page, pacing: pacing)
         self.pacing = pacing
         self.answers = answers
+        self.actor.shouldStop = { [weak self] in self?.stopRequested ?? true }
         self.actor.observer = { [weak self] s in if let self { self.evidence = ZoomSetupFlow.absorb(s, into: self.evidence) } }
     }
 
     func stop() { stopRequested = true }
+    /// Told when an app turned out deleted in Zoom (the guide forgets its remembered ID too).
+    var onForgotApp: (ZoomApp) -> Void = { _ in }
 
     /// Check Zoom setup runs by itself after an app's keys are copied (and when the table asks for it).
     private func runCheck() async -> Bool {
@@ -108,6 +111,8 @@ final class SetupForMe {
     func refresh() async -> SetupStep? {
         guard let snapshot = await settledRead() else { return nil }
         nilReads = 0
+        // An app deleted in Zoom: forget it whole, its passed check included, so its steps run again.
+        if snapshot.appMissing, let kind = snapshot.address?.zoomApp { forget(kind); onForgotApp(kind) }
         evidence = ZoomSetupFlow.absorb(snapshot, into: evidence)
         let step = ZoomSetupFlow.step(for: facts(snapshot))
         onStep(step)
@@ -127,6 +132,7 @@ final class SetupForMe {
         // (live run 3). Only fields still disabled after about 90s live are the account's own limit.
         let lockedInfoNeeds = live ? 360 : 20         // about 90s live
         for _ in 0..<(lockedInfoNeeds + 12) {
+            if stopRequested { return nil }
             guard let s = await page.read() else { return nil }
             if s.isSignedOut { return s }
             same = (s == last) ? same + 1 : 0
@@ -161,7 +167,9 @@ final class SetupForMe {
     /// One turn: look, pick the step, do what it says if Greenroom may (nil: carry on). The guided "Do this step"
     /// is one turn of this same loop, so both paths use the same steps, plans and safety.
     func advance() async -> SetupForMeEnd? {
+        if stopRequested { return .stopped }
         guard let step = await refresh() else {
+            if stopRequested { return .stopped }
             nilReads += 1
             if nilReads > 40 { return .handedOver(ZoomSetupFlow.step(for: facts(nil)), why: "Greenroom could not read Zoom\u{2019}s page.") }
             try? await Task.sleep(nanoseconds: pacing.pause)
@@ -179,6 +187,7 @@ final class SetupForMe {
             case .done(let captured):
                 apply(plan, captured)
                 if pendingCheck, !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
+            case .stopped(.cancelled): return .stopped
             case .stopped(let reason): return .handedOver(step, why: reason.words)
             }
         case .goTo(let place, _):
@@ -187,7 +196,7 @@ final class SetupForMe {
             // Using an app that is already there: the plan is one press and a wait to land on its page.
             guard let app = step.app else { return .handedOver(step, why: "That one is yours to do.") }
             let plan = ActionPlan(app: app, effect: .nothing, steps: [.press(.appRow(row)), .waitFor(.onApp(app))])
-            if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: reason.words) }
+            if case .stopped(let reason) = await actor.run(plan) { return reason == .cancelled ? .stopped : .handedOver(step, why: reason.words) }
         case .checkAgain where step.number == nil:
             if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
         case .backToGreenroom:

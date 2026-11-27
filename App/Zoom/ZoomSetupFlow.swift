@@ -178,6 +178,8 @@ struct InfoValues: Equatable {
 
 struct SetupAnswers: Equatable {
     var info = InfoValues()
+    /// Apps the person wants built new even though Created apps already lists one of that type.
+    var buildNew: Set<ZoomApp> = []
 }
 
 struct SetupFacts: Equatable {
@@ -341,7 +343,7 @@ enum ZoomSetupFlow {
         switch n {
         case 1:
             return step("Create the meeting app", "It lets Greenroom join and run meetings.", .createdApps,
-                        act(on: f, at: .createdApps, "Open Created apps", createPlan(.meeting)))
+                        createOrUse(.meeting, f))
         case 2:
             let place = ZoomMarketplacePage.general(mid, .embed)
             return step("Turn on Meeting SDK", "Without it Zoom won't let the app join meetings.", place,
@@ -352,7 +354,7 @@ enum ZoomSetupFlow {
                         act(on: f, at: place, "Open Basic information", keysPlan(.meeting, [.clientID, .clientSecret])))
         case 4:
             return step("Create the hosting app", "It lets Greenroom create and start your meetings as host.", .createdApps,
-                        act(on: f, at: .createdApps, "Open Created apps", createPlan(.hosting)))
+                        createOrUse(.hosting, f))
         case 5:
             let place = ZoomMarketplacePage.s2s(hid, .information)
             return infoStep(step("Fill in Information", "Zoom asks for a contact before it turns the app on.", place, .goTo(place, "Open Information")), f, place)
@@ -383,6 +385,15 @@ enum ZoomSetupFlow {
             return final("Zoom is set up", .backToGreenroom)
         }
         return final("Check your setup", .checkAgain)
+    }
+
+    /// On Created apps, a row of the needed type is "Use this app" (unless the person wants a new one); else build it.
+    private static func createOrUse(_ app: ZoomApp, _ f: SetupFacts) -> CallToAction {
+        if let s = f.snapshot, s.address == .createdApps, !f.answers.buildNew.contains(app),
+           let row = s.appList.firstIndex(of: app), s.has(.appRow(row)) {
+            return .press(.appRow(row), "Use this app")
+        }
+        return act(on: f, at: .createdApps, "Open Created apps", createPlan(app))
     }
 
     // MARK: Plans

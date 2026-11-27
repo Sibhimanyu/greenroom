@@ -246,14 +246,17 @@ final class FixtureChecker: ZoomChecker {
                                  actions: ZoomCheckActionRules.buttons(.ownApps, check: id, status: status, problem: problem, ids: ids))
         }
         var lines: [ZoomCheckLine] = []
-        let sdk = zoom.apps.first { $0.kind == .meeting }, mine = keys.keys(for: .meeting)
+        let mine = keys.keys(for: .meeting)
+        // Zoom answers for whichever app the client ID belongs to.
+        let sdk = zoom.apps.first { $0.kind == .meeting && $0.clientID == mine[.clientID] }
         if mine[.clientID] == nil || mine[.clientSecret] == nil {
             lines.append(line("sdk", "Meeting and chat credentials", false, "Add both General App values under Meeting and chat.", .badCredentials))
         } else {
             let ok = sdk != nil && mine[.clientID] == sdk?.clientID && mine[.clientSecret] == sdk?.secret && sdk?.sdkOn == true
             lines.append(line("sdk", "Meeting and chat credentials", ok, ok ? "Zoom accepted the General App credentials." : "Zoom said no. Check the General App credentials and that Meeting SDK is enabled.", .badCredentials))
         }
-        let s2s = zoom.apps.first { $0.kind == .hosting }, theirs = keys.keys(for: .hosting)
+        let theirs = keys.keys(for: .hosting)
+        let s2s = zoom.apps.first { $0.kind == .hosting && $0.clientID == theirs[.clientID] }
         if theirs[.accountID] == nil || theirs[.clientID] == nil || theirs[.clientSecret] == nil {
             lines.append(line("account", "Hosting credentials and app activation", false, "Add all three Server-to-Server app values under Create and host meetings.", .badCredentials))
         } else {

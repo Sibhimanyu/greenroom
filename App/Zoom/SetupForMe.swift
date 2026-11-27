@@ -44,6 +44,7 @@ final class SetupForMe {
     private let checker: any ZoomChecker
     private var stopRequested = false
     private var pendingCheck = false
+    private var nilReads = 0
     private var checks: [ZoomApp: AppCheck] = [:]
     private var attempts: [String: Int] = [:]
 
@@ -88,7 +89,13 @@ final class SetupForMe {
 
     func run() async -> SetupForMeEnd {
         for _ in 0..<60 {
-            guard let snapshot = await page.read() else { continue }
+            guard let snapshot = await page.read() else {
+                nilReads += 1
+                if nilReads > 40 { return .handedOver(ZoomSetupFlow.step(for: facts(nil)), why: "Greenroom could not read Zoom\u{2019}s page.") }
+                try? await Task.sleep(nanoseconds: pacing.pause)
+                continue
+            }
+            nilReads = 0
             evidence = ZoomSetupFlow.absorb(snapshot, into: evidence)
             let step = ZoomSetupFlow.step(for: facts(snapshot))
             onStep(step)
@@ -103,6 +110,11 @@ final class SetupForMe {
                 }
             case .goTo(let place, _):
                 _ = await page.perform(.navigate(place))
+            case .press(.appRow(let row), _):
+                // Using an app that is already there: the plan is one press and a wait to land on its page.
+                guard let app = step.app else { return .handedOver(step, why: "That one is yours to do.") }
+                let plan = ActionPlan(app: app, effect: .nothing, steps: [.press(.appRow(row)), .waitFor(.onApp(app))])
+                if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: "\(reason)") }
             case .checkAgain:
                 await runCheck()
             case .backToGreenroom:

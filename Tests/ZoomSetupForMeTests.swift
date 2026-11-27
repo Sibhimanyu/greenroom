@@ -104,4 +104,42 @@ final class SetupForMeTests: XCTestCase {
         }
         XCTAssertFalse(touched.contains(.signIn) || touched.contains(.tryAnotherWay) || touched.contains(.closeDialog))
     }
+
+    // MARK: Existing apps
+
+    private func finishedMeetingApp() -> FixturePage.App {
+        FixturePage.App(kind: .meeting, id: "oldMeetingAppIdIdIdIdId", clientID: "oldMeetingClientClient1", secret: "oldMeetingSecretSecretSecret1", sdkOn: true)
+    }
+    private func finishedHostingApp() -> FixturePage.App {
+        var a = FixturePage.App(kind: .hosting, id: "oldHostingAppIdIdIdIdId", clientID: "oldHostingClientClient1", secret: "oldHostingSecretSecretSecret1",
+                                accountID: "oldHostingAccountAccount1", scopes: Set(ZoomScopes.names), activated: true)
+        a.info = [.appName: "Mine", .shortDescription: "x", .companyName: "x", .contactName: "x", .contactEmail: "x@x.org"]
+        return a
+    }
+
+    /// Spec "Existing apps": a Created apps list that already has the two apps means "Use this app", no new app is built,
+    /// and the keys come from the apps that were already there.
+    func testExistingAppsAreUsedNotRebuilt() async {
+        let zoom = FixturePage.freshAccount().existing(finishedMeetingApp()).existing(finishedHostingApp())
+        let keys = MemoryKeys()
+        let (run, _) = start(zoom, keys: keys, answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.count, 2, "nothing new was built")
+        XCTAssertEqual(keys.keys(for: .meeting)[.clientID], "oldMeetingClientClient1")
+        XCTAssertEqual(keys.keys(for: .hosting)[.accountID], "oldHostingAccountAccount1")
+    }
+
+    /// The form's "Build a new one" for the meeting app: a second General app is made even though one exists.
+    func testBuildANewOneIgnoresTheExistingApp() async {
+        let zoom = FixturePage.freshAccount().existing(finishedMeetingApp()).existing(finishedHostingApp())
+        var answers = person
+        answers.buildNew = [.meeting]
+        let (run, keys) = start(zoom, keys: MemoryKeys(), answers: answers)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.filter { $0.kind == .meeting }.count, 2)
+        let newest = zoom.apps.last { $0.kind == .meeting }
+        XCTAssertEqual(keys.keys(for: .meeting)[.clientID], newest?.clientID, "the keys are the new app's")
+    }
 }

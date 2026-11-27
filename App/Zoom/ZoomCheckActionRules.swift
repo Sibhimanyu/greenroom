@@ -58,13 +58,25 @@ enum ZoomCheckAction: Equatable, Hashable {
         }
     }
 
-    /// The Marketplace pages. Zoom has no documented link to one app's pages:
-    /// its routes use Zoom's own app ID, which Greenroom never sees (only the
-    /// client ID), so every one opens the list of your apps and the tooltip
-    /// says which to pick.
-    var url: URL? {
+    /// The Marketplace page it opens: the exact page once the Zoom window has seen the app
+    /// (its ID is in `ids`), else the list of your apps.
+    func url(ids: ZoomCheckActionContext) -> URL? {
+        let page: ZoomMarketplacePage?
         switch self {
-        case .openScopesPage, .openAppCredentials, .openApp: return ZoomMarketplaceGuide.builderURL
+        case .openScopesPage: page = ids.s2sAppID.isEmpty ? nil : .s2s(ids.s2sAppID, .scopes)
+        case .openAppCredentials(.s2s): page = ids.s2sAppID.isEmpty ? nil : .s2s(ids.s2sAppID, .credentials)
+        case .openApp(.s2s): page = ids.s2sAppID.isEmpty ? nil : .s2s(ids.s2sAppID, .activation)
+        case .openAppCredentials(.sdk), .openApp(.sdk): page = ids.sdkAppID.isEmpty ? nil : .general(ids.sdkAppID, .information)
+        default: return nil
+        }
+        return page.flatMap(ZoomMarketplacePages.url(for:)) ?? ZoomMarketplaceGuide.builderURL
+    }
+
+    /// Which part of the guide the Zoom window opens for (what its coach points at); nil when it opens nothing.
+    var zoomPart: ZoomGuidePart? {
+        switch self {
+        case .openScopesPage, .openAppCredentials(.s2s), .openApp(.s2s): return .hostingApp
+        case .openAppCredentials(.sdk), .openApp(.sdk): return .meetingApp
         default: return nil
         }
     }
@@ -79,6 +91,9 @@ struct ZoomCheckButton: Equatable, Hashable {
 struct ZoomCheckActionContext: Equatable {
     var sdkClientID = ""
     var s2sClientID = ""
+    /// The Marketplace app IDs the Zoom window has seen (empty until it has).
+    var sdkAppID = ""
+    var s2sAppID = ""
 }
 
 enum ZoomCheckActionRules {
@@ -134,6 +149,15 @@ enum ZoomCheckActionRules {
             let id = (app == .sdk ? ids.sdkClientID : ids.s2sClientID).trimmingCharacters(in: .whitespaces)
             let type = app == .sdk ? "General App" : "Server-to-Server app"
             return id.isEmpty ? "your \(type)" : "the \(type) with client ID \(ZoomRouteWords.clientIDTail(id))"
+        }
+        // The Zoom window goes straight to the page once it knows the app.
+        if action.zoomPart != nil, action.url(ids: ids) != ZoomMarketplaceGuide.builderURL {
+            switch action {
+            case .openScopesPage: return "Opens Scopes for your Server-to-Server app in the Zoom window."
+            case .openApp(.s2s): return "Opens Activation for your Server-to-Server app in the Zoom window."
+            case .openAppCredentials(.s2s): return "Opens App Credentials for your Server-to-Server app in the Zoom window."
+            default: return "Opens Basic information for your General App in the Zoom window."
+            }
         }
         switch action {
         case .copyScope(let name): return "Copies \(name)"

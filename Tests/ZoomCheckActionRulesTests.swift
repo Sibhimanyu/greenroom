@@ -82,9 +82,9 @@ final class ZoomCheckActionRulesTests: XCTestCase {
         let none = ZoomCheckActionContext(sdkClientID: "", s2sClientID: " ")
         XCTAssertEqual(ZoomCheckActionRules.help(.openScopesPage, ids: none),
                        "Opens your apps in the Zoom App Marketplace. Pick your Server-to-Server app, then Scopes \u{2192} Add Scopes.")
-        XCTAssertEqual(ZoomCheckAction.openScopesPage.url, ZoomMarketplaceGuide.builderURL)
-        XCTAssertEqual(ZoomCheckAction.openAppCredentials(.sdk).url, ZoomMarketplaceGuide.builderURL)
-        XCTAssertNil(ZoomCheckAction.checkAgain.url)
+        XCTAssertEqual(ZoomCheckAction.openScopesPage.url(ids: ids), ZoomMarketplaceGuide.builderURL)
+        XCTAssertEqual(ZoomCheckAction.openAppCredentials(.sdk).url(ids: ids), ZoomMarketplaceGuide.builderURL)
+        XCTAssertNil(ZoomCheckAction.checkAgain.url(ids: ids))
     }
 
     func testErrorsAreSortedIntoProblems() {
@@ -148,5 +148,46 @@ final class ZoomCheckActionRulesTests: XCTestCase {
         XCTAssertEqual(line(.zak, .skipped, nil), [])
         XCTAssertEqual(line(.create, .atStart, nil), [])
         XCTAssertEqual(line(.signature, .failed("server not configured"), nil), ["*Check again"])
+    }
+}
+
+/// R7: failed lines link to the exact Marketplace page once the app's ID is known.
+final class ZoomCheckActionTargetTests: XCTestCase {
+    private let sdk = "AbC_123-xyZ789qrstuvw1", s2s = "ZzZ_999-aaBBcc1122"
+    private var known: ZoomCheckActionContext { ZoomCheckActionContext(sdkAppID: sdk, s2sAppID: s2s) }
+
+    private func url(_ a: ZoomCheckAction, _ ids: ZoomCheckActionContext) -> String? { a.url(ids: ids)?.absoluteString }
+
+    func testKnownAppsOpenTheirExactPages() {
+        XCTAssertEqual(url(.openScopesPage, known), "https://marketplace.zoom.us/develop/apps/\(s2s)/scope")
+        XCTAssertEqual(url(.openApp(.s2s), known), "https://marketplace.zoom.us/develop/apps/\(s2s)/activation")
+        XCTAssertEqual(url(.openAppCredentials(.s2s), known), "https://marketplace.zoom.us/develop/apps/\(s2s)/credentials")
+        XCTAssertEqual(url(.openAppCredentials(.sdk), known), "https://marketplace.zoom.us/develop/applications/\(sdk)/information")
+    }
+
+    func testUnknownAppsOpenTheListOfYourApps() {
+        let none = ZoomCheckActionContext()
+        for a in [ZoomCheckAction.openScopesPage, .openApp(.s2s), .openAppCredentials(.s2s), .openAppCredentials(.sdk)] {
+            XCTAssertEqual(url(a, none), "https://marketplace.zoom.us/user/build", "\(a)")
+        }
+    }
+
+    func testOtherActionsHaveNoAddress() {
+        XCTAssertNil(ZoomCheckAction.checkAgain.url(ids: known))
+        XCTAssertNil(ZoomCheckAction.copyScope("x").url(ids: known))
+        XCTAssertNil(ZoomCheckAction.showGuide(.s2sScopes).url(ids: known))
+    }
+
+    func testTheGuidePartEachActionPointsTheWindowFor() {
+        XCTAssertEqual(ZoomCheckAction.openScopesPage.zoomPart, .hostingApp)
+        XCTAssertEqual(ZoomCheckAction.openApp(.s2s).zoomPart, .hostingApp)
+        XCTAssertEqual(ZoomCheckAction.openAppCredentials(.sdk).zoomPart, .meetingApp)
+        XCTAssertNil(ZoomCheckAction.checkAgain.zoomPart)
+    }
+
+    func testTheTooltipSaysWhereItGoesOnceTheIDIsKnown() {
+        XCTAssertEqual(ZoomCheckActionRules.help(.openScopesPage, ids: known), "Opens Scopes for your Server-to-Server app in the Zoom window.")
+        XCTAssertEqual(ZoomCheckActionRules.help(.openApp(.s2s), ids: known), "Opens Activation for your Server-to-Server app in the Zoom window.")
+        XCTAssertEqual(ZoomCheckActionRules.help(.openAppCredentials(.sdk), ids: known), "Opens Basic information for your General App in the Zoom window.")
     }
 }

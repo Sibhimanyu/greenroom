@@ -637,6 +637,8 @@ enum ZoomPageScript {
           // A scope checkbox's row carries the scope's own name ("...delete_..."): that text is ours, not a warning.
           if (id.indexOf('scopeCheckbox:') === 0) said = said.split(id.slice(14)).join('');
           if (new RegExp(\(q(ZoomActorRules.denyPattern)), 'i').test(said)) return 'denied';
+          // A switched-off control is not there to act on (Zoom ignores it, and a script must not pretend otherwise).
+          if (verb !== 'hover' && isDisabled(el)) return 'none';
           if (verb === 'hover') {
             var n = el; for (var i = 0; n && i < 4; i++, n = n.parentElement) { ['pointerover','mouseover','mouseenter','pointermove','mousemove'].forEach(function (t) { n.dispatchEvent(new MouseEvent(t, { bubbles: t !== 'mouseenter', cancelable: true, view: window })); }); }
             return 'ok';

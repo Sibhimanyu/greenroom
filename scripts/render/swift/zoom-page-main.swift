@@ -197,6 +197,35 @@ MainActor.assumeIsolated {
         win.orderOut(nil)
     }
 
+    print("-- Information on an account that cannot edit (information-disabled.html)")
+    do {
+        let base = "\(zoom)/develop/apps/\(id)/information"
+        let (web, win) = mock("information-disabled", base: base)
+        let s = read(web, base); summary("disabled", s)
+        check(ZoomInfoField.allCases.allSatisfy { s.infoFields[$0] == .disabled }, "disabled: every field reads as disabled, not empty (\(s.infoFields))")
+        let t = js(web, ZoomPageScript.action(verb: "type", id: "infoField.shortDescription", text: "hello"), page: false) as? String
+        check(t == "none" && (js(web, "document.getElementById('sd').value") as? String) == "", "typing into a disabled field is refused and changes nothing (\(t ?? "nil"))")
+        win.orderOut(nil)
+    }
+
+    print("-- The action script: type, press, the deny-list at press time (information-s2s.html)")
+    do {
+        let base = "\(zoom)/develop/apps/\(id)/information"
+        let (web, win) = mock("information-s2s", base: base)
+        _ = js(web, "window.__n = 0; document.getElementById('cont').addEventListener('click', function () { window.__n++; })")
+        let typed = js(web, ZoomPageScript.action(verb: "type", id: "infoField.shortDescription", text: "Lets Greenroom host my meetings."), page: false) as? String
+        check(typed == "ok" && (js(web, "document.getElementById('sd').value") as? String) == "Lets Greenroom host my meetings.", "type: the field holds the text")
+        check(read(web, base).infoFields[.shortDescription] == .filled, "type: the reader now says filled")
+        let none = js(web, ZoomPageScript.action(verb: "press", id: "activate"), page: false) as? String
+        check(none == "none", "press: a control not on this page answers none (\(none ?? "nil"))")
+        let pressed = js(web, ZoomPageScript.action(verb: "press", id: "continue"), page: false) as? String
+        check(pressed == "ok" && (js(web, "window.__n") as? Int) == 1, "press: Continue was clicked once")
+        _ = js(web, "document.getElementById('an').setAttribute('aria-label', 'Delete this app'); window.__f = 0; document.getElementById('an').addEventListener('click', function () { window.__f++; })")
+        let denied = js(web, ZoomPageScript.action(verb: "press", id: "infoField.appName"), page: false) as? String
+        check(denied == "denied" && (js(web, "window.__f") as? Int) == 0, "press: an element whose own label hits the deny-list is not clicked (\(denied ?? "nil"))")
+        win.orderOut(nil)
+    }
+
     print("-- Keys: S2S credentials, the General app card")
     do {
         let base = "\(zoom)/develop/apps/\(id)/credentials"

@@ -72,7 +72,4 @@ struct ZoomGuideAssistState: Equatable {
     var offers: Set<ZoomGuidePart> = []
     /// Parts whose keys were just removed by "Use a different app" ("Keys removed", with Undo).
     var removed: Set<ZoomGuidePart> = []
-    /// The Zoom window's "Next: <part>" asks the guide to open this part; the serial makes a repeat count.
-    var openPart: ZoomGuidePart? = nil
-    var openSerial = 0
 }

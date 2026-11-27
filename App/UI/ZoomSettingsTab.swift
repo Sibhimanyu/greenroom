@@ -83,7 +83,7 @@ struct ZoomPageContent: View {
     /// "Check Zoom setup" for your own Zoom apps. Nil hides it.
     var setupCheck: ZoomSetupCheckRow? = nil
     /// The one button into the setup guide: its words and where it lands.
-    var setupEntry = ZoomSetupEntry(title: "Set up\u{2026}", spot: .sdkCredentials)
+    var setupEntry = ZoomSetupEntry(title: "Set up Zoom\u{2026}", spot: .zoomStep)
     /// Zoom refused this account before (error 63): why, and what to do.
     var refusedNote: String? = nil
     var onSignIn: () -> Void = {}

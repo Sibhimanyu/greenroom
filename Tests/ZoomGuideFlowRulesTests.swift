@@ -22,7 +22,8 @@ final class ZoomGuideFlowRulesTests: XCTestCase {
 
     private static let notConnected = "Zoom isn\u{2019}t connected yet; you can finish this later in Settings \u{2192} Zoom."
     private static let notChecked = "Zoom is set up. Run Check Zoom setup to make sure it works."
-    private static let setUp = "Set up\u{2026}"
+    private static let setUp = "Set up Zoom\u{2026}"
+    private static let cont = "Continue setup\u{2026}"
     private static let edit = "Edit setup\u{2026}"
 
     private static let rows: [Row] = [
@@ -31,31 +32,31 @@ final class ZoomGuideFlowRulesTests: XCTestCase {
             flow: ZoomGuideFlow(meetingApp: .notStarted, hostingApp: .notStarted, check: .notStarted,
                                 open: .meetingApp, footerNote: notConnected),
             labels: ["Not started", "Not started", "Not run yet"],
-            entry: ZoomSetupEntry(title: setUp, spot: .sdkCredentials)),
+            entry: ZoomSetupEntry(title: setUp, spot: .zoomStep)),
         Row(name: "meeting app half filled",
             facts: f(1, 0),
             flow: ZoomGuideFlow(meetingApp: .inProgress, hostingApp: .notStarted, check: .notStarted,
                                 open: .meetingApp, footerNote: notConnected),
             labels: ["In progress", "Not started", "Not run yet"],
-            entry: ZoomSetupEntry(title: edit, spot: .sdkCredentials)),
+            entry: ZoomSetupEntry(title: cont, spot: .zoomStep)),
         Row(name: "part 1 done",
             facts: f(2, 0),
             flow: ZoomGuideFlow(meetingApp: .done, hostingApp: .notStarted, check: .notStarted,
                                 open: .hostingApp, footerNote: notConnected),
             labels: ["Done", "Not started", "Not run yet"],
-            entry: ZoomSetupEntry(title: edit, spot: .s2sCredentials)),
+            entry: ZoomSetupEntry(title: cont, spot: .zoomStep)),
         Row(name: "part 1 done, part 2 under way",
             facts: f(2, 2),
             flow: ZoomGuideFlow(meetingApp: .done, hostingApp: .inProgress, check: .notStarted,
                                 open: .hostingApp, footerNote: notConnected),
             labels: ["Done", "In progress", "Not run yet"],
-            entry: ZoomSetupEntry(title: edit, spot: .s2sCredentials)),
+            entry: ZoomSetupEntry(title: cont, spot: .zoomStep)),
         Row(name: "only the hosting app filled in",
             facts: f(0, 3),
             flow: ZoomGuideFlow(meetingApp: .notStarted, hostingApp: .done, check: .notStarted,
                                 open: .meetingApp, footerNote: notConnected),
             labels: ["Not started", "Done", "Not run yet"],
-            entry: ZoomSetupEntry(title: edit, spot: .sdkCredentials)),
+            entry: ZoomSetupEntry(title: cont, spot: .zoomStep)),
         Row(name: "parts 1 and 2 done, not checked",
             facts: f(2, 3),
             flow: ZoomGuideFlow(meetingApp: .done, hostingApp: .done, check: .notStarted,
@@ -79,13 +80,13 @@ final class ZoomGuideFlowRulesTests: XCTestCase {
             flow: ZoomGuideFlow(meetingApp: .done, hostingApp: .inProgress, check: .inProgress,
                                 open: .hostingApp, footerNote: notConnected),
             labels: ["Done", "Needs a fix", "Needs a fix"],
-            entry: ZoomSetupEntry(title: edit, spot: .s2sCredentials)),
+            entry: ZoomSetupEntry(title: cont, spot: .zoomStep)),
         Row(name: "check failed in the meeting app (bad keys)",
             facts: f(2, 3, .failed, sdkFix: true),
             flow: ZoomGuideFlow(meetingApp: .inProgress, hostingApp: .done, check: .inProgress,
                                 open: .meetingApp, footerNote: notConnected),
             labels: ["Needs a fix", "Done", "Needs a fix"],
-            entry: ZoomSetupEntry(title: edit, spot: .sdkCredentials)),
+            entry: ZoomSetupEntry(title: cont, spot: .zoomStep)),
         Row(name: "check failed, nothing to fix in either app (offline)",
             facts: f(2, 3, .failed),
             flow: ZoomGuideFlow(meetingApp: .done, hostingApp: .done, check: .inProgress,

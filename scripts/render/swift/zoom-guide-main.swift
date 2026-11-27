@@ -49,12 +49,12 @@ struct Guide: View {
     @State var jump: ZoomGuideSpot? = nil
     let lines: [ZoomCheckLine]
     let assist: ZoomGuideAssistState
-    let open: ZoomGuidePart?
+    let manual: Bool
 
     init(sdk: Bool = false, s2s: Bool = false, lines: [ZoomCheckLine] = [],
-         assist: ZoomGuideAssistState = ZoomGuideAssistState(), open: ZoomGuidePart? = nil) {
+         assist: ZoomGuideAssistState = ZoomGuideAssistState(), manual: Bool = false) {
         self.assist = assist
-        self.open = open
+        self.manual = manual
         _sdkID = State(initialValue: sdk ? "SampleClientID9z7Q" : "")
         _sdkSecret = State(initialValue: sdk ? "secret" : "")
         _acct = State(initialValue: s2s ? "SampleAccount" : "")
@@ -72,7 +72,7 @@ struct Guide: View {
         VStack(spacing: 0) {
             ZoomGuideStep(sdkClientID: $sdkID, sdkClientSecret: $sdkSecret, s2sAccountID: $acct,
                           s2sClientID: $s2sID, s2sClientSecret: $s2sSecret,
-                          checkLines: lines, isChecking: false, jump: $jump, assist: assist, initiallyOpen: open)
+                          checkLines: lines, isChecking: false, jump: $jump, assist: assist, manualOpen: manual)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(24)
             Divider()
@@ -91,32 +91,28 @@ struct Guide: View {
 let appID = "AbC_123-xyZ789qrstuvw1"
 let hostID = "ZzZ_999-aaBBcc1122"
 
+let keyFailure: [ZoomCheckLine] = [
+    own("sdk", "Meeting and chat credentials", .failed, "Zoom did not accept the Client ID and Secret", .badCredentials),
+    own("account", "Hosting credentials and app activation", .passed),
+]
+
 MainActor.assumeIsolated {
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
-        shoot(Guide(), "1-nothing-filled-in-\(tag)", dark: dark, height: 900)
-        shoot(Guide(sdk: true), "2-part-1-done-\(tag)", dark: dark, height: 1340)
-        shoot(Guide(sdk: true, s2s: true), "3-parts-1-and-2-done-\(tag)", dark: dark, height: 640)
-        shoot(Guide(sdk: true, s2s: true, lines: passedLines), "4-all-done-and-checked-\(tag)", dark: dark, height: 560)
-        shoot(Guide(sdk: true, s2s: true, lines: failedLines), "5-check-with-failures-\(tag)", dark: dark, height: 1340)
-        // The Zoom window's part. Nothing known yet: step 1 offers "Create the app".
-        shoot(Guide(open: .hostingApp), "6-no-app-id-known-hosting-\(tag)", dark: dark, height: 1340)
-        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .general(appID, .embed), ids: ZoomAppIDs(meeting: appID)), open: .meetingApp),
-              "7-ids-known-meeting-step-2-\(tag)", dark: dark, height: 900)
-        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .s2s(hostID, .scopes), ids: ZoomAppIDs(meeting: appID, hosting: hostID)), open: .hostingApp),
-              "8-ids-known-hosting-step-2-\(tag)", dark: dark, height: 1340)
-        shoot(Guide(sdk: true, s2s: true, assist: ZoomGuideAssistState(page: .s2s(hostID, .credentials), ids: ZoomAppIDs(meeting: appID, hosting: hostID),
-                                                                       filled: [.hostingApp]), open: .hostingApp),
-              "9-filled-in-from-zoom-\(tag)", dark: dark, height: 1340)
-        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .general(appID, .information), ids: ZoomAppIDs(meeting: appID),
-                                                            offers: [.meetingApp]), open: .meetingApp),
-              "10-offer-use-keys-\(tag)", dark: dark, height: 900)
-        // The ways back: Start over (under the parts) and Use a different app (under a Done part's fields).
-        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID)), open: .meetingApp),
-              "11-start-over-and-use-a-different-app-\(tag)", dark: dark, height: 900)
-        shoot(Guide(assist: ZoomGuideAssistState(removed: [.meetingApp]), open: .meetingApp),
-              "12-keys-removed-undo-\(tag)", dark: dark, height: 900)
-        // Keys filled but no app ID known: step 1 reads Find my app.
-        shoot(Guide(s2s: true, open: .hostingApp), "13-find-my-app-\(tag)", dark: dark, height: 1340)
+        shoot(Guide(), "1-nothing-filled-in-\(tag)", dark: dark, height: 760)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID))), "2-meeting-done-\(tag)", dark: dark, height: 760)
+        shoot(Guide(sdk: true, s2s: true, lines: passedLines, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID, hosting: hostID))),
+              "3-both-done-and-checked-\(tag)", dark: dark, height: 860)
+        shoot(Guide(sdk: true, s2s: true, lines: keyFailure, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID, hosting: hostID)), manual: true),
+              "4-check-with-a-key-failure-\(tag)", dark: dark, height: 1500)
+        shoot(Guide(sdk: true, s2s: true, lines: failedLines, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID, hosting: hostID)), manual: true),
+              "5-check-with-missing-scopes-\(tag)", dark: dark, height: 1700)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .s2s(hostID, .credentials), ids: ZoomAppIDs(meeting: appID, hosting: hostID), filled: [.meetingApp])),
+              "6-filled-in-from-zoom-undo-\(tag)", dark: dark, height: 760)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(ids: ZoomAppIDs(meeting: appID), offers: [.meetingApp])),
+              "7-offer-use-the-keys-\(tag)", dark: dark, height: 760)
+        shoot(Guide(assist: ZoomGuideAssistState(removed: [.meetingApp])), "8-keys-removed-undo-\(tag)", dark: dark, height: 760)
+        shoot(Guide(sdk: true, assist: ZoomGuideAssistState(page: .s2s(hostID, .scopes), ids: ZoomAppIDs(meeting: appID, hosting: hostID))),
+              "9-on-a-step-in-the-zoom-window-\(tag)", dark: dark, height: 760)
     }
 }

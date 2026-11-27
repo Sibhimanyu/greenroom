@@ -2,17 +2,22 @@
 //  ZoomGuideStep.swift
 //  Greenroom
 //
-//  The setup guide's Zoom step, "Connect Zoom", as a guided flow (owner,
-//  2026-11-26): your own Zoom apps are THE path. A small import shortcut,
-//  then three numbered parts (Meeting app, Hosting app, Check), each a card
-//  with its own state. Only the current part is open; done parts fold to one
-//  line; a click on a folded part opens it. Sign in with Zoom shows once, low
-//  and quiet, as a disabled "Coming soon" row while it is coming soon.
+//  The setup guide's Zoom step, "Connect Zoom" (spec R14, owner 2026-11-27):
+//  one button. Top to bottom: title and a one-line intro; ONE large green
+//  button ("Set up Zoom" / "Continue setup") that opens the Zoom window on the
+//  first unfinished part; a calm status list, one line per part (mark, name,
+//  state words; when done a quiet "Use a different app" and a "..." menu of
+//  shortcuts to that app's pages); the Check row once both parts are done;
+//  a folded "Enter the keys yourself" holding the manual route (steps, key
+//  fields, the scope checklist, "Show me each click"), which deep links
+//  (`ZoomGuideSpot`) unfold and scroll to; and a quiet footer (Import,
+//  Start over, Sign in with Zoom Coming soon). "Filled in from Zoom", the offer
+//  to use the page's keys and "Keys removed" show on the part's status line.
 //
-//  Every key field, the scopes (Copy scopes, Copy missing, the missing marks)
-//  and Check Zoom setup live here and only here; Settings -> Zoom shows the
-//  status and one button into this step. Which part is open and every
-//  state's words come from `ZoomGuideFlowRules`.
+//  Every key field, the scopes and Check Zoom setup live here and only here;
+//  Settings -> Zoom shows the status and one button into this step. Which part
+//  the button opens, the wording and when the check row shows come from
+//  `ZoomConnectRules` and `ZoomGuideFlowRules`.
 //
 //  Plain values, bindings and closures only, so it renders off screen with
 //  sample values (scripts/render/zoom-guide.sh). OnboardingView feeds it.
@@ -37,7 +42,7 @@ struct ZoomGuideStep: View {
     /// The import's last result, and whether it failed.
     var importStatus = ""
     var importFailed = false
-    /// Where a deep link asked the step to open ("Show me where", Settings' button); cleared once used.
+    /// Where a deep link asked the step to open ("Show me where"); cleared once used.
     @Binding var jump: ZoomGuideSpot?
     /// The Zoom window: its page, the app IDs it has seen, and the fill-in notices (R3 to R5).
     var assist = ZoomGuideAssistState()
@@ -55,16 +60,15 @@ struct ZoomGuideStep: View {
     var onImport: () -> Bool = { false }
     var onCheck: () -> Void = {}
     var onViewResults: () -> Void = {}
-    /// Starts with this part open; for the off-screen render only.
-    var initiallyOpen: ZoomGuidePart? = nil
+    /// Starts with the manual route unfolded; for the off-screen render only.
+    var manualOpen = false
 
-    /// A part the person (or a deep link) opened; nil follows the flow.
-    @State private var chosen: ZoomGuidePart?
-    @State private var chosenSet = false
+    @State private var manualRequest = false
     @State private var scrollTarget: AnyHashable?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let topID = "zoomStepTop"
+    private static let checkID = "zoomStepCheck"
 
     private var facts: ZoomGuideFlowFacts {
         ZoomGuideFlowRules.facts(sdkFields: [sdkClientID, sdkClientSecret],
@@ -72,26 +76,20 @@ struct ZoomGuideStep: View {
                                  lines: checkLines, running: isChecking)
     }
     private var flow: ZoomGuideFlow { ZoomGuideFlowRules.flow(facts) }
-    private var openPart: ZoomGuidePart? { chosenSet ? chosen : (initiallyOpen ?? flow.open) }
     private var missingScopes: [String] { ZoomCheckSummary.missingScopes(checkLines) }
     private var anim: Animation? { reduceMotion ? nil : .snappy(duration: 0.25) }
+    private func filledCount(_ part: ZoomGuidePart) -> Int { part == .meetingApp ? facts.sdkFilled : facts.s2sFilled }
 
     var body: some View {
         ScrollViewReader { reader in
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 24) {
                     header.id(Self.topID)
-                    importShortcut
-                    VStack(spacing: 12) {
-                        ForEach(ZoomGuidePart.allCases, id: \.self) { part in
-                            card(part).id(part)
-                        }
-                    }
-                    if ZoomStartOverRules.isShown(facts) {
-                        ZoomStartOverButton(disabled: checkDisabled, action: onStartOver)
-                            .padding(.horizontal, 8)
-                    }
-                    signInRow
+                    if let button = ZoomConnectRules.button(facts) { connectButton(button) }
+                    statusList
+                    if ZoomConnectRules.showsCheckRow(facts) { check.id(Self.checkID) }
+                    manualRoute
+                    footer
                 }
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
@@ -101,228 +99,143 @@ struct ZoomGuideStep: View {
                 withAnimation(anim) { reader.scrollTo(target, anchor: .top) }
                 scrollTarget = nil
             }
-            .onAppear {
-                // The open part is settled here, not on every keystroke: typing
-                // the last key never folds the card under the cursor.
-                if !chosenSet { chosen = initiallyOpen ?? flow.open; chosenSet = true }
-                useJump()
-            }
+            .onAppear { useJump() }
             .onChange(of: jump) { _, _ in useJump() }
-            // The Zoom window moved to another page: open its part (unless the other one has typing in it).
-            .onChange(of: assist.openSerial) { _, _ in
-                if let part = assist.openPart { open(part) }
-            }
-            .onChange(of: assist.page) { _, page in
-                guard let page else { return }
-                let current = openPart
-                let typing = current.map { partHasTyping($0) } ?? false
-                if let part = ZoomGuideFollowRules.part(for: page, open: current, typing: typing), part != current { open(part) }
-            }
-            // A check result moves the flow on: to the part that needs a fix, or all folded.
-            .onChange(of: facts.check) { _, now in
-                if now == .passed || now == .failed { open(flow.open) }
-            }
         }
     }
 
-    /// A deep link: open its part (or follow the flow for the step's top) and scroll to the spot.
+    /// A deep link: the keys, scopes and activation unfold the manual route and scroll to the spot;
+    /// the step's top just scrolls up.
     private func useJump() {
         guard let spot = jump else { return }
         jump = nil
-        withAnimation(anim) {
-            chosen = ZoomGuideFlowRules.part(for: spot) ?? flow.open
-            chosenSet = true
-        }
-        // After the card unfolds, so the anchor exists.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        if ZoomConnectRules.opensManual(spot) { manualRequest = true }
+        // After the route unfolds, so the anchor exists.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             scrollTarget = spot == .zoomStep ? AnyHashable(Self.topID) : AnyHashable(spot)
         }
     }
 
-    /// Some keys typed but not all: the part is being worked on by hand.
-    private func partHasTyping(_ part: ZoomGuidePart) -> Bool {
-        switch part {
-        case .meetingApp: return facts.sdkFilled > 0 && facts.sdkFilled < 2
-        case .hostingApp: return facts.s2sFilled > 0 && facts.s2sFilled < 3
-        case .check: return false
-        }
-    }
-
-    private func open(_ part: ZoomGuidePart?) {
-        withAnimation(anim) { chosen = part; chosenSet = true }
-    }
-
-    // MARK: Header and the import shortcut
+    // MARK: Header and the one button
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Connect Zoom").font(.title.bold())
-            Text("You\u{2019}ll make two small apps in your Zoom account, so Greenroom can start and host your meetings. It takes about 10 minutes.")
+            Text(ZoomConnectRules.intro)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var importShortcut: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Text("Have a settings file from a teammate?")
-                    .foregroundStyle(.secondary)
-                Button("Import it\u{2026}") {
-                    if onImport() {
-                        open(.check)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scrollTarget = AnyHashable(ZoomGuidePart.check) }
-                    }
-                }
-                .buttonStyle(.link)
-                .foregroundStyle(Brand.green)
-                .disabled(isChecking)
-                .help("Fills in both apps from a Greenroom settings file, then takes you to the check.")
-            }
-            .font(.callout)
-            if !importStatus.isEmpty {
-                Label(importStatus, systemImage: importFailed ? "exclamationmark.triangle" : "checkmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(importFailed ? AnyShapeStyle(Brand.netText) : AnyShapeStyle(.secondary))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    private func connectButton(_ button: ZoomConnectButton) -> some View {
+        let page = ZoomConnectRules.entryPage(button.part, ids: assist.ids, filled: filledCount(button.part))
+        let url = ZoomMarketplacePages.url(for: page) ?? ZoomMarketplaceGuide.builderURL
+        return Button { onOpenZoom(url, button.part) } label: {
+            Text(button.title).font(.headline).frame(minWidth: 180)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(Brand.buttonFill)
+        .help("Opens Zoom App Marketplace in its own window, at \(button.part.title)")
+    }
+
+    // MARK: The status list
+
+    private var statusList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach([ZoomGuidePart.meetingApp, .hostingApp], id: \.self) { part in statusLine(part) }
         }
     }
 
-    // MARK: The cards
-
-    private func card(_ part: ZoomGuidePart) -> some View {
-        let isOpen = openPart == part
+    private func statusLine(_ part: ZoomGuidePart) -> some View {
         let state = flow.state(part)
-        return VStack(alignment: .leading, spacing: 0) {
-            Button { open(isOpen ? nil : part) } label: {
-                HStack(spacing: 12) {
-                    marker(part, state)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(part.title).font(.headline)
-                        if isOpen {
-                            Text(part.subtitle).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    Text(ZoomGuideFlowRules.label(part, facts))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(labelColor(part, state))
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+        let label = ZoomGuideFlowRules.label(part, facts)
+        let step = state == .done ? nil : ZoomGuideFollowRules.step(part: part, page: assist.page)
+        let words = step.map { "Step \($0) of \(part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps.count : ZoomMarketplaceGuide.s2sSteps.count)" } ?? label
+        let shortcuts = ZoomConnectRules.shortcuts(part, ids: assist.ids)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                marker(part, state, needsFix: label == "Needs a fix")
+                Text(part.title).font(.headline)
+                Text(words)
+                    .font(.callout)
+                    .foregroundStyle(label == "Needs a fix" && step == nil ? AnyShapeStyle(Brand.netText) : AnyShapeStyle(.secondary))
+                Spacer(minLength: 8)
+                if ZoomStartOverRules.showsUseDifferentApp(state) {
+                    Button(ZoomStartOverRules.useDifferentAppTitle) { onUseDifferentApp(part) }
+                        .buttonStyle(.plain)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isOpen ? 90 : 0))
-                        .accessibilityHidden(true)
+                        .help("Clears this app\u{2019}s keys and opens Zoom\u{2019}s list of your apps")
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(isOpen ? "Fold \(part.title)" : "Open \(part.title)")
-            .accessibilityLabel("\(part.number). \(part.title)")
-            .accessibilityValue(ZoomGuideFlowRules.label(part, facts))
-            .accessibilityHint(isOpen ? "Folds this part" : "Opens this part")
-
-            Collapsible(hidden: !isOpen) {
-                VStack(alignment: .leading, spacing: 16) {
-                    Divider()
-                    content(part)
-                    if state == .done, let next = ZoomGuidePart(rawValue: part.rawValue + 1) {
-                        Button("Continue to \(next.title)") {
-                            open(next)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scrollTarget = AnyHashable(next) }
+                if !shortcuts.isEmpty {
+                    Menu {
+                        ForEach(shortcuts, id: \.title) { link in
+                            Button(link.title) {
+                                if let url = ZoomMarketplacePages.url(for: link.page) { onOpenZoom(url, part) }
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Brand.buttonFill)
-                    }
+                    } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Open this app\u{2019}s pages in the Zoom window")
+                    .accessibilityLabel("\(part.title) pages")
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
             }
+            notice(part)
         }
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.quinary))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
     }
 
-    /// The number, or a check once the part is done.
+    /// "Filled in from Zoom" with Undo, the offer to use the page's keys, or "Keys removed" with Undo.
     @ViewBuilder
-    private func marker(_ part: ZoomGuidePart, _ state: ZoomGuidePartState) -> some View {
-        if state == .done {
+    private func notice(_ part: ZoomGuidePart) -> some View {
+        Group {
+            if assist.removed.contains(part) {
+                HStack(spacing: 6) {
+                    Text("\(ZoomStartOverRules.removedNotice) \u{00B7}").foregroundStyle(.secondary)
+                    Button("Undo") { onUndoRemoved(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
+                }
+            } else if assist.filled.contains(part) {
+                HStack(spacing: 8) {
+                    Label("Filled in from Zoom", systemImage: "checkmark.circle").foregroundStyle(Brand.text)
+                    Button("Undo") { onUndoFill(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
+                }
+            } else if assist.offers.contains(part) {
+                HStack(spacing: 10) {
+                    Button("Use the keys from this page") { onUseKeys(part) }.buttonStyle(.bordered).controlSize(.small)
+                    Text("Different from the keys you have. Nothing changes until you press this.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .font(.callout)
+        .padding(.leading, 36)
+    }
+
+    /// The number, a check once the part is done, or amber when the check found something to fix.
+    @ViewBuilder
+    private func marker(_ part: ZoomGuidePart, _ state: ZoomGuidePartState, needsFix: Bool) -> some View {
+        if needsFix {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.title3).foregroundStyle(Brand.netText)
+                .frame(width: 24, height: 24).accessibilityHidden(true)
+        } else if state == .done {
             Image(systemName: "checkmark.circle.fill")
-                .font(.title3)
-                .foregroundStyle(Brand.text)
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
+                .font(.title3).foregroundStyle(Brand.text)
+                .frame(width: 24, height: 24).accessibilityHidden(true)
         } else {
             Text("\(part.number)")
                 .font(.callout.weight(.semibold).monospacedDigit())
                 .foregroundStyle(state == .notStarted ? AnyShapeStyle(.secondary) : AnyShapeStyle(Brand.text))
                 .frame(width: 24, height: 24)
-                .background(Circle().strokeBorder(state == .notStarted ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.text),
-                                                  lineWidth: 1.5))
+                .background(Circle().strokeBorder(state == .notStarted ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.text), lineWidth: 1.5))
                 .accessibilityHidden(true)
         }
     }
 
-    private func labelColor(_ part: ZoomGuidePart, _ state: ZoomGuidePartState) -> AnyShapeStyle {
-        let label = ZoomGuideFlowRules.label(part, facts)
-        if label == "Needs a fix" { return AnyShapeStyle(Brand.netText) }
-        return state == .done ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.secondary)
-    }
-
-    @ViewBuilder
-    private func content(_ part: ZoomGuidePart) -> some View {
-        switch part {
-        case .meetingApp: meetingApp
-        case .hostingApp: hostingApp
-        case .check: check
-        }
-    }
-
-    // MARK: 1 · Meeting app
-
-    private var meetingApp: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            steps(.meetingApp)
-            fillNotice(.meetingApp)
-            fields([("Client ID", $sdkClientID, false), ("Client Secret", $sdkClientSecret, true)])
-                .id(ZoomGuideSpot.sdkCredentials)
-            differentApp(.meetingApp)
-            detail {
-                Text("Use the same Zoom account for both apps. You need permission to build apps; ask your Zoom account admin if Build App is missing.")
-                Text("In Zoom, choose Build App \u{2192} General App. Under Features \u{2192} Embed, turn on Meeting SDK. Find the Client ID and Client Secret under Basic Information \u{2192} App Credentials, and paste them above.")
-            }
-        }
-    }
-
-    // MARK: 2 · Hosting app
-
-    private var hostingApp: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            steps(.hostingApp)
-            ZoomScopeChecklist(missing: missingScopes)
-                .id(ZoomGuideSpot.s2sScopes)
-            Label("In Zoom, finish Information, then open Activation and activate the app.",
-                  systemImage: "power")
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
-                .id(ZoomGuideSpot.s2sActivation)
-            fillNotice(.hostingApp)
-            fields([("Account ID", $s2sAccountID, false), ("Client ID", $s2sClientID, false),
-                    ("Client Secret", $s2sClientSecret, true)])
-                .id(ZoomGuideSpot.s2sCredentials)
-            differentApp(.hostingApp)
-            detail {
-                Text("Use the same Zoom account as the Meeting app. Adding admin scopes needs an admin role; ask your Zoom account admin if they are missing.")
-                Text("In Zoom, choose Build App \u{2192} Server-to-Server OAuth and name it. Open Scopes \u{2192} Add Scopes: copy one name above, paste it into the search field and select the matching permission. Repeat for all \(ZoomScopes.countWord), then save.")
-                Text("Finish Information, open Activation and activate the app. Then copy the three values from App Credentials and paste them above.")
-            }
-        }
-    }
-
-    // MARK: 3 · Check
+    // MARK: The check row
 
     private var check: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -335,6 +248,94 @@ struct ZoomGuideStep: View {
                  : "Checks both apps, all \(ZoomScopes.countWord) hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: The manual route
+
+    private var manualRoute: some View {
+        AdvancedDisclosure(ZoomConnectRules.manualTitle, open: manualOpen, openRequest: $manualRequest) {
+            VStack(alignment: .leading, spacing: 28) {
+                manualPart(.meetingApp) {
+                    fields([("Client ID", $sdkClientID, false), ("Client Secret", $sdkClientSecret, true)])
+                        .id(ZoomGuideSpot.sdkCredentials)
+                }
+                manualPart(.hostingApp) {
+                    ZoomScopeChecklist(missing: missingScopes)
+                        .id(ZoomGuideSpot.s2sScopes)
+                    Label("In Zoom, finish Information, then open Activation and activate the app.", systemImage: "power")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .id(ZoomGuideSpot.s2sActivation)
+                    fields([("Account ID", $s2sAccountID, false), ("Client ID", $s2sClientID, false),
+                            ("Client Secret", $s2sClientSecret, true)])
+                        .id(ZoomGuideSpot.s2sCredentials)
+                }
+                detail {
+                    Text("Use the same Zoom account for both apps. You need permission to build apps; ask your Zoom account admin if Build App is missing.")
+                    Text("Meeting app: choose Build App \u{2192} General App. Under Features \u{2192} Embed, turn on Meeting SDK. Find the Client ID and Client Secret under Basic Information \u{2192} App Credentials.")
+                    Text("Hosting app: choose Build App \u{2192} Server-to-Server OAuth and name it. Open Scopes \u{2192} Add Scopes: copy one name above, paste it into the search field and select the matching permission. Repeat for all \(ZoomScopes.countWord), then save. Finish Information, open Activation and activate the app. Then copy the three values from App Credentials.")
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    /// A part's heading, its steps as plain text, and what goes under them.
+    private func manualPart<C: View>(_ part: ZoomGuidePart, @ViewBuilder _ content: () -> C) -> some View {
+        let steps = part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps : ZoomMarketplaceGuide.s2sSteps
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(part.title).font(.headline)
+                Text(part.subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(index + 1).").monospacedDigit().foregroundStyle(.secondary)
+                        Text(step).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .font(.callout)
+            content()
+        }
+    }
+
+    // MARK: The footer
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            importShortcut
+            if ZoomStartOverRules.isShown(facts) {
+                ZoomStartOverButton(disabled: checkDisabled, action: onStartOver)
+            }
+            signInRow
+        }
+    }
+
+    private var importShortcut: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text("Have a settings file from a teammate?")
+                    .foregroundStyle(.secondary)
+                Button("Import it\u{2026}") {
+                    if onImport() {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scrollTarget = AnyHashable(Self.checkID) }
+                    }
+                }
+                .buttonStyle(.link)
+                .foregroundStyle(Brand.text)
+                .disabled(isChecking)
+                .help("Fills in both apps from a Greenroom settings file, then takes you to the check.")
+            }
+            .font(.callout)
+            if !importStatus.isEmpty {
+                Label(importStatus, systemImage: importFailed ? "exclamationmark.triangle" : "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(importFailed ? AnyShapeStyle(Brand.netText) : AnyShapeStyle(.secondary))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -368,75 +369,6 @@ struct ZoomGuideStep: View {
     }
 
     // MARK: Pieces
-
-    /// The Zoom window button and the part's steps; the step the window is on is marked, and each
-    /// step with a known app has a button to its exact page.
-    private func steps(_ part: ZoomGuidePart) -> some View {
-        let rows = ZoomMarketplaceGuide.rows(part: part, ids: assist.ids, keysFilled: part == .meetingApp ? facts.sdkFilled > 0 : facts.s2sFilled > 0)
-        let current = ZoomGuideFollowRules.step(part: part, page: assist.page)
-        return VStack(alignment: .leading, spacing: 8) {
-            Button { onOpenZoom(ZoomMarketplaceGuide.builderURL, part) } label: {
-                Label(ZoomMarketplaceGuide.linkTitle, systemImage: "arrow.up.right")
-            }
-            .buttonStyle(.link)
-            .foregroundStyle(Brand.green)
-            .help("Opens Zoom App Marketplace in the Zoom window beside this guide")
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    let isCurrent = current == index + 1
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(index + 1).").monospacedDigit()
-                            .foregroundStyle(isCurrent ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.secondary))
-                            .fontWeight(isCurrent ? .semibold : .regular)
-                        Text(row.text).fixedSize(horizontal: false, vertical: true)
-                            .fontWeight(isCurrent ? .medium : .regular)
-                        Spacer(minLength: 8)
-                        if let link = row.link {
-                            Button(link.title) {
-                                if let url = ZoomMarketplacePages.url(for: link.page) { onOpenZoom(url, part) }
-                            }
-                            .buttonStyle(.link)
-                            .font(.caption)
-                            .foregroundStyle(Brand.text)
-                        }
-                    }
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isCurrent ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)))
-                    .accessibilityElement(children: .combine)
-                    .accessibilityHint(isCurrent ? "You are on this step in the Zoom window" : "")
-                }
-            }
-            .font(.callout)
-        }
-    }
-
-    /// "Filled in from Zoom" with Undo, or the offer to use the page's keys.
-    @ViewBuilder
-    private func fillNotice(_ part: ZoomGuidePart) -> some View {
-        if assist.removed.contains(part) {
-            HStack(spacing: 6) {
-                Text("\(ZoomStartOverRules.removedNotice) \u{00B7}").foregroundStyle(.secondary)
-                Button("Undo") { onUndoRemoved(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
-            }
-            .font(.callout)
-        } else if assist.filled.contains(part) {
-            HStack(spacing: 8) {
-                Label("Filled in from Zoom", systemImage: "checkmark.circle")
-                    .foregroundStyle(Brand.text)
-                Button("Undo") { onUndoFill(part) }.buttonStyle(.link).foregroundStyle(Brand.text)
-            }
-            .font(.callout)
-        } else if assist.offers.contains(part) {
-            VStack(alignment: .leading, spacing: 4) {
-                Button("Use the keys from this page") { onUseKeys(part) }
-                    .buttonStyle(.bordered)
-                Text("The page shows different keys from the ones below. Nothing changes until you press this.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
 
     /// The key fields, labels in one column so the fields line up. Secrets are always dotted.
     /// The small "Use a different app" link under a Done part's fields.

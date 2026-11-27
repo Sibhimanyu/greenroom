@@ -70,7 +70,7 @@ struct Page: View {
             setupCheck: ZoomSetupCheckRow(lines: ownReady ? setupLines : []),
             setupEntry: entry,
             refusedNote: note,
-            onStartOver: entry.title.hasPrefix("Edit") ? {} : nil)
+            onStartOver: entry.title != "Set up Zoom\u{2026}" ? {} : nil)
     }
 }
 

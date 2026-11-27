@@ -107,10 +107,10 @@ personal room"), never "PMI" in UI text. Code: `App/Zoom/ZoomPersonalRoom.swift`
 
 ## Zoom window
 
-Greenroom's own window onto Zoom App Marketplace, opened beside the setup guide
-by "Open Zoom App Marketplace" (`App/UI/ZoomMarketplaceWindow.swift`). It keeps
+Greenroom's own window onto Zoom App Marketplace, opened large and centred on the
+setup guide's screen by "Set up Zoom" / "Continue setup" (`App/UI/ZoomMarketplaceWindow.swift`). It keeps
 the Zoom sign-in in Greenroom, apart from Safari ("Sign out of Zoom" clears it).
-The guide follows its page (`ZoomMarketplacePages`), the **coach** draws a dim
+A bar at its top (the **Greenroom bar**) says the part and step. The guide follows its page (`ZoomMarketplacePages`), the **coach** draws a dim
 layer, a ringed spotlight and a one-line card on Zoom's page, and on the
 credentials pages Greenroom reads the keys into the guide's fields. Greenroom
 never clicks or submits anything on Zoom's pages. Say **Zoom window**, not

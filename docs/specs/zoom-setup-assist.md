@@ -1,4 +1,4 @@
-# Zoom setup, guided: Marketplace beside the guide
+# Zoom setup, guided: Marketplace in its own window
 
 Branch: feat/zoom-setup-assist (stacked on feat/personal-room). Code: `App/UI/ZoomGuideStep.swift`, `App/Zoom/ZoomMarketplaceGuide.swift`, `App/Zoom/ZoomGuideFlowRules.swift`, new `App/Zoom/ZoomMarketplacePages.swift` (pure) and `App/UI/ZoomMarketplaceWindow.swift`. Evidence: `App/Debug/ZoomMarketplaceProbe.swift` (DEBUG only) and its log, 2026-11-27.
 
@@ -8,7 +8,7 @@ The setup guide's Meeting app and Hosting app parts each have one link, "Open Zo
 
 ## Decision
 
-Owner, 2026-11-27: "I don't mind how you do it". Greenroom opens Zoom Marketplace in its own window beside the setup guide. The guide follows the page the person is on, links each step to that exact page, and fills the keys in from the page. Safari stays one click away.
+Owner, 2026-11-27: "I don't mind how you do it". Greenroom opens Zoom Marketplace in its own large window, centred on the guide's screen. The guide follows the page the person is on, links each step to that exact page, and fills the keys in from the page. Safari stays one click away.
 
 ## What the probe found (2026-11-27, owner's account)
 
@@ -29,19 +29,19 @@ Owner, 2026-11-27: "I don't mind how you do it". Greenroom opens Zoom Marketplac
 
 ## Requirements
 
-### R1. One Zoom window beside the guide
+### R1. One Zoom window
 
-Status: built (window, toolbar, placement tested); untested live: Developers opening in place, sign-in persistence, Sign out of Zoom.
+Status: built (window, placement tested); untested live: Developers opening in place, sign-in persistence, Sign out of Zoom.
 
 The guide's "Open Zoom App Marketplace" link becomes a button with the same title. It opens (or brings forward) one "Zoom" window: a normal, fully visible macOS window holding a WKWebView, with these properties:
 - it uses `WKWebsiteDataStore.default()`, so the sign-in persists, and the probe's Safari user agent;
 - new-window links load in place;
-- its toolbar has Back, Forward, Reload, a read-only host-and-path label, **Tips** (R6), **Sign out of Zoom** and **Open in Safari** (the current page's URL).
-- The sign-in is remembered in Greenroom (separate from Safari) until Zoom ends it; Sign out of Zoom clears it. It removes the website data of every record in `WKWebsiteDataStore.default()` whose name contains "zoom", then reloads `https://marketplace.zoom.us/user/build`.
+- its one bar is the Greenroom bar (R13): Back, Forward, Reload, **Tips** (R6) and a "..." menu with **Open in Safari** (the current page's URL) and, only when the window is signed in, **Sign out of Zoom**. The page's host and path are the bar title's tooltip.
+- The sign-in is remembered in Greenroom (separate from Safari) until Zoom ends it; Sign out of Zoom clears it, and is offered only while signed in (`ZoomSignInStateRules`: a sign-in page or a "Sign In" link in Marketplace's header means signed out, an account menu means signed in, unknown until the first report, signed out at once after signing out). It removes the website data of every record in `WKWebsiteDataStore.default()` whose name contains "zoom", then reloads `https://marketplace.zoom.us/user/build`.
 
-The window opens beside the setup guide's window on the same screen (the guide moves left, Zoom takes the right, if both don't fit side by side; otherwise each keeps its size). It takes focus only when opened by the person's click. Closing it leaves the guide as is.
+The window opens large and centred on the setup guide's screen: about 85% of the visible frame, capped at 1400x1000, never under 900x700 (unless the screen is smaller). The setup guide is not moved or resized (owner, 2026-11-27: side by side was dropped). It takes focus only when opened by the person's click. Closing it leaves the guide as is.
 
-Acceptance: a pure `ZoomMarketplaceWindowPlacement.frames(screen:guide:)` is tested for a 1440×900 and a 1920×1080 screen and a guide already on the right; manual test: Developers opens in place.
+Acceptance: a pure `ZoomMarketplaceWindowPlacement.frame(screen:)` is tested for 1440x900, 1920x1080, 2560x1440, small and offset screens; manual test: Developers opens in place.
 
 ### R2. The page is understood
 
@@ -95,7 +95,7 @@ Acceptance: pure `ZoomKeyFillRules.decide(current:found:)` tests (empty → fill
 
 Status: built (rules and script scan tested, off-screen render done); untested live on real Marketplace pages (label matching, the search-field case, following the target).
 
-On each guided page the Zoom window draws a coach on top of the page: the rest of the page dims (about 45% black), the target control sits in a clear rounded spotlight with a 2pt `Brand.green` ring, and a callout card beside it (system font, rounded 12pt, light and dark through `prefers-color-scheme`) says what to do in one line, with a step counter: "Step 1 of 4 · Choose Server to server OAuth app, then press Create." The card has **Hide tips**, which turns the coach off for this setup; the toolbar's **Tips** toggle turns it back on.
+On each guided page the Zoom window draws a coach on top of the page: the rest of the page dims (about 45% black), the target control sits in a clear rounded spotlight with a 2pt `Brand.green` ring, and a callout card beside it (system font, rounded 12pt, light and dark through `prefers-color-scheme`) says what to do in one line, with a step counter: "Step 1 of 4 · Choose Server to server OAuth app, then press Create." Every card's header row carries the Greenroom mark (about 16pt, the small-size app icon as a data-URI PNG made at runtime from the app's icon, never an address, in its own colours), "Greenroom" in semibold, and " \u00B7 Step 1 of 4" in secondary; cards with no counter (Find my app, Got it) show the mark and "Greenroom" only, so the tip is plainly Greenroom's, not Zoom's. The card has **Hide tips**, which turns the coach off for this setup; the toolbar's **Tips** toggle turns it back on.
 - Targets, found by visible label text (never by Mui class names): chooseType: the "Server to server OAuth app" or "General app" row (per guide part), then Create; s2s/scopes: "+ Add Scopes" (and while the Add Scopes panel is open, its search field, with the card saying "Paste one scope, tick it, repeat. Copy scopes is in the guide."); s2s/activation: the Activate button; general/embed: the Meeting SDK toggle; credentials pages: no spotlight, only a small card "Got it: the keys are in Greenroom." once R5 has filled.
 - It never clicks, never takes focus and never blocks: the dim layer and the card are `pointer-events: none` except the card's own Hide tips link, so clicks go straight to Zoom's page. It follows the target on scroll and resize, moves when the page changes route, and simply disappears if the target is not found.
 - It is drawn inside the page in a closed shadow root on one fixed-position host with a very high z-index, so Zoom's CSS cannot break it and it cannot break Zoom's. It respects `prefers-reduced-motion` (no animated movement); otherwise a 200ms ease.
@@ -144,6 +144,18 @@ When a part's keys are filled (any of them) but its app ID is not remembered, st
 Acceptance: `ZoomStartOverRulesTests` (rows and coach).
 
 Status: built, untested live.
+
+### R13. The Greenroom bar
+
+One native SwiftUI bar (about 44pt) above the web view, replacing the old toolbar. Content from the pure `ZoomBarRules` (same page and step facts as the guide and the coach). Left: "Hosting app \u00B7 Step 2 of 4 \u00B7 Add the scopes"; before an app page is known "Hosting app \u00B7 Find or create the app"; signed out or on a sign-in page "Sign in to Zoom". Contextual: on the Hosting scopes step **Copy scopes** (the guide's text, with a brief "Copied"); on a credentials page of a complete part "<Part> is set up" with a green check; while signed out **Sign in** (opens Created apps, which Marketplace redirects to its sign-in; Greenroom never presses Zoom's own Sign In). Primary: when a part is complete on its credentials page, **Next: <other part>** (Created apps, or the other app's known page: Meeting app's Basic information, Hosting app's Scopes); when both parts are complete, **Back to Greenroom**, which closes the Zoom window, brings the guide forward and starts Check Zoom setup unless it is running or has results (`shouldCheckOnReturn`, so R7's auto check never runs twice). Right: Back, Forward, Reload, Tips and the "..." menu. It is a plain stack (never an overflow chevron); at the 900pt minimum the fixed parts take about 520pt and the title truncates at its tail.
+
+Status: built; rules tested (`ZoomBarRulesTests`, `ZoomSignInStateRulesTests`); off-screen renders (`scripts/render/zoom-bar.sh`); untested live.
+
+### R14. Connect Zoom, one button
+
+The guide's Zoom step is calm: title and one line; ONE large button, "Set up Zoom" / "Continue setup", opening the Zoom window on the first unfinished part (Created apps, or the remembered app's next page); one status line per part (mark, name, state words or the window's "Step n of N", and when done "Use a different app" and a "..." menu of that app's page shortcuts, only for known IDs); the Check row once both parts are done (or a check has run); a folded "Enter the keys yourself" with each part's steps as text, the key fields, the scope checklist and "Show me each click", which deep links (`.sdkCredentials`, `.s2sCredentials`, `.s2sScopes`, `.s2sActivation`) unfold and scroll to; a quiet footer (Import, Start over\u2026, Sign in with Zoom Coming soon). "Filled in from Zoom \u00B7 Undo", the offer to use the page's keys and "Keys removed \u00B7 Undo" show on the part's status line. Settings' button reads "Set up Zoom\u2026" / "Continue setup\u2026" / "Edit setup\u2026" and opens the step's top. Pure: `ZoomConnectRules`, `ZoomGuideFlowRules.setupEntry`.
+
+Status: built (`ZoomConnectRulesTests`); renders in `scripts/render/zoom-guide.sh`. R4's row buttons and R12's "Find my app" step button no longer have a place on screen (the steps are text in the manual route); the rows rule stays tested, and Find my app lives on in the coach card on Created apps.
 
 ## Plan
 

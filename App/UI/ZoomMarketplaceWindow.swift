@@ -51,8 +51,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     var needsApp: (ZoomGuidePart) -> Bool = { _ in false }
     /// Which parts have all their keys in Greenroom, and the remembered app IDs, for the bar.
     var barState: () -> (meeting: Bool, hosting: Bool, ids: ZoomAppIDs) = { (false, false, ZoomAppIDs()) }
-    /// The bar's "Next: <part>" asks the guide to open that part; "Back to Greenroom" hands over to the guide.
-    var onNext: (ZoomGuidePart) -> Void = { _ in }
+    /// The bar's "Back to Greenroom" hands over to the guide.
     var onBackToGreenroom: () -> Void = {}
 
     private var window: NSWindow?
@@ -156,7 +155,6 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         case .next(let part, let page):
             requestedPart = part
             if let url = ZoomMarketplacePages.url(for: page) { webView?.load(URLRequest(url: url)) }
-            onNext(part)
         case .backToGreenroom:
             window?.close()
             onBackToGreenroom()

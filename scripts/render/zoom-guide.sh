@@ -18,6 +18,6 @@ render zoom-guide-render zoom-guide-main.swift App/UI/ZoomGuideStep.swift App/UI
   App/UI/SettingsKit.swift App/UI/Fields.swift App/UI/Glass.swift App/UI/Tiles.swift App/UI/TileAppearance.swift \
   App/Zoom/ZoomScopes.swift App/Zoom/ZoomMarketplaceGuide.swift App/Zoom/ZoomUserAuthRules.swift \
   App/Zoom/ZoomRouteRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift \
-  App/Zoom/ZoomGuideFlowRules.swift App/Zoom/ZoomGuideFollowRules.swift App/Zoom/ZoomMarketplacePages.swift App/Zoom/ZoomStartOverRules.swift App/UI/ZoomStartOverButton.swift App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift \
+  App/Zoom/ZoomGuideFlowRules.swift App/Zoom/ZoomGuideFollowRules.swift App/Zoom/ZoomMarketplacePages.swift App/Zoom/ZoomStartOverRules.swift App/Zoom/ZoomConnectRules.swift App/UI/ZoomStartOverButton.swift App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift \
   App/Zoom/ZoomPersonalRoom.swift App/Zoom/ZoomServerToServerClient.swift App/Zoom/NewMeetingRequest.swift
 finish

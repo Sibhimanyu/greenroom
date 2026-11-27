@@ -43,12 +43,6 @@ final class ZoomSetupAssist: ObservableObject {
             guard let self, let c = self.coordinator else { return (false, false, ZoomAppIDs()) }
             return (self.isComplete(.sdk, c), self.isComplete(.s2s, c), self.state.ids)
         }
-        window.onNext = { [weak self] part in
-            guard let self else { return }
-            var next = self.state
-            next.openPart = part; next.openSerial += 1
-            self.state = next
-        }
         window.onBackToGreenroom = { [weak self] in self?.backToGreenroom() }
         window.needsApp = { [weak self] part in self?.needsApp(part) ?? false }
         window.keysFilled = { [weak self] in

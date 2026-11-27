@@ -122,15 +122,15 @@ enum ZoomGuideFlowRules {
         }
     }
 
-    /// Where Settings' button opens the guide, and what it says: the first
-    /// part that isn't done, or the step's top when both apps are.
+    /// What Settings' button says; it opens the guide's Zoom step at its top.
     static func setupEntry(_ f: ZoomGuideFlowFacts) -> ZoomSetupEntry {
         let flow = flow(f)
-        let spot: ZoomGuideSpot
-        if flow.meetingApp != .done { spot = .sdkCredentials }
-        else if flow.hostingApp != .done { spot = .s2sCredentials }
-        else { spot = .zoomStep }
-        return ZoomSetupEntry(title: f.anythingFilled ? "Edit setup\u{2026}" : "Set up\u{2026}", spot: spot)
+        let title: String
+        if !f.anythingFilled { title = "Set up Zoom\u{2026}" }
+        else if flow.meetingApp != .done || flow.hostingApp != .done { title = "Continue setup\u{2026}" }
+        else { title = "Edit setup\u{2026}" }
+        // Always the step's top: that is where the one button is (the keys are a deep link of their own).
+        return ZoomSetupEntry(title: title, spot: .zoomStep)
     }
 
     /// The part a deep link opens; nil for the step's top (the flow's own open part).

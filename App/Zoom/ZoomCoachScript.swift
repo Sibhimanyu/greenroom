@@ -220,6 +220,7 @@ enum ZoomCoachScript {
         cfg = next; target = null;
         if (ui) ui.placed = false;
         watch();
+        place();
         schedule();
       };
     })();

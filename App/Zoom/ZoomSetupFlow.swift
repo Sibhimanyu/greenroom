@@ -184,6 +184,8 @@ struct AppEvidence: Equatable {
     var infoMissing: [String]?
     /// Every Information field is disabled: the Zoom account may not edit this app.
     var infoLocked = false
+    /// Zoom refused a save to this app (401/403): only the account's admin can lift that.
+    var saveRefused = false
     var scopes: Set<String> = []
     var activated: Bool?
     /// When (on the evidence clock) something in the app's settings last changed, and when its keys were last copied.
@@ -281,6 +283,7 @@ enum ZoomSetupFlow {
                 e.apps[app, default: AppEvidence()].clientID = v
             }
         }
+        if s.saveRefused, let page = s.address, page.zoomApp == .hosting { e.apps[.hosting, default: AppEvidence()].saveRefused = true }
         if let page = s.address, case .s2s(_, let tab) = page {
             if tab == .information, !s.infoFields.isEmpty {
                 let locked = s.infoFields.values.allSatisfy { $0 == .disabled }
@@ -401,6 +404,14 @@ enum ZoomSetupFlow {
             SetupStep(number: n, title: title, app: app(ofStep: n), why: why, place: place, status: status, cta: cta)
         }
         let keysWhy = "Copied last, so they're the final ones."
+        // The account may create a Server-to-Server app but not change it (fields locked for good, or a save
+        // refused): only its admin can lift that, so steps 5-7 become one plain ask, whichever step showed it.
+        let h = e.app(.hosting)
+        if (5...7).contains(n), h.infoLocked || h.saveRefused {
+            return step("Ask your Zoom admin for permission", "Zoom asks for a contact before it turns the app on.",
+                        ZoomMarketplacePage.s2s(hid, n == 5 ? .information : n == 6 ? .scopes : .activation),
+                        .checkAgain, status: "Your Zoom account can\u{2019}t edit this app. Ask your Zoom admin to allow \u{2018}Server-to-Server OAuth app: Edit\u{2019} (User Management \u{2192} Roles \u{2192} Role Settings \u{2192} Advanced features), then Check again.")
+        }
         switch n {
         case 1:
             return step("Create the meeting app", "It lets Greenroom join and run meetings.", .createdApps,

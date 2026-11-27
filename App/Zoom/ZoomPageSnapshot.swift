@@ -357,6 +357,9 @@ struct ZoomPageSnapshot: Equatable {
     var scopeSearchMatches: Int?
     /// Activation's "can not be activated yet" list (item texts, in order).
     var activationMissing: [String]
+    /// Zoom refused a change to this app since its page opened (a save answered 401/403; live run 6): the account
+    /// may create Server-to-Server apps but not change them. Set by the window from the page's own requests.
+    var saveRefused = false
     var keys: [ZoomKeyField: KeyReading]
     var controls: Set<ZoomControl>
 
@@ -392,7 +395,7 @@ struct ZoomPageSnapshot: Equatable {
 
 extension ZoomPageSnapshot: Codable {
     private enum K: String, CodingKey {
-        case address, signedIn, dialog, menuItems, appList, meetingSDKOn, scopesOnPage, activated, infoEmptyRequired, infoFields, scopeSearchMatches, activationMissing, keys, controls
+        case address, signedIn, dialog, menuItems, appList, meetingSDKOn, scopesOnPage, activated, infoEmptyRequired, infoFields, scopeSearchMatches, activationMissing, saveRefused, keys, controls
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -408,6 +411,7 @@ extension ZoomPageSnapshot: Codable {
         infoFields = ZoomDialog.keyed(try c.decodeIfPresent([String: ZoomInfoState].self, forKey: .infoFields) ?? [:])
         scopeSearchMatches = try c.decodeIfPresent(Int.self, forKey: .scopeSearchMatches)
         activationMissing = try c.decodeIfPresent([String].self, forKey: .activationMissing) ?? []
+        saveRefused = try c.decodeIfPresent(Bool.self, forKey: .saveRefused) ?? false
         keys = ZoomDialog.keyed(try c.decodeIfPresent([String: KeyReading].self, forKey: .keys) ?? [:])
         // Unknown control IDs (a newer reader) are skipped, never fatal.
         let ids = try c.decodeIfPresent([String].self, forKey: .controls) ?? []
@@ -427,6 +431,7 @@ extension ZoomPageSnapshot: Codable {
         try c.encode(ZoomDialog.named(infoFields), forKey: .infoFields)
         try c.encodeIfPresent(scopeSearchMatches, forKey: .scopeSearchMatches)
         try c.encode(activationMissing, forKey: .activationMissing)
+        if saveRefused { try c.encode(true, forKey: .saveRefused) }
         try c.encode(ZoomDialog.named(keys), forKey: .keys)
         try c.encode(controls.map(\.id).sorted(), forKey: .controls)
     }

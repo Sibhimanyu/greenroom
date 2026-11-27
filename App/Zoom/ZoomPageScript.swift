@@ -540,7 +540,12 @@ enum ZoomPageScript {
         }
         if (kind === 'appRow') {
           var list = path().indexOf('/user/build') === 0 ? scanAppRows() : [], n = parseInt(arg, 10);
-          return n >= 0 && n < list.length ? list[n].el : null;
+          if (!(n >= 0 && n < list.length)) return null;
+          // Press the app's NAME cell (live run 5, 2026-11-27): the whole row also says "Intend to publish: No",
+          // which the deny-list rightly refuses. The click still reaches the row and opens the app.
+          var row = list[n].el, cell = row.querySelector('td,[role=cell],[role=gridcell]');
+          var name = cell ? (cell.querySelector('a,[role=link],p,span') || cell) : row;
+          return name;
         }
         return null;
       }

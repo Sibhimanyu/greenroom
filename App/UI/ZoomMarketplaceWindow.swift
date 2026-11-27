@@ -103,8 +103,10 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         ucc.add(self, contentWorld: .defaultClient, name: "coach")
         ucc.addUserScript(WKUserScript(source: Self.routeScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         ucc.add(self, name: "zoomCopy")
+        ucc.add(self, name: "zoomSave")
+        ucc.addUserScript(WKUserScript(source: Self.saveHookScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG
-        if ZoomDomDump.enabled {
+        if ProcessInfo.processInfo.arguments.contains("-zoomDiag") {
             ucc.add(self, name: "zoomDiag")
             ucc.addUserScript(WKUserScript(source: Self.diagScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
@@ -307,7 +309,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
                     if case .success(let value) = result, let text = value as? String { self?.note(nil, "snapshot " + String(text.prefix(60))) }
                     done(nil); return
                 }
-                done(ZoomPageSnapshot.decode(reading: json, address: ZoomMarketplacePages.page(for: url)))
+                var snapshot = ZoomPageSnapshot.decode(reading: json, address: ZoomMarketplacePages.page(for: url))
+                if let id = snapshot?.address?.appID, self?.refusedSaves.contains(id) == true { snapshot?.saveRefused = true }
+                done(snapshot)
             }
         }
     }
@@ -428,6 +432,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         #endif
         case "route": scheduleRefresh()
         case "zoomCopy": copiedByZoom(message.body as? String)
+        case "zoomSave":
+            // The app ID from the page's own address at the moment Zoom refused its save.
+            if let url = webView?.url, let page = ZoomMarketplacePages.page(for: url), let id = page.appID { refusedSaves.insert(id) }
         #if DEBUG
         case "zoomDiag": if let t = message.body as? String { ZoomDomDump.log("page " + t) }
         #endif
@@ -471,6 +478,24 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     })();
     """
     #endif
+
+    /// Apps whose save Zoom refused (401/403) in this window: the account may not change them (live run 6).
+    private var refusedSaves: Set<String> = []
+
+    /// Page world, document start: reports a SAVE (not a read) to Marketplace's app API that Zoom refuses
+    /// with 401 or 403. Only the fact is posted, never the request or its answer.
+    static let saveHookScript = """
+    (function () {
+      if (window.__grSave || location.host !== 'marketplace.zoom.us') return; window.__grSave = true;
+      function isAppWrite(m, u) { m = (m || 'GET').toUpperCase(); return m !== 'GET' && m !== 'HEAD' && /\\/api\\/v1\\/apps\\//.test(String(u || '')); }
+      function post() { try { window.webkit.messageHandlers.zoomSave.postMessage('refused'); } catch (e) {} }
+      var oo = XMLHttpRequest.prototype.open, os = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__grW = isAppWrite(m, u); return oo.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () { var x = this; if (x.__grW) x.addEventListener('loadend', function () { if (x.status === 401 || x.status === 403) post(); }); return os.apply(this, arguments); };
+      var of = window.fetch;
+      if (of) window.fetch = function (u, o) { var w = isAppWrite(o && o.method, typeof u === 'string' ? u : (u && u.url)); return of.apply(this, arguments).then(function (r) { if (w && (r.status === 401 || r.status === 403)) post(); return r; }); };
+    })();
+    """
 
     /// Page world, document start: wraps navigator.clipboard.writeText and the copy event so the text a
     /// Copy button hands over reaches Greenroom, then lets the page's own copy carry on.

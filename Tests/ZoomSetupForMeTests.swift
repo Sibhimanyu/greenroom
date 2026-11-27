@@ -296,4 +296,18 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(end, .done)
         XCTAssertEqual(zoom.apps.last?.info[.contactEmail], person.info.email)
     }
+
+    /// Live run 6, 2026-11-27: Zoom answered the scopes save with 401 (the account may create Server-to-Server apps
+    /// but not change them), so the scopes never stuck and the run added them three times. A refused save is the
+    /// admin blocker: Greenroom stops after one try with the words to say.
+    func testARefusedSaveIsTheAdminBlockerNotALoop() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.refusesS2SWrites = true
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        guard case .handedOver(let step, _) = end else { return XCTFail("expected a hand over, got \(end)") }
+        XCTAssertEqual(step.cta, .checkAgain)
+        XCTAssertTrue(step.status?.contains("Server-to-Server OAuth app: Edit") ?? false)
+        XCTAssertEqual(zoom.log.filter { $0 == .press(.addScopes) }.count, 1, "the scopes were tried once, not looped")
+    }
 }

@@ -56,6 +56,10 @@ final class FixturePage: ZoomPage {
     var elementText: [ZoomControl: String] = [:]
     /// The account lacks Server-to-Server edit permission: new Hosting apps have disabled Information fields.
     var accountCannotEditS2S = false
+    /// Live run 6, 2026-11-27: an account that may create Server-to-Server apps but not change them. Zoom answers
+    /// every save (scopes, rename) with 401; the page shows the change, then it is gone on the next visit.
+    var refusesS2SWrites = false
+    private var refusedSave = false
 
     private var menuOpen = false
     private var dialog: ZoomDialog = .none
@@ -141,6 +145,7 @@ final class FixturePage: ZoomPage {
         default: break
         }
         if case .s2s(_, .information) = address, lockedInfoReads > 0 { lockedInfoReads -= 1 }
+        if refusedSave { s.saveRefused = true }
         return s
     }
 
@@ -193,7 +198,11 @@ final class FixturePage: ZoomPage {
                 if tab == .credentials { address = .s2s(id, .information) }
                 else if tab == .information, missingInfo(a).isEmpty { address = .s2s(id, .feature) }
                 else if tab == .feature { address = .s2s(id, .scopes) }
-                else if tab == .scopes { edit(id) { $0.scopes.formUnion($0.unsavedScopes); $0.unsavedScopes = [] }; address = .s2s(id, .activation) }
+                else if tab == .scopes {
+                    if refusesS2SWrites { refusedSave = true; edit(id) { $0.unsavedScopes = [] } }
+                    else { edit(id) { $0.scopes.formUnion($0.unsavedScopes); $0.unsavedScopes = [] } }
+                    address = .s2s(id, .activation)
+                }
             }
         case .addScopes: dialog = .addScopes(searchPresent: true, ticked: []); search = ""; ticked = []
         case .scopeCheckbox(let n): if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }

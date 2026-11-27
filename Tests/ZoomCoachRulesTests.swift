@@ -108,14 +108,14 @@ final class ZoomCoachRulesTests: XCTestCase {
     /// never changes, so the coach carries the later stages and the page picks the furthest shown.
     func testTheCreateFlowFollowsTheMenuAndTheDialog() {
         XCTAssertEqual(ZoomCoachRules.createFlow(.meetingApp), [
-            ZoomCoachStage(kind: .menuItem, label: "Build", text: "Press Build."),
+            ZoomCoachStage(kind: .menuItem, label: "Build app", text: "Press Build app."),
             ZoomCoachStage(kind: .chooseRow, label: "General app", text: "Choose General app."),
             ZoomCoachStage(kind: .createAfter, label: "General app", text: "Press Create."),
             ZoomCoachStage(kind: .nameField, label: "Create a General app", text: "Name it, for example Greenroom, then press Create."),
             ZoomCoachStage(kind: .createNamed, label: "Create a General app", text: "Press Create."),
         ])
         XCTAssertEqual(ZoomCoachRules.createFlow(.hostingApp).map(\.label),
-                       ["Build", "Server to server OAuth app", "Server to server OAuth app",
+                       ["Build app", "Server to server OAuth app", "Server to server OAuth app",
                         "Create a Server-to-Server OAuth app", "Create a Server-to-Server OAuth app"])
         XCTAssertEqual(created(.meetingApp, [])?.then, ZoomCoachRules.createFlow(.meetingApp))
         XCTAssertEqual(created(.hostingApp, [s2s, general])?.then, ZoomCoachRules.createFlow(.hostingApp),

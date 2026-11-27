@@ -9,7 +9,7 @@ final class ZoomActorRulesTests: XCTestCase {
     func testAllowListsPerStep() {
         typealias R = (String, ZoomActorStep, Bool)
         let table: [R] = [
-            ("Build", .createApp, true), ("build", .createApp, true), ("  Create ", .createApp, true),
+            ("Build app", .createApp, true), ("Build", .createApp, true), ("build", .createApp, true), ("  Create ", .createApp, true),
             ("General app", .createApp, true), ("Server to server OAuth app", .createApp, true), ("+", .createApp, true),
             ("Cancel", .createApp, false), ("Webhook only app", .createApp, false), ("Done", .createApp, false),
             ("Add Scopes", .addScopes, true), ("+ Add Scopes", .addScopes, true),
@@ -29,6 +29,7 @@ final class ZoomActorRulesTests: XCTestCase {
         }
         XCTAssertFalse(ZoomActorRules.isDenied("Activate your app"))
         XCTAssertFalse(ZoomActorRules.isDenied("Build"))
+        XCTAssertFalse(ZoomActorRules.isDenied("Build app"))
         // An allowed label with a denied word added is no longer an exact match, and denied anyway.
         XCTAssertFalse(ZoomActorRules.allowed("Create and publish", for: .createApp))
         XCTAssertFalse(ZoomActorRules.allowed("Done, delete", for: .addScopes))
@@ -74,9 +75,9 @@ final class ZoomActorRulesTests: XCTestCase {
 
     func testThePlanLineSaysWhatItWillDo() {
         XCTAssertEqual(ZoomActorRules.plan(.createApp, part: .meetingApp),
-                       "Greenroom will press + \u{2192} Build, choose General app and press Create.")
+                       "Greenroom will press + \u{2192} Build app, choose General app and press Create.")
         XCTAssertEqual(ZoomActorRules.plan(.createApp, part: .hostingApp),
-                       "Greenroom will press + \u{2192} Build, choose Server to server OAuth app and press Create.")
+                       "Greenroom will press + \u{2192} Build app, choose Server to server OAuth app and press Create.")
         XCTAssertEqual(ZoomActorRules.plan(.addScopes, part: .hostingApp),
                        "Greenroom will add the \(ZoomScopes.countWord) scopes: open + Add Scopes, tick each one and press Done.")
         XCTAssertEqual(ZoomActorRules.plan(.activate, part: .hostingApp), "Greenroom will press Activate your app.")
@@ -98,7 +99,7 @@ final class ZoomActorRulesTests: XCTestCase {
         XCTAssertEqual(m(.addScopes, r("no-add-scopes")), "Couldn\u{2019}t find + Add Scopes. Press it yourself; Copy scopes is in the bar.")
         XCTAssertEqual(m(.createApp, r("done")), "Pressed Create. Fill in what Zoom asks next.")
         XCTAssertEqual(m(.createApp, r("no-plus")), "Couldn\u{2019}t find the + button. Press it yourself.")
-        XCTAssertEqual(m(.createApp, r("no-build")), "Couldn\u{2019}t find Build in the menu. Press it yourself.")
+        XCTAssertEqual(m(.createApp, r("no-build")), "Couldn\u{2019}t find Build app in the menu. Press it yourself.")
         XCTAssertEqual(m(.createApp, r("no-radio")), "Couldn\u{2019}t choose the app type. Choose it yourself, then press Create.")
         XCTAssertEqual(m(.createApp, r("no-create")), "Chose the app type but couldn\u{2019}t find Create. Press it yourself.")
         XCTAssertEqual(m(.activate, r("done")), "Activated. Zoom now shows the app as activated.")

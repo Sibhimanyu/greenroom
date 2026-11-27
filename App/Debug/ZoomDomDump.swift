@@ -44,6 +44,37 @@ enum ZoomDomDump {
         }
     }
 
+    // MARK: A whitelist of look-only commands (open and close things, never create or save)
+
+    static let commandURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Greenroom/zoom-probe-cmd")
+    private static var timer: Timer?
+
+    /// The ONLY things the probe may do on the real account: open the + menu, open the Build dialog, Cancel a dialog or
+    /// panel, open the Add Scopes panel, go to an address. Never Create, Save, Done, a toggle, Activate, Regenerate or Delete.
+    static let commands: [String: String] = [
+        "openPlus": "var b=document.querySelector('button[aria-label=\"Add\"]'); if(b) b.click();",
+        "clickBuild": "var els=document.querySelectorAll('[role=menuitem],li,button'); for(var i=0;i<els.length;i++){ if((els[i].textContent||'').trim().indexOf('Build')===0 && els[i].closest('[role=menu],[role=presentation],.MuiPopover-root,.MuiMenu-root')){ els[i].click(); break; } }",
+        "cancelDialog": "var ds=document.querySelectorAll('[role=dialog],[aria-modal=\"true\"],.MuiDialog-root,.MuiDrawer-root'); for(var i=ds.length-1;i>=0;i--){ var bs=ds[i].querySelectorAll('button'); for(var j=0;j<bs.length;j++){ if((bs[j].textContent||'').trim()==='Cancel'){ bs[j].click(); i=-1; break; } } }",
+        "openAddScopes": "var bs=document.querySelectorAll('button,[role=button]'); for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\\s+/g,' ').trim(); if(t.replace('+','').trim().toLowerCase()==='add scopes'){ bs[i].click(); break; } }",
+    ]
+
+    /// Polls `zoom-probe-cmd` (one word, or `go <https://marketplace.zoom.us/...>`); runs it and deletes the file.
+    @MainActor static func startCommandsIfRequested() {
+        guard enabled else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard let raw = try? String(contentsOf: commandURL, encoding: .utf8) else { return }
+                try? FileManager.default.removeItem(at: commandURL)
+                let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if word.hasPrefix("go "), let u = URL(string: String(word.dropFirst(3))), ZoomMarketplacePages.isMarketplace(u) {
+                    ZoomMarketplaceWindow.shared.debugLoad(u)
+                } else if let js = commands[word] {
+                    ZoomMarketplaceWindow.shared.debugRun(js)
+                }
+            }
+        }
+    }
+
     /// Read-only. `labelsOnly`: credentials pages, where no control is described.
     static func script(labelsOnly: Bool) -> String {
         """
@@ -59,8 +90,48 @@ enum ZoomDomDump {
             out.dialogs.push({ tag: d.tagName.toLowerCase(), role: d.getAttribute('role') || '', cls: clip((typeof d.className === 'string' ? d.className : '').split(' ')[0], 40), heading: clip(h ? h.textContent : '', 80), path: path(d) });
           });
           document.querySelectorAll('h1,h2,h3,[role=heading],label').forEach(function (h) { if (vis(h) && out.headings.length < 60) out.headings.push({ tag: h.tagName.toLowerCase(), text: clip(h.textContent, 80) }); });
-          if (labelsOnly) return JSON.stringify(out);
+          if (labelsOnly) {
+            // R5's reader: where do the credential labels and their inputs sit? Lengths only, never values.
+            out.cred = [];
+            ['Account ID', 'Client ID', 'Client Secret'].forEach(function (w) {
+              var all = document.body.getElementsByTagName('*');
+              for (var i = 0; i < all.length; i++) {
+                var el = all[i], own = '';
+                for (var j = 0; j < el.childNodes.length; j++) if (el.childNodes[j].nodeType === 3) own += el.childNodes[j].nodeValue;
+                if (own.replace(/\\s+/g, ' ').trim() !== w || !vis(el)) continue;
+                var p = el, found = null, hops = 0;
+                for (; p && p !== document.body && hops < 5 && !found; hops++, p = p.parentElement) {
+                  var ins = p.querySelectorAll('input');
+                  for (var k = 0; k < ins.length; k++) if (el.compareDocumentPosition(ins[k]) & 4) { found = ins[k]; break; }
+                }
+                var around = [], q = el;
+                for (var up = 0; up < 3 && q && q !== document.body; up++, q = q.parentElement) {
+                  Array.prototype.forEach.call(q.children, function (ch) {
+                    var t = (ch.textContent || '').replace(/\\s+/g, ' ').trim();
+                    around.push({ up: up, tag: ch.tagName.toLowerCase(), len: t.length, keyLike: /^[A-Za-z0-9_-]{10,64}$/.test(t), hasInput: !!ch.querySelector('input'), isLabel: t === w });
+                  });
+                }
+                out.cred.push({ around: around.slice(0, 14), label: w, tag: el.tagName.toLowerCase(), path: path(el), hops: hops, input: found ? { type: found.getAttribute('type') || '', len: (found.value || '').length, readonly: !!found.readOnly, path: path(found) } : null });
+                break;
+              }
+            });
+            return JSON.stringify(out);
+          }
+          out.rows = [];
+          document.querySelectorAll('tr,[role=row]').forEach(function (r) {
+            if (out.rows.length > 20) return;
+            var cells = r.querySelectorAll('th,td,[role=cell],[role=gridcell],[role=columnheader]');
+            out.rows.push({ vis: vis(r), h: Math.round(r.getBoundingClientRect().height), cells: Array.prototype.map.call(cells, function (c) { return clip(c.textContent, 40); }) });
+          });
           var sel = 'button,[role=button],a[href],[role=menuitem],[role=tab],[role=switch],[role=checkbox],[role=radio],input,[role=option],th,[role=columnheader]';
+          out.items = [];
+          function tree(el, depth) {
+            var o = { t: el.tagName.toLowerCase(), r: el.getAttribute('role') || '', c: clip((typeof el.className === 'string' ? el.className : '').split(' ').slice(0, 2).join(' '), 50),
+                      ac: el.getAttribute('aria-checked') || el.getAttribute('aria-selected') || '', ty: el.getAttribute('type') || '', own: clip(Array.prototype.filter.call(el.childNodes, function (n) { return n.nodeType === 3; }).map(function (n) { return n.nodeValue; }).join(' '), 60), k: [] };
+            if (depth < 5) Array.prototype.forEach.call(el.children, function (ch, i) { if (i < 6) o.k.push(tree(ch, depth + 1)); });
+            return o;
+          }
+          document.querySelectorAll('[role=dialog] li').forEach(function (li, i) { if (i < 3) out.items.push(tree(li, 0)); });
           document.querySelectorAll(sel).forEach(function (el) {
             if (!vis(el) || out.controls.length > 160) return;
             var t = (el.tagName || '').toLowerCase();
@@ -68,6 +139,7 @@ enum ZoomDomDump {
                       ariaChecked: el.getAttribute('aria-checked') || '', checked: el.checked === true, disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
                       placeholder: clip(el.getAttribute('placeholder'), 40), path: path(el) };
             if (t !== 'input') d.text = clip(el.textContent, 70);
+            else { var n = el, hops = 0; while (n && hops++ < 4 && clip(n.textContent, 70).length < 3) n = n.parentElement; d.near = clip(n ? n.textContent : '', 70); }
             out.controls.push(d);
           });
           return JSON.stringify(out);

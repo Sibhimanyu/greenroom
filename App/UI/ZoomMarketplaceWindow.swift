@@ -219,7 +219,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// The page is a single-page app that draws late: look again a few times after each change.
     private func scheduleRefresh() {
         cancelTimers()
-        for delay in [0.2, 0.8, 2.0, 4.0] {
+        // Marketplace draws its list late (rows=0 then rows=1 in the real log): keep looking for a while.
+        for delay in [0.2, 0.8, 2.0, 4.0, 7.0, 10.0, 15.0] {
             let work = DispatchWorkItem { [weak self] in self?.refresh() }
             timers.append(work)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -374,6 +375,16 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
         return "data:image/png;base64," + png.base64EncodedString()
     }()
+
+    #if DEBUG
+    /// DEBUG probe only (`ZoomDomDump.commands` whitelist): run a look-only command, then look again.
+    func debugRun(_ js: String) {
+        webView?.evaluateJavaScript(js, in: nil, in: .defaultClient) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self?.refresh() }
+        }
+    }
+    func debugLoad(_ url: URL) { webView?.load(URLRequest(url: url)) }
+    #endif
 
     // MARK: DEBUG log (never page text, never values)
 

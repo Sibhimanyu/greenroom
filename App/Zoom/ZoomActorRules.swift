@@ -54,7 +54,7 @@ enum ZoomActorRules {
     /// Exact labels (normalized, lowercase) per step. The scope checkboxes are separate (`allowedScopeCheckbox`).
     static func allowList(for step: ZoomActorStep) -> [String] {
         switch step {
-        case .createApp: return ["+", "build", "general app", "server to server oauth app", "create"]
+        case .createApp: return ["+", "build app", "build", "general app", "server to server oauth app", "create"]
         case .addScopes: return ["add scopes", "+ add scopes", "done", "save", "continue"]
         case .activate: return ["activate", "activate your app"]
         case .enableSDK: return ["meeting sdk"]
@@ -90,7 +90,7 @@ enum ZoomActorRules {
         switch step {
         case .createApp:
             let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
-            return "Greenroom will press + \u{2192} Build, choose \(type) and press Create."
+            return "Greenroom will press + \u{2192} Build app, choose \(type) and press Create."
         case .addScopes:
             return "Greenroom will add the \(ZoomScopes.countWord) scopes: open + Add Scopes, tick each one and press Done."
         case .activate: return "Greenroom will press Activate your app."
@@ -114,8 +114,8 @@ enum ZoomActorRules {
         case (.addScopes, "no-panel"): return "The scopes panel didn\u{2019}t open. Press + Add Scopes yourself; Copy scopes is in the bar."
         case (.createApp, "done"): return "Pressed Create. Fill in what Zoom asks next."
         case (.createApp, "no-plus"): return "Couldn\u{2019}t find the + button. Press it yourself."
-        case (.createApp, "no-build"): return "Couldn\u{2019}t find Build in the menu. Press it yourself."
-        case (.createApp, "no-chooser"): return "The app type dialog didn\u{2019}t open. Press Build yourself."
+        case (.createApp, "no-build"): return "Couldn\u{2019}t find Build app in the menu. Press it yourself."
+        case (.createApp, "no-chooser"): return "The app type dialog didn\u{2019}t open. Press Build app yourself."
         case (.createApp, "no-radio"): return "Couldn\u{2019}t choose the app type. Choose it yourself, then press Create."
         case (.createApp, "no-create"): return "Chose the app type but couldn\u{2019}t find Create. Press it yourself."
         case (.activate, "done"): return "Activated. Zoom now shows the app as activated."

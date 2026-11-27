@@ -61,6 +61,26 @@ enum ZoomKeyReaderScript {
         }
         return null;
       }
+      // Zoom also shows some keys as plain text beside the label (a Draft app's Client ID): the sibling whose
+      // whole text is key-shaped. Anything else (dots, "Show") is not a key and is ignored.
+      function textSibling(text) {
+        for (var i = 0; i < labels.length; i++) {
+          var el = labels[i];
+          if (ownText(el) !== text) continue;
+          var p = el;
+          for (var hops = 0; p && p !== document.body && hops < 3; hops++, p = p.parentElement) {
+            var kids = p.children;
+            for (var j = 0; j < kids.length; j++) {
+              if (kids[j] === el || kids[j].contains(el) || el.contains(kids[j])) continue;
+              if (!(el.compareDocumentPosition(kids[j]) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+              var t = norm2(kids[j].textContent);
+              if (/^[A-Za-z0-9_-]{10,64}$/.test(t) && !kids[j].querySelector('input')) return t;
+            }
+          }
+        }
+        return null;
+      }
+      function norm2(s) { return (s || '').replace(/\\s+/g, ' ').trim(); }
       function byOrder(name) {
         var hasAccount = want.indexOf('accountID') >= 0;
         if (name === 'accountID') return texts[0] || null;
@@ -71,8 +91,10 @@ enum ZoomKeyReaderScript {
       var out = {};
       for (var k = 0; k < want.length; k++) {
         var name = want[k];
-        var input = byLabel(LABEL[name].toLowerCase()) || byOrder(name);
+        var input = byLabel(LABEL[name].toLowerCase());
         var v = input ? String(input.value || '').trim() : '';
+        if (!v) { var text = textSibling(LABEL[name]); if (text) v = text; }
+        if (!v) { var guess = byOrder(name); v = guess ? String(guess.value || '').trim() : ''; }
         if (v) out[name] = v;
       }
       return JSON.stringify(out);

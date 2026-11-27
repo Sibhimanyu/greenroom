@@ -13,7 +13,7 @@ import Foundation
 /// "What kind of app" dialog → Create). The page shows the furthest stage it can find.
 struct ZoomCoachStage: Equatable, Codable {
     enum Kind: String, Codable {
-        /// A menu item with exactly this text (the + menu's "Build").
+        /// A menu item with exactly this text (the + menu's "Build app").
         case menuItem
         /// The radio row with this label inside the "What kind of app" dialog.
         case chooseRow
@@ -76,7 +76,7 @@ enum ZoomCoachRules {
     static func createFlow(_ part: ZoomGuidePart) -> [ZoomCoachStage] {
         let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
         let heading = part == .hostingApp ? "Create a Server-to-Server OAuth app" : "Create a General app"
-        return [ZoomCoachStage(kind: .menuItem, label: "Build", text: "Press Build."),
+        return [ZoomCoachStage(kind: .menuItem, label: "Build app", text: "Press Build app."),
                 ZoomCoachStage(kind: .chooseRow, label: type, text: "Choose \(type)."),
                 ZoomCoachStage(kind: .createAfter, label: type, text: "Press Create."),
                 ZoomCoachStage(kind: .nameField, label: heading, text: "Name it, for example Greenroom, then press Create."),

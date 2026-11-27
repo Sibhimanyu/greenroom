@@ -130,11 +130,11 @@ enum ZoomActorScript {
     async function createApp() {
       var chooser = chooserRoot();
       if (!chooser) {
-        var item = findMenuItem('Build');
+        var item = findMenuItem('Build app') || findMenuItem('Build');
         if (!item) {
           var plus = findBuildButton();
           if (!plus || !pressFinder(plus)) return fin('no-plus');
-          item = await until(function () { return findMenuItem('Build'); });
+          item = await until(function () { return findMenuItem('Build app') || findMenuItem('Build'); });
           if (!item) return fin('no-build');
         }
         if (!press(item)) return fin('no-build');

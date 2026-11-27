@@ -106,7 +106,7 @@ enum ZoomFinderScript {
         }
         return null;
       }
-      // A visible menu item whose whole text is the label (the + menu's "Build").
+      // A visible menu item whose whole text is the label (the + menu's "Build app").
       function findMenuItem(label) {
         var want = norm(label), best = null, bestArea = 1e12;
         var els = document.querySelectorAll('[role=menuitem],[role=option],li,button,[role=button],a');

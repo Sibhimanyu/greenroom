@@ -10,6 +10,13 @@ final class ZoomKeyReaderScriptTests: XCTestCase {
         XCTAssertTrue(js.contains("password"))
     }
 
+    /// Real Basic information (2026-11-27): the Client ID is plain text in a sibling div, not an input.
+    func testTheReaderAlsoReadsAKeyShownAsPlainTextNextToItsLabel() {
+        let js = ZoomKeyReaderScript.source
+        XCTAssertTrue(js.contains("textSibling"))
+        XCTAssertTrue(js.contains("A-Za-z0-9_-"))
+    }
+
     func testTheReaderNeverActsOnThePageOrLogs() {
         let js = ZoomKeyReaderScript.source
         for banned in [".click(", ".focus(", "dispatchEvent", ".submit(", "console.", "fetch(", "XMLHttpRequest", "postMessage",

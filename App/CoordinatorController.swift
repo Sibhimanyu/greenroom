@@ -890,8 +890,8 @@ final class CoordinatorController: ObservableObject {
     /// and it covers a Record session, whose bar and Stage take the same changes.
     private var setupMeetingLive: Bool { phase.isSessionUp }
 
-    /// What a layout with nothing saved resolves to: the app's own values, kept in the old keys for the
-    /// state where no layout is active (R6.1, see `writeSetupFallback`).
+    /// What a layout with nothing saved resolves to: the app's own values, read from the old keys for the
+    /// state where no layout is active (R6.1: read, never written).
     private var setupFallback: MeetingSetup.Values {
         .init(cameraState: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
                                      shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
@@ -947,9 +947,27 @@ final class CoordinatorController: ObservableObject {
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
     }
 
-    /// Settings -> Layouts: Keep and Reset (R4.4), for P4's line.
+    /// Settings -> Layouts: Keep and Reset (R4.4), under the row that has a for-this-meeting change.
     func keepForThisMeeting(_ setting: MeetingSetup.Setting) { applySetupEvent(.keep(setting)) }
     func resetForThisMeeting(_ setting: MeetingSetup.Setting) { applySetupEvent(.reset(setting)) }
+
+    /// Home's one quiet line under a control: where that setting's value lives (R3.2, R4.3).
+    func homeSetupLine(_ setting: MeetingSetup.Setting) -> String? {
+        MeetingSetupLine.home(layoutName: layoutLibrary.active?.name, sessionUp: phase.isSessionUp,
+                              forThisMeeting: meetingSetup.isForThisMeeting(setting))
+    }
+
+    /// Settings -> Layouts' line under a row: "For this meeting: <value>", nil when that setting has no
+    /// change in effect (R4.4). The editor only ever shows the active layout, which is the one the setup holds.
+    func layoutsSetupLine(_ setting: MeetingSetup.Setting) -> String? {
+        let name: String
+        switch setting {
+        case .cameraState: name = meetingSetup.cameraState.name
+        case .cameraPiece: name = MeetingSetupLine.pieceName(saved: meetingSetup.saved.cameraPiece, inUse: meetingSetup.cameraPiece)
+        case .share: name = LookSummary.shareText(meetingSetup.share)
+        }
+        return MeetingSetupLine.layouts(forThisMeeting: meetingSetup.isForThisMeeting(setting), valueName: name)
+    }
 
     /// The layout library changed (a pick, an edit, Restore original, an undo, an import): a different
     /// active layout is a layout switch, an edit to the active one is a Layouts edit (R4.2, R5.1, R5.2).
@@ -987,33 +1005,14 @@ final class CoordinatorController: ObservableObject {
         if effect.inUse.contains(.cameraState) { applyCameraStateLive() }
     }
 
-    /// The module's saved values go into the active layout; with no layout active they go to the old
-    /// keys, the fallback R6.1 keeps (see `LayoutLibrary.active`, `layoutChoiceName`).
+    /// The module's saved values go into the active layout (which persists them). There is always one
+    /// (R6.1: `LayoutLibrary.ensureActive`, Leave my windows alone cannot be deleted, and a session of
+    /// either kind holds it). A damaged file with none keeps the change in memory only: the old
+    /// app-wide keys are import-only now, nothing writes them.
     private func writeSavedSetup(_ settings: Set<MeetingSetup.Setting>) {
-        let saved = meetingSetup.saved
-        if layoutLibrary.active != nil {
-            var next = layoutLibrary
-            if next.writeActive(saved, settings: settings) { layoutLibrary = next }
-            return
-        }
-        if settings.contains(.cameraPiece) {
-            let c = saved.cameraPiece
-            defaults.set(c.shape.rawValue, forKey: LayoutCamera.Key.shapeKey)
-            defaults.set(c.widthFraction, forKey: LayoutCamera.Key.widthKey)
-            defaults.set(c.rightInset, forKey: LayoutCamera.Key.rightInsetKey)
-            defaults.set(c.bottomInset, forKey: LayoutCamera.Key.bottomInsetKey)
-            defaults.set(c.cutoutHeightFraction, forKey: LayoutCamera.Key.cutoutHeightKey)
-            defaults.set(c.cutoutRightInset, forKey: LayoutCamera.Key.cutoutRightInsetKey)
-        }
-        if settings.contains(.share), let data = try? JSONEncoder().encode(saved.share) {
-            defaults.set(data, forKey: LayoutCamera.shareDefaultsKey)
-        }
-        if settings.contains(.cameraState) {
-            var next = cameraDirectorSettings
-            next.noCamera = saved.cameraState.noCamera
-            cameraDirectorSettings = next
-            cameraShownOnMyScreen = saved.cameraState.shownOnMyScreen
-        }
+        guard layoutLibrary.active != nil else { return }
+        var next = layoutLibrary
+        if next.writeActive(meetingSetup.saved, settings: settings) { layoutLibrary = next }
     }
 
     /// Settings -> Layouts: the saved camera state of the active layout (R4.2).
@@ -1166,6 +1165,20 @@ final class CoordinatorController: ObservableObject {
                     showsCamera: !cameraIsOff,
                     // Only me: open for the bubble, not drawn for everyone (R6.4).
                     mirrorsCamera: cameraIsMirrorOnly)
+    }
+
+    /// The same, from the SAVED values only: what Settings -> Layouts draws and edits, never a
+    /// for-this-meeting change (R4.5).
+    var savedStageLayout: StageLayout {
+        let saved = meetingSetup.saved
+        let piece = saved.cameraPiece
+        let target = Visibility.Target(saved.share)
+        return StageLayout(widthFraction: piece.widthFraction, rightInset: piece.rightInset,
+                           bottomInset: piece.bottomInset, cutoutHeightFraction: piece.cutoutHeightFraction,
+                           cutoutRightInset: piece.cutoutRightInset, shape: piece.shape,
+                           showsContent: !saved.share.sharesNothing,
+                           showsCamera: Visibility.cameraEveryoneSees(state: saved.cameraState, target: target).isOn,
+                           mirrorsCamera: Visibility.cameraMirrorOnly(state: saved.cameraState, target: target))
     }
 
     /// Only me: a mirror for the owner's bubble. The camera runs, the picture leaves it out.
@@ -1393,7 +1406,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The class is live and arranged, so another layout can be applied now.
-    var liveSessionLayoutID: UUID? { phase.isInMeeting ? sessionTemplate?.id : nil }
+    var liveSessionLayoutID: UUID? { phase.isInMeeting && !phase.isRecordMode ? sessionTemplate?.id : nil }
 
     private lazy var layoutEngine = LayoutEngine(chat: zoomChatBridge, log: { [weak self] in self?.log($0) })
 
@@ -1684,7 +1697,7 @@ final class CoordinatorController: ObservableObject {
             defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
         layoutLibrary = library
         // meeting-setup R2.4: the one owner is built from the active layout's saved values. A layout that
-        // saves nothing (and a library with no active layout) resolves to the old keys, the fallback R6.1 keeps.
+        // saves nothing (and a library with no active layout) resolves to the old keys, which are import-only (R6.1).
         // Locals only: `self` is not whole yet, and `didSet` does not run in init.
         let fallbackSetup = MeetingSetup.Values(
             cameraState: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
@@ -3342,6 +3355,11 @@ final class CoordinatorController: ObservableObject {
         guard phase.canStart else { return }
         apply(.recordStartRequested)
         let startID = phase.startID
+        // A Record session holds the active layout the way Start does (meeting-setup R6.1), so Home's
+        // layout tile and every `layoutChoiceLocked` read name it. It arranges nothing: Record places no
+        // windows, so `sessionArranges` is false and every placing gate stays shut.
+        sessionTemplate = layoutLibrary.active
+        sessionArranges = false
         studioPreviewOn = true
         lastStartWasRecordFlow = true
         recordFlowHUD = true
@@ -3693,6 +3711,7 @@ final class CoordinatorController: ObservableObject {
 
     private func tearDownRecordingScene() async {
         studioPreviewOn = false
+        sessionTemplate = nil
         await tearDownStage()
         publishPreviewFrame(nil)
         resumePreviewIfWanted()

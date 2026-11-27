@@ -811,6 +811,7 @@ struct HomeView: View {
     private var lookPicker: some View {
         HomeTilePanel(
             title: "Look", summary: "How you appear over what you share.", value: coordinator.webcamShape.label,
+            setupLine: coordinator.homeSetupLine(.cameraPiece),
             moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openCameraSettings() },
             width: nil
         ) {

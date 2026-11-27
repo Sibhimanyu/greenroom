@@ -42,6 +42,7 @@ struct HomeScreenPanel: View {
             gone: gone, goneName: share.displayName, permissionMissing: permissionMissing,
             cameraState: CameraTileRules.state(cameraIsOff: coordinator.cameraIsOff, deviceCount: cameraCount),
             moreTitle: "More screen settings\u{2026}", more: more,
+            setupLine: coordinator.homeSetupLine(.share),
             pickTile: pickTile,
             pickWindow: pickWindow,
             pickDisplay: { id in

@@ -33,7 +33,8 @@ struct LayoutSettingsTab: View {
 
     /// The one presence placement, shared with the floating bubble and Home.
     private var cameraModel: LayoutCameraModel {
-        let layout = coordinator.stageLayout
+        // The SAVED piece, share and state, never a for-this-meeting change: the canvas and the rows agree (R4.5).
+        let layout = coordinator.savedStageLayout
         return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape,
                                  cameraOff: !Visibility.cameraOnMyScreen(state: coordinator.savedCameraState).isOn,
                                  // The one rule decides who sees the camera (R6.1), under this layout's own share.
@@ -54,11 +55,19 @@ struct LayoutSettingsTab: View {
                                  previewRuns: { coordinator.setLayoutsCameraPreview($0) })
     }
 
-    /// Running: the live target decides what the capture shows. Not running: the layout's own.
+    /// The layout's saved share, running or not: the canvas draws what is saved (R4.5). A for-this-meeting
+    /// share shows as its own line under the row, not in the drawing.
     private var shownTarget: Visibility.Target {
-        Visibility.Target(coordinator.layoutChoiceLocked
-                          ? coordinator.shareTarget
-                          : (coordinator.layoutLibrary.active?.share ?? coordinator.shareTarget))
+        Visibility.Target(coordinator.meetingSetup.saved.share)
+    }
+
+    /// The running meeting's own values for the active layout's settings, with Keep and Reset (R4.4).
+    private var meetingNotes: ForThisMeetingNotes {
+        ForThisMeetingNotes(cameraState: coordinator.layoutsSetupLine(.cameraState),
+                            cameraPiece: coordinator.layoutsSetupLine(.cameraPiece),
+                            share: coordinator.layoutsSetupLine(.share),
+                            keep: { coordinator.keepForThisMeeting($0) },
+                            reset: { coordinator.resetForThisMeeting($0) })
     }
 
     var body: some View {
@@ -86,7 +95,8 @@ struct LayoutSettingsTab: View {
             applyNow: { coordinator.applyLayoutNow($0) },
             camera: cameraModel,
             share: shownTarget,
-            fallbackShare: coordinator.shareTarget,
+            fallbackShare: coordinator.meetingSetup.saved.share,
+            meetingNotes: meetingNotes,
             selectCamera: $coordinator.layoutsCameraRequested)
         .onAppear {
             apps = AppCatalog.installedAndRunning()
@@ -169,6 +179,8 @@ struct LayoutPageContent: View {
     var share: Visibility.Target = .wholeScreen
     /// The global share target, shown for a layout that has saved none.
     var fallbackShare = ShareTarget()
+    /// The running meeting's own values for the active layout, with Keep and Reset (R4.4).
+    var meetingNotes = ForThisMeetingNotes.none
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, slot: LayoutSlot)?
     /// Draws the Add panel in place under the row, for the off-screen render.
@@ -852,6 +864,9 @@ struct LayoutPageContent: View {
                      titleMenu: (two && slot == .second) ? template?.twoDisplays.map { secondMenu($0) } : nil,
                      sharedTag: template.flatMap { t in
                          LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? sharedTag(t) : nil },
+                     sharedNote: template.flatMap { t in
+                         LayoutEditorRules.carriesSharedControls(slot: slot, template: t)
+                             ? AnyView(meetingNotes.view(.share)) : nil },
                      headerAdd: template.map { addButton(slot: slot, template: $0) },
                      trailingStrip: slot == .main ? template.flatMap { addSecondStrip($0) } : nil,
                      trailingStripWidth: LayoutEditorRules.stripWidth(panelWidth: panelWidth > 0 ? panelWidth : 640),
@@ -1176,7 +1191,7 @@ struct LayoutPageContent: View {
                 set: { library.templates[i].camera = $0 })
         }
         return CameraInspector(camera: undoable(camera), piece: piece, canvasAspect: cameraCanvasAspect,
-                               readout: cameraReadout(camera), lookOpen: $lookOpen)
+                               readout: cameraReadout(camera), lookOpen: $lookOpen, notes: meetingNotes)
     }
 
     /// The display the camera is placed on, as width over height (the whole display, not the usable area).

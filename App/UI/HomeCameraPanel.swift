@@ -42,10 +42,11 @@ struct HomeCameraPanel: View {
             value: CameraPanelRules.headerValue(
                 noCamera: coordinator.cameraIsOff, switchOn: switchOn, chosenCount: chosenCount,
                 singleName: cameras.first { $0.id == single }?.name),
+            setupLine: coordinator.homeSetupLine(.cameraState),
             art: DockHintVisual.camera(off: coordinator.cameraIsOff),
             moreTitle: "More camera settings\u{2026}", onMore: more
         ) {
-            // This meeting only: the saved choice is in Settings -> Layouts.
+            // Saved to the active layout before a meeting, for this meeting during one: the line under the title says which.
             HomeTileSection(title: "Who sees my camera") {
                 HomeTileChoiceRow(
                     choices: CameraState.allCases.map { state in
@@ -57,7 +58,7 @@ struct HomeCameraPanel: View {
                     },
                     labelLines: 2,
                     pick: { coordinator.setLiveCameraState(CameraState.allCases[$0]) })
-                Text(coordinator.cameraState.detail + " Only for this meeting.")
+                Text(coordinator.cameraState.detail)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

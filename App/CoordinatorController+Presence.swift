@@ -187,6 +187,9 @@ extension CoordinatorController {
     func commitPreviewPlacement(_ box: PresenceBox, source: LayoutEditSource) {
         if source.writesSavedLayout {
             savedEditCameraPiece(placing: box)
+            // The drag moved the Stage's picture; a saved edit that leaves the piece in use alone
+            // (a for-this-meeting change is in effect) puts it back.
+            stage?.updatePlacement(stageLayout)
         } else {
             changeCameraPiece(placing: box)
         }

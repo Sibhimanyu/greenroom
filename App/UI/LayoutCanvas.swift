@@ -192,6 +192,8 @@ struct LayoutCanvas: View {
     /// in place of its name, the "Everyone sees this" tag on the shared canvas, and the +.
     var titleMenu: AnyView?
     var sharedTag: AnyView?
+    /// "For this meeting: ..." with Keep and Reset, under the header of the display that carries the share (R4.4).
+    var sharedNote: AnyView?
     var headerAdd: AnyView?
     /// The dashed strip beside the main canvas that adds a second display (R29.3): as tall as the
     /// canvas, at its right edge. Only the main canvas has one, and only without a second display.
@@ -252,6 +254,7 @@ struct LayoutCanvas: View {
         VStack(alignment: .leading, spacing: 6) {
             // The header sits over the canvas, not over the strip: its right edge is the canvas's.
             if showsHeader { header.padding(.trailing, trailingStripReserve) }
+            if showsHeader, let sharedNote { sharedNote.padding(.trailing, trailingStripReserve) }
             if let trailingStrip {
                 HStack(alignment: .top, spacing: 6) {
                     bezel

@@ -40,6 +40,8 @@ struct SharePopout: View {
     var sharedDisplay: Binding<LayoutSlot>?
     var moreTitle: String?
     var more: (() -> Void)?
+    /// Home: where the share lives ("Saved to ...", "For this meeting"). Layouts shows its own row instead.
+    var setupLine: String?
     /// Whole screen, Whiteboard or Just me was picked (A window opens the list instead).
     let pickTile: (ScreenPanelRules.Tile) -> Void
     let pickWindow: (SharePopoutWindow) -> Void
@@ -85,7 +87,7 @@ struct SharePopout: View {
         let selectedTile = ScreenPanelRules.tile(for: SharePopoutRules.shareKind(effective.kind))
         HomeTilePanel(
             title: SharePopoutRules.title(context), summary: "What everyone sees behind you.", value: value,
-            art: art, moreTitle: moreTitle, onMore: more
+            setupLine: setupLine, art: art, moreTitle: moreTitle, onMore: more
         ) {
             ForEach(sections, id: \.self) { section in
                 switch section {

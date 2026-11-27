@@ -43,17 +43,17 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 - R2.4 The coordinator keeps no other stored copy of these three values. Any `@Published` mirror kept for `$` sinks is written only from the module, as `SessionPhase.syncFlags` does for the phase. (built in P3: `CoordinatorController.meetingSetup`; `cameraState`, `webcamShape`, the bubble fractions and `shareTarget` are computed reads, their setters are the Home door; no mirror was needed because the one `$` sink reads `$meetingSetup`)
 - R2.5 When the value in use changes, the Stage gets it. No caller has to call `requestShapeApply()` for these three settings. (built in P3: `applySetupEffect`; `requestShapeApply` stays only for the Look and the display pick)
 
-**R3. Before a meeting, a change is saved.** (D1) R3.1 built (P3); R3.2, R3.3 planned (P4)
+**R3. Before a meeting, a change is saved.** (D1) R3.1 built (P3); R3.2, R3.3 built (P4)
 - R3.1 Given no meeting is live, when the camera state, camera piece or share is changed on Home, the present menu, a shortcut or Settings → Layouts, then the active layout's saved value changes and no for-this-meeting change exists. (module built in P1, wired in P3)
-- R3.2 Home's camera, share and camera-piece controls show one line naming the active layout, for example "Saved to Raj San Mode". "Only for this meeting" is never shown while no meeting is live.
-- R3.3 Settings → Layouts and Home show the same value at all times while no meeting is live.
+- R3.2 Home's camera, share and camera-piece controls show one line naming the active layout, for example "Saved to Raj San Mode". "Only for this meeting" is never shown while no meeting is live. (built in P4: `MeetingSetupLine.home`, shown by `HomeTilePanel.setupLine`; the static "Only for this meeting." is gone)
+- R3.3 Settings → Layouts and Home show the same value at all times while no meeting is live. (built in P4 as a property: with no meeting every change saves and clears the change, so value in use == saved; `MeetingSetupLineTests`)
 
-**R4. During a meeting, a change is for this meeting.** (D2) R4.1, R4.2 built (P3); R4.3 to R4.5 planned (P4)
+**R4. During a meeting, a change is for this meeting.** (D2) R4.1, R4.2 built (P3); R4.3 to R4.5 built (P4)
 - R4.1 Given a meeting is live, when the camera state, camera piece or share is changed on Home, the bar, the toolbar or the present menu, then the meeting gets it, and the saved layout does not change. (module built in P1, wired in P3; needs a live check)
 - R4.2 Given a meeting is live, when it is changed in Settings → Layouts, then the saved value changes. If there is no for-this-meeting change for that setting, the meeting gets it as well. (module built in P1, wired in P3: a library edit is followed as a saved edit; needs a live check)
-- R4.3 Home's line reads "For this meeting" while a for-this-meeting change is in effect.
-- R4.4 Settings → Layouts shows the saved value. Where a for-this-meeting change is in effect for the active layout, it shows one line, for example "For this meeting: Only me", with **Keep** (saves the change into the layout and clears it) and **Reset** (clears it, so the meeting gets the saved value). (Keep and Reset: module built in P1)
-- R4.5 The Layouts canvas draws the saved camera piece, never a for-this-meeting change, so its drawing and its rows always agree.
+- R4.3 Home's line reads "For this meeting" while a for-this-meeting change is in effect. (built in P4; a meeting up with no change reads "From <layout>", so the panel keeps one height and the person is told before they pick that it will not be saved)
+- R4.4 Settings → Layouts shows the saved value. Where a for-this-meeting change is in effect for the active layout, it shows one line, for example "For this meeting: Only me", with **Keep** (saves the change into the layout and clears it) and **Reset** (clears it, so the meeting gets the saved value). (Keep and Reset: module built in P1; P4: `ForThisMeetingLine` under the camera-state row, the shape row and the shared display's header, buttons call `keepForThisMeeting` / `resetForThisMeeting`, folds with `Collapsible`; only the active layout is ever shown in the editor)
+- R4.5 The Layouts canvas draws the saved camera piece, never a for-this-meeting change, so its drawing and its rows always agree. (built in P4: `LayoutSettingsTab.cameraModel` reads `savedStageLayout` and the saved share; before P4 it drew `stageLayout`, the value in use. A drag in Layouts that leaves a for-this-meeting piece in effect puts the Stage back)
 
 **R5. When for-this-meeting changes end.** (D4, D8) built (P3; needs a live check)
 - R5.1 Start, Snap Back, a layout switch (by any route: Home, menu bar, present menu, shortcut, Layouts) and the meeting ending each drop every for-this-meeting change. The one exception is R5.4: a camera turned Off for this meeting survives a layout switch. (module built in P1, wired in P3)
@@ -62,8 +62,8 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 
 - R5.4 Given a camera turned Off for this meeting, when the layout is switched, then the camera is still Off and every other for-this-meeting change is dropped. Start, Snap Back and the meeting ending still drop it. (D8; built in P3, module and tests)
 
-**R6. No other copies.** (D6) R6.2 built (P3); R6.1 not done, see below
-- R6.1 The no-layout fallback writes for `webcamShape` and `shareTarget` are removed after a search confirms nothing reads them. The old keys become import-only in the settings file. **Not done in P3:** a "no layout" state is reachable (see the finding below), so the fallback stays. Writes to those keys now happen only while no layout is active (`writeSavedSetup`); with a layout active nothing writes them.
+**R6. No other copies.** (D6) R6.1 and R6.2 built
+- R6.1 The no-layout fallback writes for `webcamShape` and `shareTarget` are removed after a search confirms nothing reads them. The old keys become import-only in the settings file. (built in P4: a Record session now holds the active layout like Start; no normal path leaves no active layout, so `writeSavedSetup` writes only into the layout. The old keys are still READ at launch for a layout that saves nothing and for a library with no active layout, never written. A damaged file with no active layout keeps changes in memory only. See the finding below.)
 - R6.2 A drag in Settings → Layouts saves only the camera piece being dragged, never a value taken from a working copy. (built in P3: `LayoutCamera.placing`, `savedEditCameraPiece`)
 
 ## Phases
@@ -73,13 +73,13 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 | P1 | The pure Meeting setup module and its tests: R2.1 to R2.3, R3.1, R4.1, R4.2, R5.1 (as module behaviour) | built | 91f9e11 |
 | P2 | Camera state per layout, migration, settings file: R1 | built | 811a398 |
 | P3 | Wire the coordinator to the module; remove the working copies; layout switch brings the layout in: R2.4, R2.5, R5.2, R5.3, R5.4, R6.2 (R6.1 left, see finding) | built | 789663d |
-| P4 | Screens: Home's layout line, Layouts' "For this meeting" line with Keep and Reset, canvas from saved: R3.2, R3.3, R4.3 to R4.5 | planned | |
+| P4 | Screens: Home's layout line, Layouts' "For this meeting" line with Keep and Reset, canvas from saved, Record holds the layout and the fallback writes go: R3.2, R3.3, R4.3 to R4.5, R6.1 | built | HASH |
 
-Live checks needed (owner watching): R4.1, R4.2, R5.2 in a real meeting.
+Live checks needed (owner watching): R4.1, R4.2, R5.2, R4.3, R4.4 (Keep, Reset) in a real meeting, and a Record start (Home's layout tile names the layout).
 
-## Finding: R6.1, "No layout" is reachable
+## Finding: R6.1, "No layout" was reachable (fixed in P4)
 
-Home's layout tile reads "No layout" when `CoordinatorController.layoutChoiceName` (CoordinatorController.swift, `layoutChoiceName`) answers "None", mapped at `HomeView.swift:934` and `HomeTilePanelRules.headerValue`. That happens whenever a session is up (`layoutChoiceLocked` = `phase.isInMeeting`) and `sessionTemplate` is nil. Only `start()` sets `sessionTemplate`; `startRecordingFlow()` never does, and a Record start is `isRunning`, so Home shows "No layout" while a Record session is starting. Separately, `layoutLibrary.active` is nil in a library with no Leave my windows alone (`ensureActive` keeps it nil there), which the normal flows cannot produce but a damaged file could. Because of this the no-layout fallback keys stay (read at launch for a layout that saves nothing, written only while no layout is active). To finish R6.1: make `layoutChoiceName` and the Record flow use the active layout, then delete the fallback.
+Home's layout tile reads "No layout" when `CoordinatorController.layoutChoiceName` (CoordinatorController.swift, `layoutChoiceName`) answers "None", mapped at `HomeView.swift:934` and `HomeTilePanelRules.headerValue`. That happens whenever a session is up (`layoutChoiceLocked` = `phase.isInMeeting`) and `sessionTemplate` is nil. Only `start()` sets `sessionTemplate`; `startRecordingFlow()` never does, and a Record start is `isRunning`, so Home shows "No layout" while a Record session is starting. Separately, `layoutLibrary.active` is nil in a library with no Leave my windows alone (`ensureActive` keeps it nil there), which the normal flows cannot produce but a damaged file could. Because of this the no-layout fallback keys stay (read at launch for a layout that saves nothing, written only while no layout is active). P4 fixed it: `startRecordingFlow` sets `sessionTemplate = layoutLibrary.active` (and `sessionArranges = false`, since Record places no windows; `tearDownRecordingScene` clears it), and the fallback writes are deleted. What remains: a damaged file with no active layout still reads "No layout" and keeps changes in memory only.
 
 ## Needs a live check (P3 wiring, no test can reach it)
 

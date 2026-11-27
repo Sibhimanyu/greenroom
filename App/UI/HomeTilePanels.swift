@@ -24,6 +24,8 @@ struct HomeTilePanel<Content: View>: View {
     var value: String?
     /// An optional extra line under the summary, with an SF Symbol.
     var note: (symbol: String, text: String)?
+    /// Where this setting's value lives ("Saved to Raj San Mode", "For this meeting": MeetingSetupLine). nil hides it.
+    var setupLine: String?
     /// Small art at the header's leading edge (the old hover card's schematic).
     var art: AnyView?
     /// Footer link ("More look settings…"); nil hides the footer.
@@ -87,6 +89,12 @@ struct HomeTilePanel<Content: View>: View {
                 Label(note.text, systemImage: note.symbol)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let setupLine {
+                Text(setupLine)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Where this is kept: \(setupLine)")
             }
         }
     }

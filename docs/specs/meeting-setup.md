@@ -73,7 +73,7 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 | P1 | The pure Meeting setup module and its tests: R2.1 to R2.3, R3.1, R4.1, R4.2, R5.1 (as module behaviour) | built | 91f9e11 |
 | P2 | Camera state per layout, migration, settings file: R1 | built | 811a398 |
 | P3 | Wire the coordinator to the module; remove the working copies; layout switch brings the layout in: R2.4, R2.5, R5.2, R5.3, R5.4, R6.2 (R6.1 left, see finding) | built | 789663d |
-| P4 | Screens: Home's layout line, Layouts' "For this meeting" line with Keep and Reset, canvas from saved, Record holds the layout and the fallback writes go: R3.2, R3.3, R4.3 to R4.5, R6.1 | built | HASH |
+| P4 | Screens: Home's layout line, Layouts' "For this meeting" line with Keep and Reset, canvas from saved, Record holds the layout and the fallback writes go: R3.2, R3.3, R4.3 to R4.5, R6.1 | built | f1c4010 |
 
 Live checks needed (owner watching): R4.1, R4.2, R5.2, R4.3, R4.4 (Keep, Reset) in a real meeting, and a Record start (Home's layout tile names the layout).
 

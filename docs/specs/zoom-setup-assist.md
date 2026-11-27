@@ -157,6 +157,18 @@ The guide's Zoom step is calm: title and one line; ONE large button, "Set up Zoo
 
 Status: built (`ZoomConnectRulesTests`); renders in `scripts/render/zoom-guide.sh`. R4's row buttons and R12's "Find my app" step button no longer have a place on screen (the steps are text in the manual route); the rows rule stays tested, and Find my app lives on in the coach card on Created apps.
 
+### R15. Created apps is a coached step; passkeys; diagnosis
+
+Owner live test, 2026-11-27: the window opened on Created apps and no coach appeared. Cause found in the code: `ZoomCoachRules` had no case for `createdApps` (it returned nil unless the keys were filled but no app ID was known), so there was nothing to draw; the script, the closed shadow root and the `.defaultClient` world were not at fault. Other things made safer: the coach script now answers with a status word (`drawn`, `no-target`, `cleared`), the mark image hides itself if a page's CSP refuses the data URI, and DEBUG builds append script errors, the coach call's result and the page kind (never page text, IDs or values) to `~/Library/Logs/Greenroom/zoom-window.log`. The host element re-attaches itself if Zoom's page removes it, and a mutation observer redraws when a target appears late (both already in the script).
+
+- Created apps is always coached. A read-only scan (`ZoomAppListScript`, shared with the coach so a row index means the same in both) lists the table rows' **Type** text only (never an app's name; found by the "Type" header, with the known type words as the fallback). `ZoomCoachRules` decides: exactly one row of the part's type (Meeting app: General app; Hosting app: Server-to-Server OAuth, hyphens optional) spotlights that row, "This is your Meeting app. Click it." (Hosting likewise); several spotlight the first, "Click the General app you made for Greenroom." (or "\u2026the Server-to-Server OAuth app\u2026"); none spotlights the round + button (by an aria-label or title with build, create or add, else the button after the "Developer" heading), "Press + to build your Meeting app." The header stays the mark, "Greenroom" and "Step 1 of N". (The brief's `idKnown` input was not needed: the rows say what to do.)
+- The bar on Created apps says "Meeting app \u00B7 Find your app" when a matching row exists, else "Meeting app \u00B7 Create the app".
+- Passkeys cannot work in this window (WebAuthn for other sites needs Apple's web-browser entitlement). Google's passkey challenge (`accounts.google.com/.../signin/challenge/pk`, `/presend`, `/error`) is its own page kind, `.passkey` (exact host only; Zoom's own passkey page was not identified). The coach says "Passkeys don't work in this window. Press Try another way and use your password, or sign in in Safari.", spotlighting "Try another way" if found by its exact text and showing the card alone if not. The bar says "Sign in to Zoom" with **Open in Safari** as its contextual button. The coach also runs on accounts.google.com; it never clicks and reads only the button's text match.
+
+Acceptance: `ZoomCoachRulesTests`, `ZoomBarRulesTests`, `ZoomMarketplacePagesTests`, `ZoomSignInStateRulesTests` (rows, matching, passkey pages); mock renders in `scripts/render/zoom-coach.sh` (Created apps with two rows, no match, passkey page; through the real scan).
+
+Status: built; the real Created apps table and Google's real passkey page are untested live (the mocks follow the structure the owner described).
+
 ## Plan
 
 1. Pure rules first, red then green: R2, R4 URLs, R3, R5 decide, R1 placement, R7.

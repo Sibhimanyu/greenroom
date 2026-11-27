@@ -19,6 +19,10 @@ enum ZoomMarketplacePage: Equatable, Hashable {
     case s2s(String, ZoomS2STab)
     case general(String, ZoomGeneralTab)
     case signIn
+    /// Google's passkey challenge: passkeys cannot work in this window (no web-browser entitlement).
+    case passkey
+
+    var isSignIn: Bool { self == .signIn || self == .passkey }
 
     /// Which of your two apps the page belongs to; nil for pages that are neither (yet).
     var app: ZoomOwnApp? {
@@ -26,6 +30,18 @@ enum ZoomMarketplacePage: Equatable, Hashable {
         case .s2s: return .s2s
         case .general: return .sdk
         default: return nil
+        }
+    }
+
+    /// The page's kind for a debug log: no ID, no query.
+    var kindName: String {
+        switch self {
+        case .createdApps: return "createdApps"
+        case .chooseType: return "chooseType"
+        case .s2s(_, let tab): return "s2s.\(tab)"
+        case .general(_, let tab): return "general.\(tab)"
+        case .signIn: return "signIn"
+        case .passkey: return "passkey"
         }
     }
 
@@ -60,7 +76,11 @@ enum ZoomMarketplacePages {
         guard url.scheme == "https", url.user == nil, url.port == nil,
               let host = url.host?.lowercased() else { return nil }
         let parts = url.path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        if identityHosts.contains(host) { return .signIn }
+        if identityHosts.contains(host) {
+            // .../signin/challenge/pk, /pk/presend, /pk/error: the passkey challenge, which cannot work here.
+            if host == "accounts.google.com", let c = parts.firstIndex(of: "challenge"), c + 1 < parts.count, parts[c + 1] == "pk" { return .passkey }
+            return .signIn
+        }
         if host == "zoom.us" || host == "www.zoom.us" || host == "accounts.zoom.us" {
             return parts.first == "signin" ? .signIn : nil
         }
@@ -112,7 +132,7 @@ enum ZoomMarketplacePages {
             case .scopes: path = "/develop/applications/\(id)/scopes"
             case .other: return nil
             }
-        case .signIn: return nil
+        case .signIn, .passkey: return nil
         }
         return URL(string: "https://\(host)\(path)")
     }

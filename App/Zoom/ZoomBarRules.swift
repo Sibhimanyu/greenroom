@@ -19,6 +19,8 @@ struct ZoomBarFacts: Equatable {
     var meetingComplete: Bool
     var hostingComplete: Bool
     var signIn: ZoomSignInState = .unknown
+    /// On Created apps: a row of the part's app type is in the table.
+    var hasMatchingRow = false
 }
 
 enum ZoomBarContext: Equatable {
@@ -27,6 +29,8 @@ enum ZoomBarContext: Equatable {
     /// "Hosting app is set up", with a green check.
     case setUp(String)
     case signIn
+    /// On a passkey page: Safari is the way through, right there in the bar.
+    case openInSafari
 
     var title: String {
         switch self {
@@ -34,6 +38,7 @@ enum ZoomBarContext: Equatable {
         case .copyScopes: return "Copy scopes"
         case .setUp(let text): return text
         case .signIn: return "Sign in"
+        case .openInSafari: return "Open in Safari"
         }
     }
 }
@@ -65,8 +70,8 @@ enum ZoomBarRules {
     private static let s2sShort = ["Choose Server to server OAuth app", "Add the scopes", "Activate the app", "Copy the keys"]
 
     static func bar(_ f: ZoomBarFacts) -> ZoomBar {
-        let offersSignOut = ZoomSignInStateRules.offersSignOut(f.signIn)
-        let onSignInPage = f.page == .signIn
+        let onSignInPage = f.page?.isSignIn == true
+        let offersSignOut = ZoomSignInStateRules.offersSignOut(f.signIn) && !onSignInPage
         let part: ZoomGuidePart = f.page?.app.map { $0 == .sdk ? .meetingApp : .hostingApp } ?? f.part
         let isSignedOut = onSignInPage || f.signIn == .signedOut
 
@@ -80,6 +85,8 @@ enum ZoomBarRules {
             title = part.title + dot + "Step \(step) of \(total)" + dot + short[step - 1]
         } else if let page = f.page, page.app != nil {
             title = part.title + dot + "Set up the app"
+        } else if f.page == .createdApps {
+            title = part.title + dot + (f.hasMatchingRow ? "Find your app" : "Create the app")
         } else {
             title = part.title + dot + "Find or create the app"
         }
@@ -88,7 +95,8 @@ enum ZoomBarRules {
         let partComplete = part == .meetingApp ? f.meetingComplete : f.hostingComplete
         let onCredentials = f.page.map { ZoomMarketplacePages.keyFields(on: $0) != nil } ?? false
         let context: ZoomBarContext
-        if onSignInPage { context = .none }
+        if f.page == .passkey { context = .openInSafari }
+        else if onSignInPage { context = .none }
         else if f.signIn == .signedOut { context = .signIn }
         else if f.page == .s2s(f.page?.appID ?? "", .scopes), part == .hostingApp { context = .copyScopes }
         else if onCredentials && partComplete { context = .setUp("\(part.title) is set up") }

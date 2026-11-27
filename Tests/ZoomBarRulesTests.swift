@@ -6,8 +6,9 @@ final class ZoomBarRulesTests: XCTestCase {
     private let mid = "AbC_123-xyZ789qrstuvw1", hid = "ZzZ_999-aaBBcc1122"
 
     private func bar(_ part: ZoomGuidePart, _ page: ZoomMarketplacePage?, meeting: Bool = false, hosting: Bool = false,
-                     ids: ZoomAppIDs = ZoomAppIDs(), signIn: ZoomSignInState = .signedIn) -> ZoomBar {
-        ZoomBarRules.bar(ZoomBarFacts(part: part, page: page, ids: ids, meetingComplete: meeting, hostingComplete: hosting, signIn: signIn))
+                     ids: ZoomAppIDs = ZoomAppIDs(), signIn: ZoomSignInState = .signedIn, hasRow: Bool = false) -> ZoomBar {
+        ZoomBarRules.bar(ZoomBarFacts(part: part, page: page, ids: ids, meetingComplete: meeting, hostingComplete: hosting, signIn: signIn,
+                                      hasMatchingRow: hasRow))
     }
 
     func testTheTitleNamesThePartStepAndWhatToDo() {
@@ -21,7 +22,7 @@ final class ZoomBarRulesTests: XCTestCase {
     }
 
     func testBeforeAnAppPageIsKnown() {
-        XCTAssertEqual(bar(.hostingApp, .createdApps).title, "Hosting app \u{00B7} Find or create the app")
+        XCTAssertEqual(bar(.hostingApp, .createdApps).title, "Hosting app \u{00B7} Create the app")
         XCTAssertEqual(bar(.meetingApp, nil).title, "Meeting app \u{00B7} Find or create the app")
     }
 
@@ -115,5 +116,26 @@ final class ZoomBarRulesTests: XCTestCase {
         XCTAssertFalse(bar(.hostingApp, .createdApps, signIn: .signedOut).offersSignOut)
         // An unknown state does not change the words.
         XCTAssertEqual(bar(.hostingApp, .s2s(hid, .scopes), signIn: .unknown).context, .copyScopes)
+    }
+
+    func testCreatedAppsSaysFindYourAppWhenARowMatches() {
+        XCTAssertEqual(bar(.meetingApp, .createdApps, hasRow: true).title, "Meeting app \u{00B7} Find your app")
+        XCTAssertEqual(bar(.hostingApp, .createdApps, hasRow: true).title, "Hosting app \u{00B7} Find your app")
+        XCTAssertEqual(bar(.meetingApp, .createdApps, hasRow: false).title, "Meeting app \u{00B7} Create the app")
+        // A page that is not Created apps ignores it.
+        XCTAssertEqual(bar(.hostingApp, nil, hasRow: true).title, "Hosting app \u{00B7} Find or create the app")
+        XCTAssertEqual(bar(.hostingApp, .signIn, hasRow: true).title, "Sign in to Zoom")
+    }
+
+    func testThePasskeyPageSaysSignInAndOffersSafariRightThere() {
+        for state in [ZoomSignInState.unknown, .signedIn, .signedOut] {
+            let b = bar(.hostingApp, .passkey, signIn: state)
+            XCTAssertEqual(b.title, "Sign in to Zoom")
+            XCTAssertEqual(b.context, .openInSafari)
+            XCTAssertEqual(ZoomBarContext.openInSafari.title, "Open in Safari")
+            XCTAssertEqual(b.primary, ZoomBarPrimary.none)
+            XCTAssertFalse(b.offersSignOut)
+        }
+        XCTAssertEqual(bar(.meetingApp, .passkey, meeting: true, hosting: true).primary, ZoomBarPrimary.none)
     }
 }

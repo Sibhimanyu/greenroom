@@ -99,6 +99,11 @@ struct ZoomBarView: View {
             }
             .lineLimit(1)
             .fixedSize()
+        case .openInSafari:
+            Button(bar.context.title, action: onOpenInSafari)
+                .controlSize(.small)
+                .fixedSize()
+                .help("Passkeys do not work in this window; sign in in Safari")
         case .signIn:
             Button(bar.context.title, action: onSignIn)
                 .controlSize(.small)

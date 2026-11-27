@@ -95,4 +95,75 @@ final class ZoomCoachRulesTests: XCTestCase {
         XCTAssertTrue(js.contains("font-weight:600"))
         XCTAssertFalse(js.contains("http"), "no address anywhere in the script")
     }
+
+    // R15: Created apps is a real step, always coached.
+
+    private func created(_ part: ZoomGuidePart, _ rows: [String]?, tips: Bool = true) -> ZoomCoach? {
+        ZoomCoachRules.coach(part: part, page: .createdApps, keysFilled: false, tipsOn: tips, appRows: rows)
+    }
+    private let general = "General app \u{00B7} User Managed", s2s = "Server-to-Server OAuth \u{00B7} Intend to publish: No"
+
+    func testOneMatchingRowIsSpotlitAndNamedForThePart() {
+        XCTAssertEqual(created(.meetingApp, [s2s, general]),
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "This is your Meeting app. Click it.", rowIndex: 1))
+        XCTAssertEqual(created(.hostingApp, [s2s, general]),
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "This is your Hosting app. Click it.", rowIndex: 0))
+    }
+
+    func testSeveralMatchingRowsSpotlightTheFirst() {
+        XCTAssertEqual(created(.meetingApp, [s2s, general, "General app", general]),
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "Click the General app you made for Greenroom.", rowIndex: 1))
+        XCTAssertEqual(created(.hostingApp, [general, s2s, s2s]),
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "Click the Server-to-Server OAuth app you made for Greenroom.", rowIndex: 1))
+    }
+
+    func testNoMatchingRowPointsAtThePlusButton() {
+        XCTAssertEqual(created(.meetingApp, [s2s]),
+                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 3", text: "Press + to build your Meeting app."))
+        XCTAssertEqual(created(.hostingApp, []),
+                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 4", text: "Press + to build your Hosting app."))
+        XCTAssertEqual(created(.hostingApp, [general])?.kind, .build)
+    }
+
+    func testTypeTextIsMatchedLooselyButNeverByAppName() {
+        XCTAssertEqual(ZoomCoachRules.matchingRows(.hostingApp, ["server to server oauth app", "GENERAL APP"]), [0])
+        XCTAssertEqual(ZoomCoachRules.matchingRows(.meetingApp, ["server to server oauth app", "GENERAL APP"]), [1])
+        XCTAssertEqual(ZoomCoachRules.matchingRows(.meetingApp, ["Greenroom", "Webhook only app"]), [])
+        XCTAssertEqual(ZoomCoachRules.matchingRows(.check, [general]), [])
+    }
+
+    func testNotScannedYetOrTipsOffMeansNoCoach() {
+        XCTAssertNil(created(.meetingApp, nil))
+        XCTAssertNil(created(.meetingApp, [general], tips: false))
+        XCTAssertNil(created(.check, [general]))
+    }
+
+    func testTheRowIndexTravelsInTheJSON() throws {
+        let c = try XCTUnwrap(created(.meetingApp, [s2s, general]))
+        let obj = try JSONSerialization.jsonObject(with: Data(c.json.utf8)) as? [String: Any]
+        XCTAssertEqual(obj?["kind"] as? String, "appRow")
+        XCTAssertEqual(obj?["rowIndex"] as? Int, 1)
+    }
+
+    func testTheScriptsShareOneRowScanAndReportAStatus() {
+        let js = ZoomCoachScript.source
+        XCTAssertTrue(js.contains("scanAppRows"))
+        for status in ["'drawn'", "'no-target'", "'cleared'"] { XCTAssertTrue(js.contains(status), status) }
+        let scan = ZoomAppListScript.source
+        XCTAssertTrue(scan.contains("scanAppRows"))
+        for banned in [".click(", ".focus(", "dispatchEvent", ".submit(", "console.", "fetch(", "XMLHttpRequest", "postMessage", "localStorage", "document.cookie", ".value ="] {
+            XCTAssertFalse(scan.contains(banned), banned)
+        }
+    }
+
+    func testThePasskeyPageSaysWhatToDoInsteadAndStillShowsIfTheButtonIsMissing() {
+        let expected = ZoomCoach(label: "Try another way", kind: .control, counter: "",
+                                 text: "Passkeys don\u{2019}t work in this window. Press Try another way and use your password, or sign in in Safari.",
+                                 optional: true)
+        for part in [ZoomGuidePart.meetingApp, .hostingApp, .check] {
+            XCTAssertEqual(ZoomCoachRules.coach(part: part, page: .passkey, keysFilled: false, tipsOn: true), expected)
+        }
+        XCTAssertNil(ZoomCoachRules.coach(part: .meetingApp, page: .passkey, keysFilled: false, tipsOn: false))
+        XCTAssertTrue(ZoomCoachScript.source.contains("optional"))
+    }
 }

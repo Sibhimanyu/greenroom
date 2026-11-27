@@ -15,6 +15,10 @@ final class ZoomSignInStateRulesTests: XCTestCase {
         }
     }
 
+    func testThePasskeyPageIsSignedOutToo() {
+        XCTAssertEqual(state(.passkey, .account, .signedIn), .signedOut)
+    }
+
     func testTheHeaderDecides() {
         XCTAssertEqual(state(.createdApps, .signInLink, .signedIn), .signedOut)
         XCTAssertEqual(state(.createdApps, .signInLink, .unknown), .signedOut)

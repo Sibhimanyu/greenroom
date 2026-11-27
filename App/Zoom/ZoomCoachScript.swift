@@ -35,8 +35,9 @@ enum ZoomCoachScript {
     static let source = """
     (function () {
       if (window.__grCoachSet) return;
+      \(ZoomAppListScript.scanFunction)
       var host = null, root = null, ui = null, cfg = null, ring = 'currentColor', mark = null;
-      var target = null, resizeObs = null, mutObs = null, timer = 0, pending = 0, dismissed = false;
+      var status = 'cleared', target = null, resizeObs = null, mutObs = null, timer = 0, pending = 0, dismissed = false;
       var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
       function norm(s) { return (s || '').replace(/\\s+/g, ' ').replace(/\\+/g, '').trim().toLowerCase(); }
@@ -99,6 +100,26 @@ enum ZoomCoachScript {
         }
         return null;
       }
+      function findAppRow(index) {
+        var rows = scanAppRows();
+        return rows[index] ? rows[index].el : null;
+      }
+      // The round "+" (Build App) beside the "Developer" heading: by its label, else the button after the heading.
+      function findBuildButton() {
+        var btns = document.querySelectorAll('button,[role=button],a');
+        for (var i = 0; i < btns.length; i++) {
+          var hint = norm((btns[i].getAttribute('aria-label') || '') + ' ' + (btns[i].getAttribute('title') || '')).toLowerCase();
+          if (shown(btns[i]) && (hint.indexOf('build') >= 0 || hint.indexOf('create') >= 0 || hint.indexOf('add') >= 0)) return btns[i];
+        }
+        var el = textElement('Developer');
+        for (var hops = 0; el && el !== document.body && hops < 4; hops++, el = el.parentElement) {
+          var sib = el.nextElementSibling;
+          if (!sib) continue;
+          var b = sib.matches('button,[role=button],a') ? sib : sib.querySelector('button,[role=button],a');
+          if (b && shown(b)) return b;
+        }
+        return null;
+      }
       function findSearch() {
         var dialogs = document.querySelectorAll('[role=dialog],[aria-modal="true"]');
         for (var i = 0; i < dialogs.length; i++) {
@@ -143,6 +164,7 @@ enum ZoomCoachScript {
         var card = document.createElement('div'); card.className = 'card';
         var head = document.createElement('div'); head.className = 'head';
         var markEl = document.createElement('img'); markEl.className = 'mark'; markEl.alt = ''; markEl.style.display = 'none';
+        markEl.addEventListener('error', function () { markEl.style.display = 'none'; mark = null; });
         var name = document.createElement('span'); name.className = 'name'; name.textContent = 'Greenroom';
         var count = document.createElement('span'); count.className = 'count';
         head.appendChild(markEl); head.appendChild(name); head.appendChild(count);
@@ -163,7 +185,10 @@ enum ZoomCoachScript {
       }
 
       function resolve() {
-        if (!cfg || !cfg.label) return null;
+        if (!cfg) return null;
+        if (cfg.kind === 'appRow') return findAppRow(cfg.rowIndex);
+        if (cfg.kind === 'build') return findBuildButton();
+        if (!cfg.label) return null;
         if (cfg.kind === 'row') return findRow(cfg.label);
         if (cfg.kind === 'toggle') return findToggle(cfg.label);
         if (cfg.searchText) { var s = findSearch(); if (s) return s; }
@@ -172,7 +197,8 @@ enum ZoomCoachScript {
 
       function place() {
         pending = 0;
-        if (!cfg || dismissed) return;
+        if (!cfg || dismissed) { status = 'cleared'; return; }
+        status = 'drawn';
         if (!target || !target.isConnected || !shown(target)) target = resolve();
         if (!host) build();
         if (!host.isConnected) (document.documentElement || document.body).appendChild(host);
@@ -201,7 +227,7 @@ enum ZoomCoachScript {
         } else {
           ui.spot.style.display = 'none';
           left = vw - cw - 16; top = vh - ch - 16;
-          if (cfg.label) { ui.card.style.display = 'none'; ui.placed = false; return; }
+          if (cfg.kind && cfg.kind !== 'none' && !cfg.optional) { ui.card.style.display = 'none'; ui.placed = false; status = 'no-target'; return; }
         }
         ui.card.style.display = 'block';
         ui.card.style.left = Math.min(Math.max(8, left), vw - cw - 8) + 'px';
@@ -236,13 +262,14 @@ enum ZoomCoachScript {
       window.__grCoachSet = function (next, color, markUri) {
         if (color) ring = color;
         if (markUri) mark = markUri;
-        if (!next) { dismissed = false; clear(); return; }
+        if (!next) { dismissed = false; clear(); return 'cleared'; }
         dismissed = false;
         cfg = next; target = null;
         if (ui) ui.placed = false;
         watch();
         place();
         schedule();
+        return status;
       };
     })();
     """

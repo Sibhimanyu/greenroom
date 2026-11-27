@@ -160,4 +160,38 @@ final class ZoomMarketplacePagesTests: XCTestCase {
         XCTAssertNil(ZoomMarketplacePages.keyFields(on: .createdApps))
         XCTAssertNil(ZoomMarketplacePages.keyFields(on: .signIn))
     }
+
+    /// The page kind for a debug log: never an ID, never a query.
+    func testKindNamesCarryNoIDs() {
+        XCTAssertEqual(ZoomMarketplacePage.createdApps.kindName, "createdApps")
+        XCTAssertEqual(ZoomMarketplacePage.chooseType(id).kindName, "chooseType")
+        XCTAssertEqual(ZoomMarketplacePage.s2s(id, .scopes).kindName, "s2s.scopes")
+        XCTAssertEqual(ZoomMarketplacePage.general(id, .embed).kindName, "general.embed")
+        XCTAssertEqual(ZoomMarketplacePage.signIn.kindName, "signIn")
+        for p in [ZoomMarketplacePage.chooseType(id), .s2s(id, .credentials), .general(id, .information)] {
+            XCTAssertFalse(p.kindName.contains(id))
+        }
+    }
+
+    // Passkeys cannot work in this window: Google's passkey challenge is its own page kind.
+    func testGooglePasskeyChallengePages() {
+        XCTAssertEqual(page("https://accounts.google.com/v3/signin/challenge/pk"), .passkey)
+        XCTAssertEqual(page("https://accounts.google.com/v3/signin/challenge/pk/presend?x=1"), .passkey)
+        XCTAssertEqual(page("https://accounts.google.com/v3/signin/challenge/pk/error"), .passkey)
+        XCTAssertEqual(page("https://accounts.google.com/signin/challenge/pk"), .passkey)
+        // The password path is an ordinary sign-in page.
+        XCTAssertEqual(page("https://accounts.google.com/v3/signin/challenge/selection"), .signIn)
+        XCTAssertEqual(page("https://accounts.google.com/v3/signin/challenge/pwd"), .signIn)
+        XCTAssertEqual(page("https://accounts.google.com/v3/signin/identifier"), .signIn)
+        // Exact host only, https only.
+        XCTAssertNil(page("https://accounts.google.com.evil.com/v3/signin/challenge/pk"))
+        XCTAssertNil(page("https://evil.com/v3/signin/challenge/pk"))
+        XCTAssertNil(page("http://accounts.google.com/v3/signin/challenge/pk"))
+        XCTAssertEqual(ZoomMarketplacePage.passkey.kindName, "passkey")
+        XCTAssertNil(ZoomMarketplacePages.url(for: .passkey))
+        XCTAssertNil(ZoomMarketplacePage.passkey.app)
+        XCTAssertTrue(ZoomMarketplacePage.passkey.isSignIn)
+        XCTAssertTrue(ZoomMarketplacePage.signIn.isSignIn)
+        XCTAssertFalse(ZoomMarketplacePage.createdApps.isSignIn)
+    }
 }

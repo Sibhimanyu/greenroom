@@ -58,6 +58,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     private var webView: WKWebView?
     private var observers: [NSKeyValueObservation] = []
     private var requestedPart: ZoomGuidePart = .meetingApp
+    /// The Type text of each row on Created apps (nil until scanned, and on every other page).
+    private var appRows: [String]?
     private var lastPage: ZoomMarketplacePage?
     private var timers: [DispatchWorkItem] = []
 
@@ -161,11 +163,14 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         }
     }
 
+    private var requestedPartForBar: ZoomGuidePart { lastPage?.app.map { $0 == .sdk ? .meetingApp : .hostingApp } ?? requestedPart }
+
     /// Recomputes the bar from the page, the keys in Greenroom and the sign-in state.
     func updateBar() {
         let s = barState()
         bar = ZoomBarRules.bar(ZoomBarFacts(part: requestedPart, page: lastPage, ids: s.ids, meetingComplete: s.meeting,
-                                            hostingComplete: s.hosting, signIn: signIn))
+                                            hostingComplete: s.hosting, signIn: signIn,
+                                            hasMatchingRow: appRows.map { !ZoomCoachRules.matchingRows(requestedPartForBar, $0).isEmpty } ?? false))
     }
 
     /// The same address in Safari (R8).
@@ -219,23 +224,67 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         updateBar()
         guard let webView, let url = webView.url else { return }
         readSignIn(url)
-        guard let page = ZoomMarketplacePages.page(for: url) else { return }
-        let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
-        let coach = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn, needsApp: needsApp(part))
-        let ring = Self.ringColor, mark = Self.markDataURI
-        webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { _ in
-            MainActor.assumeIsolated {
-                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring, mark: mark), in: nil, in: .defaultClient) { _ in }
-            }
+        guard let page = ZoomMarketplacePages.page(for: url) else { note(nil, "no-page"); return }
+        if page == .createdApps {
+            scanAppRows(page) { [weak self] in self?.drawCoach(page) }
+        } else {
+            if appRows != nil { appRows = nil; updateBar() }
+            drawCoach(page)
         }
         readKeys(on: page)
     }
 
+    /// Computes the coach for the page and draws (or clears) it; the script's one-word answer is noted in DEBUG.
+    private func drawCoach(_ page: ZoomMarketplacePage) {
+        guard let webView else { return }
+        let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
+        let coach = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
+                                         needsApp: needsApp(part), appRows: appRows)
+        let ring = Self.ringColor, mark = Self.markDataURI
+        webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if case .failure(let error) = result { self.note(page, "coach-source-error " + Self.describe(error)) }
+                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring, mark: mark), in: nil, in: .defaultClient) { result in
+                    MainActor.assumeIsolated {
+                        switch result {
+                        case .success(let value): self.note(page, coach == nil ? "no-coach" : "coach " + ((value as? String) ?? "?"))
+                        case .failure(let error): self.note(page, "coach-call-error " + Self.describe(error))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reads the Created apps table's Type column (never an app's name) and remembers it for the coach and the bar.
+    private func scanAppRows(_ page: ZoomMarketplacePage, then done: @escaping () -> Void) {
+        webView?.evaluateJavaScript(ZoomAppListScript.source, in: nil, in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                var types: [String]?
+                switch result {
+                case .success(let value):
+                    if let json = value as? String, let data = json.data(using: .utf8),
+                       let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                        types = list.compactMap { $0["typeText"] as? String }
+                    }
+                case .failure(let error):
+                    self.note(page, "scan-error " + Self.describe(error))
+                }
+                self.note(page, "scan rows=\(types?.count ?? -1)")
+                if self.appRows != types { self.appRows = types; self.updateBar() }
+                done()
+            }
+        }
+    }
+
     /// Looks at Marketplace's header (read only) for a "Sign In" link or an account menu.
     private func readSignIn(_ url: URL) {
-        guard ZoomMarketplacePages.isMarketplace(url), ZoomMarketplacePages.page(for: url) != .signIn else { return }
+        guard ZoomMarketplacePages.isMarketplace(url), ZoomMarketplacePages.page(for: url)?.isSignIn != true else { return }
         webView?.evaluateJavaScript(ZoomSignInHeaderScript.source, in: nil, in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
+                if case .failure(let error) = result { self?.note(self?.lastPage, "header-error " + Self.describe(error)) }
                 guard let self, case .success(let value) = result, let word = value as? String,
                       let report = ZoomHeaderReport(rawValue: word),
                       self.webView?.url == url else { return }
@@ -249,6 +298,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         guard let fields = ZoomMarketplacePages.keyFields(on: page), let webView else { return }
         webView.evaluateJavaScript(ZoomKeyReaderScript.call(fields: fields), in: nil, in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
+                if case .failure(let error) = result { self?.note(page, "reader-error " + Self.describe(error)) }
                 guard let self, case .success(let value) = result, let json = value as? String,
                       let data = json.data(using: .utf8),
                       let raw = try? JSONSerialization.jsonObject(with: data) as? [String: String],
@@ -277,6 +327,31 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
         return "data:image/png;base64," + png.base64EncodedString()
     }()
+
+    // MARK: DEBUG log (never page text, never values)
+
+    /// A script error as its domain, code and our own script's exception text; nothing from the page.
+    private static func describe(_ error: Error) -> String {
+        let e = error as NSError
+        let message = (e.userInfo["WKJavaScriptExceptionMessage"] as? String).map { String($0.prefix(120)) } ?? ""
+        return "\(e.domain) \(e.code) \(message)"
+    }
+
+    /// DEBUG builds append "time, page kind, what" to ~/Library/Logs/Greenroom/zoom-window.log. Release builds do nothing.
+    private func note(_ page: ZoomMarketplacePage?, _ what: String) {
+        #if DEBUG
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(page?.kindName ?? "other") \(what)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Greenroom/zoom-window.log")
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: url.path) { fm.createFile(atPath: url.path, contents: nil) }
+        if let h = try? FileHandle(forWritingTo: url) {
+            defer { try? h.close() }
+            _ = try? h.seekToEnd()
+            try? h.write(contentsOf: Data(line.utf8))
+        }
+        #endif
+    }
 
     /// Brand.green as a CSS colour for the coach's ring (never a literal in code).
     private static var ringColor: String {

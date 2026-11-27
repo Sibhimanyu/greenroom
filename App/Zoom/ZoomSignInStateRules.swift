@@ -20,7 +20,7 @@ enum ZoomSignInStateRules {
     static let afterSignOut = ZoomSignInState.signedOut
 
     static func state(page: ZoomMarketplacePage?, header: ZoomHeaderReport?, current: ZoomSignInState) -> ZoomSignInState {
-        if page == .signIn { return .signedOut }
+        if page?.isSignIn == true { return .signedOut }
         switch header {
         case .signInLink: return .signedOut
         case .account: return .signedIn

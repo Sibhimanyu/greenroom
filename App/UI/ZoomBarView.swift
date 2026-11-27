@@ -69,9 +69,9 @@ struct ZoomBarView: View {
                     .font(.caption).foregroundStyle(Brand.netText).lineLimit(1).fixedSize()
             }
             if autopilot != nil {
+                // Plain, never the green call to action (owner, 2026-11-27): Stop is there, not suggested.
                 Button("Stop", action: onStop)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Brand.buttonFill)
+                    .buttonStyle(.bordered)
                     .controlSize(.regular)
                     .fixedSize()
                     .help("Ends Set up for me after the current action and hands over to the guided steps")

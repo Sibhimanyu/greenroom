@@ -21,7 +21,8 @@ struct ZoomAutopilotHUD: View {
     let onStop: () -> Void
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        // While the person signs in the card sits at the top, clear of Zoom's sign-in form.
+        ZStack(alignment: needsYou == nil ? .bottom : .top) {
             if needsYou == nil {
                 // The cover: takes clicks and scrolls, shows the page through it.
                 Rectangle()
@@ -31,7 +32,7 @@ struct ZoomAutopilotHUD: View {
                     .accessibilityHidden(true)
             }
             card
-                .padding(.bottom, 28)
+                .padding(needsYou == nil ? .bottom : .top, needsYou == nil ? 28 : 14)
         }
         .transition(.opacity)
     }
@@ -43,16 +44,20 @@ struct ZoomAutopilotHUD: View {
                     .resizable()
                     .frame(width: 22, height: 22)
                     .accessibilityHidden(true)
-                Text(needsYou == nil ? "Greenroom is setting up Zoom" : "Greenroom needs you for a moment")
+                Text(needsYou == nil ? "Greenroom is setting up Zoom" : "Sign in to Zoom to continue")
                     .font(.headline)
                 Spacer(minLength: 12)
-                Button("Stop", action: onStop)
-                    .greenroomGlassButton()
-                    .help("Stop Set up for me. The guided steps carry on from where it is.")
+                if needsYou == nil {
+                    // Quiet: Stop is there if wanted, never the thing to do (owner, 2026-11-27). The bar has it too.
+                    Button("Stop", action: onStop)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .help("Stop Set up for me. The guided steps carry on from where it is.")
+                }
             }
             Text(needsYou ?? line)
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(needsYou == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .fixedSize(horizontal: false, vertical: true)
             if needsYou == nil {
                 ProgressView(value: Double(max(0, (step ?? 1) - 1)), total: Double(max(1, total)))

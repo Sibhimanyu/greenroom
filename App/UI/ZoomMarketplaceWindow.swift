@@ -75,6 +75,12 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// What the flow says now: the bar shows it and the coach draws it (unless tips are off or Set up for me is running).
     func present(step: SetupStep?, signedIn: Bool?, working: Bool) {
         self.step = step; self.signedIn = signedIn; self.working = working
+        // Signed out on a Marketplace page (Guide me, or a session Zoom ended): go straight to Zoom's sign-in
+        // page instead of leaving a "Sign In" link to find (owner, 2026-11-27). Once per opening.
+        if signedIn == false, !sentToSignIn, let url = webView?.url, let page = ZoomMarketplacePages.page(for: url), !page.isSignIn {
+            sentToSignIn = true
+            goToSignIn()
+        }
         redraw()
     }
 
@@ -87,6 +93,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// Opens the window (beside the guide) or brings it forward, and goes to `url` when given.
     func show(url: URL?, guideWindow: NSWindow?) {
         if let url { heading = url }
+        sentToSignIn = false
         if window == nil { make(guideWindow: guideWindow) }
         window?.makeKeyAndOrderFront(nil)
         if let url, let webView {
@@ -191,6 +198,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     }
 
     /// The bar's Sign in: Marketplace itself redirects to Zoom's sign-in. Nothing is pressed on the page.
+    private var sentToSignIn = false
+    /// Created apps, which sends a signed-out window to Zoom's sign-in page and back to Marketplace after it.
     func goToSignIn() { webView?.load(URLRequest(url: ZoomMarketplaceGuide.builderURL)) }
 
     /// The same address in Safari (R8).

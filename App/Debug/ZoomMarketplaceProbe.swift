@@ -292,12 +292,4 @@ final class ZoomMarketplaceProbe: NSObject, WKNavigationDelegate, WKUIDelegate, 
     """
 }
 
-/// App-menu item, so the probe can be opened without launch arguments.
-struct ZoomMarketplaceProbeCommands: Commands {
-    var body: some Commands {
-        CommandGroup(after: .appInfo) {
-            Button("Zoom Marketplace probe…") { ZoomMarketplaceProbe.shared.show() }
-        }
-    }
-}
 #endif

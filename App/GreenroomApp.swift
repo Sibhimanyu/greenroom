@@ -156,9 +156,6 @@ struct GreenroomApp: App {
             MenuBarActionBridge(checkForUpdates: { updaterController.checkForUpdates(nil) })
             SidebarCommands(coordinator: coordinator)
             HeresayCommands()
-            #if DEBUG
-            ZoomMarketplaceProbeCommands()
-            #endif
         }
 
         Settings {

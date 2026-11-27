@@ -555,7 +555,9 @@ enum ZoomSetupFlow {
         }
         // Zoom keeps scopes only when the Scopes page's own Continue is pressed (live run 4): Done alone shows
         // them, then leaving the page drops them.
-        steps += [.press(.scopesDone), .waitFor(.scopesOnPage(ZoomScopes.names)), .press(.continue), .waitFor(.activationShown)]
+        steps += [.press(.scopesDone), .waitFor(.hasControl(.addScopes)), .press(.continue), .waitFor(.activationShown)]
+        // Not "all eight on the page" (live runs 9-10: Zoom can drop the last tick on Done): what stuck is saved, the
+        // next pass adds what's missing, and the check names any scope still missing.
         return ActionPlan(app: .hosting, effect: .changesSettings, steps: steps)
     }
 }

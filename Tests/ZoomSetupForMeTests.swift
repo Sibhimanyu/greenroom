@@ -387,4 +387,15 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertNotEqual(newHosting?.id, oldHostingID)
         XCTAssertEqual(keys.keys(for: .hosting)[.clientID], newHosting?.clientID)
     }
+
+    /// Live runs 9-10, 2026-11-27: Zoom dropped the eighth scope on Done although it showed ticked; the run waited for
+    /// all eight and gave up. It keeps what stuck (Continue) and adds the missing one on its next pass.
+    func testAScopeZoomDroppedIsAddedOnTheNextPass() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.firstDoneDropsLastTick = true
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.first { $0.kind == .hosting }?.scopes, Set(ZoomScopes.names))
+    }
 }

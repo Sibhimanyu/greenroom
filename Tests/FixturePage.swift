@@ -58,6 +58,10 @@ final class FixturePage: ZoomPage {
     /// Live run 9, 2026-11-27: a tick in the Add scopes window registers only once the page redraws; Done pressed
     /// straight after the last tick lost it. With this on, a tick counts after the next read.
     var ticksRegisterOnRead = false
+    /// Live runs 9 and 10, 2026-11-27: Zoom showed the eighth tick at once yet dropped it on Done. With this on, the
+    /// first Done loses its last tick.
+    var firstDoneDropsLastTick = false
+    private var lastTicked: String?
     private var pendingTicks: Set<String> = []
     private var lateContentReads = 0
     private var lateListReads = 0
@@ -241,10 +245,12 @@ final class FixturePage: ZoomPage {
             }
         case .addScopes: dialog = .addScopes(searchPresent: true, ticked: []); search = ""; ticked = []
         case .scopeCheckbox(let n):
+            lastTicked = n
             if ticksRegisterOnRead { pendingTicks.insert(n) }
             else if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
         case .scopesDone:
             pendingTicks = []
+            if firstDoneDropsLastTick, let last = lastTicked { ticked.remove(last); firstDoneDropsLastTick = false }
             if case .s2s(let id, _) = address { edit(id) { $0.unsavedScopes.formUnion(ticked) } }
             dialog = .none
         case .activate:

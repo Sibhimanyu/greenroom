@@ -54,9 +54,9 @@ enum ZoomCoachScript {
         return norm(t);
       }
       // The smallest visible element whose own text is the label.
-      function textElement(label) {
+      function textElement(label, scope) {
         var want = norm(label), best = null, bestArea = 1e12;
-        var all = document.body ? document.body.getElementsByTagName('*') : [];
+        var all = (scope || document.body) ? (scope || document.body).getElementsByTagName('*') : [];
         for (var i = 0; i < all.length; i++) {
           var el = all[i];
           if (el === host) continue;
@@ -70,8 +70,8 @@ enum ZoomCoachScript {
         return best;
       }
       function radiosIn(el) { return el.querySelectorAll('input[type=radio],[role=radio]').length; }
-      function findRow(label) {
-        var el = textElement(label);
+      function findRow(label, scope) {
+        var el = textElement(label, scope);
         if (!el) return null;
         var hops = 0;
         while (el.parentElement && el.parentElement !== document.body && hops < 6) {
@@ -81,8 +81,8 @@ enum ZoomCoachScript {
         }
         return shown(el) ? el : null;
       }
-      function findControl(label) {
-        var el = textElement(label);
+      function findControl(label, scope) {
+        var el = textElement(label, scope);
         if (!el) return null;
         var c = el.closest('button,[role=button],a');
         return c && shown(c) ? c : el;
@@ -184,8 +184,60 @@ enum ZoomCoachScript {
         (document.documentElement || document.body).appendChild(host);
       }
 
+      // The "What kind of app are you creating" dialog (or page), if shown.
+      function chooserRoot() {
+        var all = document.body ? document.body.getElementsByTagName('*') : [];
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
+          if (el === host || el.children.length > 3) continue;
+          if (norm(el.textContent).indexOf('what kind of app are you creating') !== 0 || !shown(el)) continue;
+          var d = el.closest('[role=dialog],[aria-modal="true"]');
+          if (d) return d;
+          var p = el;
+          for (var hops = 0; p.parentElement && p.parentElement !== document.body && hops < 8; hops++) {
+            p = p.parentElement;
+            if (radiosIn(p) >= 2) return p;
+          }
+          return document.body;
+        }
+        return null;
+      }
+      // A visible menu item whose whole text is the label (the + menu's "Build").
+      function findMenuItem(label) {
+        var want = norm(label), best = null, bestArea = 1e12;
+        var els = document.querySelectorAll('[role=menuitem],[role=option],li,button,[role=button],a');
+        for (var i = 0; i < els.length; i++) {
+          if (norm(els[i].textContent) !== want || !shown(els[i])) continue;
+          if (!els[i].closest('[role=menu],[role=listbox],[role=presentation],[role=tooltip],.MuiPopover-root,.MuiMenu-root,.MuiPopper-root')) continue;
+          var r = rectOf(els[i]), a = r.width * r.height;
+          if (a < bestArea) { best = els[i]; bestArea = a; }
+        }
+        return best;
+      }
+      function isChosen(row) {
+        return !!(row && row.querySelector('input[type=radio]:checked,[role=radio][aria-checked="true"],.Mui-checked'));
+      }
+      function stageTarget(st) {
+        if (st.kind === 'menuItem') return findMenuItem(st.label);
+        var root = chooserRoot();
+        if (!root) return null;
+        var row = findRow(st.label, root);
+        if (st.kind === 'chooseRow') return row;
+        if (st.kind === 'createAfter') return isChosen(row) ? findControl('Create', root) : null;
+        return null;
+      }
+      var stageText = null, lostAt = 0;
+
       function resolve() {
         if (!cfg) return null;
+        stageText = null;
+        if (cfg.then) {
+          // The furthest later stage the page shows wins; else the first spotlight.
+          for (var si = cfg.then.length - 1; si >= 0; si--) {
+            var t = stageTarget(cfg.then[si]);
+            if (t) { stageText = cfg.then[si].text; return t; }
+          }
+        }
         if (cfg.kind === 'appRow') return findAppRow(cfg.rowIndex);
         if (cfg.kind === 'build') return findBuildButton();
         if (!cfg.label) return null;
@@ -199,19 +251,21 @@ enum ZoomCoachScript {
         pending = 0;
         if (!cfg || dismissed) { status = 'cleared'; return; }
         status = 'drawn';
-        if (!target || !target.isConnected || !shown(target)) target = resolve();
+        // A flow with later stages looks again every time; others keep their target while it lasts.
+        if (cfg.then || !target || !target.isConnected || !shown(target)) target = resolve();
         if (!host) build();
         if (!host.isConnected) (document.documentElement || document.body).appendChild(host);
         var useSearch = cfg.searchText && target && target.tagName === 'INPUT';
         ui.count.textContent = cfg.counter ? ' \\u00B7 ' + cfg.counter : '';
         if (mark) { ui.markEl.src = mark; ui.markEl.style.display = 'block'; }
-        ui.text.textContent = useSearch ? cfg.searchText : cfg.text;
+        ui.text.textContent = useSearch ? cfg.searchText : (stageText || cfg.text);
         var animate = !reduce && ui.placed;
         ui.spot.className = 'spot' + (animate ? ' move' : '');
         ui.card.className = 'card' + (animate ? ' move' : '');
         var vw = window.innerWidth, vh = window.innerHeight, cw = 280, ch = ui.card.offsetHeight || 90;
         var left, top;
         if (target) {
+          lostAt = 0;
           var r = rectOf(target), pad = 6;
           ui.spot.style.display = 'block';
           ui.spot.style.left = (r.left - pad) + 'px'; ui.spot.style.top = (r.top - pad) + 'px';
@@ -227,7 +281,12 @@ enum ZoomCoachScript {
         } else {
           ui.spot.style.display = 'none';
           left = vw - cw - 16; top = vh - ch - 16;
-          if (cfg.kind && cfg.kind !== 'none' && !cfg.optional) { ui.card.style.display = 'none'; ui.placed = false; status = 'no-target'; return; }
+          // Zoom redraws often: a target that is briefly gone keeps the card where it
+          // was for 1.5s (no flicker). After that a card that needs a target hides,
+          // and one that may stand alone moves to the corner.
+          if (!lostAt) lostAt = Date.now();
+          if (ui.placed && Date.now() - lostAt < 1500) { status = 'held'; return; }
+          if (cfg.kind && cfg.kind !== 'none' && !cfg.optional && !cfg.then) { ui.card.style.display = 'none'; ui.placed = false; status = 'no-target'; return; }
         }
         ui.card.style.display = 'block';
         ui.card.style.left = Math.min(Math.max(8, left), vw - cw - 8) + 'px';

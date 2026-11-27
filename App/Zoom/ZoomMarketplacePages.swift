@@ -57,6 +57,16 @@ enum ZoomMarketplacePage: Equatable, Hashable {
 enum ZoomKeyField: Equatable, Hashable { case accountID, clientID, clientSecret }
 
 enum ZoomMarketplacePages {
+    /// After a sign-in Zoom lands on Marketplace's home page (owner live test, 2026-11-27).
+    /// Where the window should go instead: where setup was heading, if this is a Marketplace
+    /// page with no guided step of its own. Nil: stay.
+    static func resumeAfterSignIn(sawSignIn: Bool, now: URL, heading: URL?) -> URL? {
+        guard sawSignIn, let heading, now != heading,
+              now.scheme == "https", now.host == "marketplace.zoom.us",
+              page(for: now) == nil else { return nil }
+        return heading
+    }
+
     static let host = "marketplace.zoom.us"
     static let idPattern = "^[A-Za-z0-9_-]{10,40}$"
     static let keyPattern = "^[A-Za-z0-9_-]{10,64}$"

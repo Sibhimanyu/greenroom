@@ -9,6 +9,22 @@
 //
 import Foundation
 
+/// A later stage of a flow that stays on one address (Created apps: + → Build → the
+/// "What kind of app" dialog → Create). The page shows the furthest stage it can find.
+struct ZoomCoachStage: Equatable, Codable {
+    enum Kind: String, Codable {
+        /// A menu item with exactly this text (the + menu's "Build").
+        case menuItem
+        /// The radio row with this label inside the "What kind of app" dialog.
+        case chooseRow
+        /// The dialog's Create button, once the row with this label is chosen.
+        case createAfter
+    }
+    var kind: Kind
+    var label: String
+    var text: String
+}
+
 struct ZoomCoach: Equatable, Codable {
     enum Kind: String, Codable { case none, row, control, toggle, appRow, build }
     /// The visible label of the control to spotlight; nil for a card alone.
@@ -22,6 +38,8 @@ struct ZoomCoach: Equatable, Codable {
     var rowIndex: Int? = nil
     /// True: with no target found the card still shows, without a spotlight.
     var optional = false
+    /// Later stages on the same address, furthest last (Created apps' create flow).
+    var then: [ZoomCoachStage]? = nil
 
     /// The JSON the coach script takes. Only these fields, only Swift's own words.
     var json: String {
@@ -31,6 +49,15 @@ struct ZoomCoach: Equatable, Codable {
 }
 
 enum ZoomCoachRules {
+    /// Created apps' create flow after the first spotlight: the + menu's Build, the
+    /// part's app type in the dialog, then Create once that type is chosen.
+    static func createFlow(_ part: ZoomGuidePart) -> [ZoomCoachStage] {
+        let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
+        return [ZoomCoachStage(kind: .menuItem, label: "Build", text: "Press Build."),
+                ZoomCoachStage(kind: .chooseRow, label: type, text: "Choose \(type)."),
+                ZoomCoachStage(kind: .createAfter, label: type, text: "Press Create.")]
+    }
+
     /// `needsApp`: the part's keys are filled but its app's ID is not known yet (R12).
     /// `appRows`: the Type text of each row on Created apps (nil until scanned).
     static func coach(part: ZoomGuidePart, page: ZoomMarketplacePage, keysFilled: Bool, tipsOn: Bool, needsApp: Bool = false,
@@ -48,12 +75,12 @@ enum ZoomCoachRules {
             let matches = matchingRows(part, appRows)
             switch matches.count {
             case 0:
-                return ZoomCoach(label: nil, kind: .build, counter: counter, text: "Press + to build your \(name).")
+                return ZoomCoach(label: nil, kind: .build, counter: counter, text: "Press + to build your \(name).", then: createFlow(part))
             case 1:
-                return ZoomCoach(label: nil, kind: .appRow, counter: counter, text: "This is your \(name). Click it.", rowIndex: matches[0])
+                return ZoomCoach(label: nil, kind: .appRow, counter: counter, text: "This is your \(name). Click it.", rowIndex: matches[0], then: createFlow(part))
             default:
                 let type = part == .meetingApp ? "General app" : "Server-to-Server OAuth app"
-                return ZoomCoach(label: nil, kind: .appRow, counter: counter, text: "Click the \(type) you made for Greenroom.", rowIndex: matches[0])
+                return ZoomCoach(label: nil, kind: .appRow, counter: counter, text: "Click the \(type) you made for Greenroom.", rowIndex: matches[0], then: createFlow(part))
             }
         }
         if tipsOn, needsApp, part != .check, page == .createdApps {

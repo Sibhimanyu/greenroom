@@ -689,7 +689,21 @@ final class CoordinatorController: ObservableObject {
         switch ZoomRouteWords.homeFix(zoomRoute) {
         case .setupGuide: openZoomSetupGuide()
         case .settings: openZoomSettings()
+        case .zoomWindow: openZoomSetupWindow()
         }
+    }
+
+    /// The guide's "Set up Zoom" / "Continue setup" in one click from Home or the menu bar:
+    /// the guide's Zoom step comes up, then the Zoom window over it at the first unfinished app.
+    func openZoomSetupWindow() {
+        openZoomSetupGuide(at: .zoomStep)
+        let facts = zoomGuideFacts
+        guard let button = ZoomConnectRules.button(facts) else { return }
+        let filled = button.part == .meetingApp ? facts.sdkFilled : facts.s2sFilled
+        let page = ZoomConnectRules.entryPage(button.part, ids: zoomAssist.state.ids, filled: filled)
+        let url = ZoomMarketplacePages.url(for: page) ?? ZoomMarketplaceGuide.builderURL
+        // After the guide window exists, so the Zoom window centres on its screen and sits above it.
+        DispatchQueue.main.async { [weak self] in self?.zoomAssist.open(url, part: button.part) }
     }
 
     /// Where the guide's flow stands, from the keys and the last check.

@@ -58,6 +58,10 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     private var webView: WKWebView?
     private var observers: [NSKeyValueObservation] = []
     private var requestedPart: ZoomGuidePart = .meetingApp
+    /// Where setup sent the window, and whether a sign-in page has shown since:
+    /// after a sign-in, Zoom's home page sends the window back there once.
+    private var heading: URL?
+    private var sawSignIn = false
     /// The Type text of each row on Created apps (nil until scanned, and on every other page).
     private var appRows: [String]?
     private var lastPage: ZoomMarketplacePage?
@@ -70,6 +74,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// `part` is the guide part the person is working on, so the coach knows which radio to point at.
     func show(url: URL?, part: ZoomGuidePart?, guideWindow: NSWindow?) {
         if let part { requestedPart = part }
+        if let url { heading = url }
         if window == nil { make(guideWindow: guideWindow) }
         window?.makeKeyAndOrderFront(nil)
         if let url, let webView {
@@ -224,7 +229,14 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         updateBar()
         guard let webView, let url = webView.url else { return }
         readSignIn(url)
+        if let back = ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: sawSignIn, now: url, heading: heading) {
+            sawSignIn = false
+            note(nil, "resume-after-sign-in")
+            webView.load(URLRequest(url: back))
+            return
+        }
         guard let page = ZoomMarketplacePages.page(for: url) else { note(nil, "no-page"); return }
+        if page.isSignIn { sawSignIn = true }
         if page == .createdApps {
             scanAppRows(page) { [weak self] in self?.drawCoach(page) }
         } else {

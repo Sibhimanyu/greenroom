@@ -98,6 +98,22 @@ final class ZoomCoachRulesTests: XCTestCase {
 
     // R15: Created apps is a real step, always coached.
 
+    /// Zoom's create flow happens inside Created apps (owner live test, 2026-11-27): + opens a
+    /// menu, Build opens the "What kind of app" dialog, then a choice and Create. The address
+    /// never changes, so the coach carries the later stages and the page picks the furthest shown.
+    func testTheCreateFlowFollowsTheMenuAndTheDialog() {
+        XCTAssertEqual(ZoomCoachRules.createFlow(.meetingApp), [
+            ZoomCoachStage(kind: .menuItem, label: "Build", text: "Press Build."),
+            ZoomCoachStage(kind: .chooseRow, label: "General app", text: "Choose General app."),
+            ZoomCoachStage(kind: .createAfter, label: "General app", text: "Press Create."),
+        ])
+        XCTAssertEqual(ZoomCoachRules.createFlow(.hostingApp).map(\.label),
+                       ["Build", "Server to server OAuth app", "Server to server OAuth app"])
+        XCTAssertEqual(created(.meetingApp, [])?.then, ZoomCoachRules.createFlow(.meetingApp))
+        XCTAssertEqual(created(.hostingApp, [s2s, general])?.then, ZoomCoachRules.createFlow(.hostingApp),
+                       "someone with an app may still build a new one")
+    }
+
     private func created(_ part: ZoomGuidePart, _ rows: [String]?, tips: Bool = true) -> ZoomCoach? {
         ZoomCoachRules.coach(part: part, page: .createdApps, keysFilled: false, tipsOn: tips, appRows: rows)
     }
@@ -105,23 +121,23 @@ final class ZoomCoachRulesTests: XCTestCase {
 
     func testOneMatchingRowIsSpotlitAndNamedForThePart() {
         XCTAssertEqual(created(.meetingApp, [s2s, general]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "This is your Meeting app. Click it.", rowIndex: 1))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "This is your Meeting app. Click it.", rowIndex: 1, then: ZoomCoachRules.createFlow(.meetingApp)))
         XCTAssertEqual(created(.hostingApp, [s2s, general]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "This is your Hosting app. Click it.", rowIndex: 0))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "This is your Hosting app. Click it.", rowIndex: 0, then: ZoomCoachRules.createFlow(.hostingApp)))
     }
 
     func testSeveralMatchingRowsSpotlightTheFirst() {
         XCTAssertEqual(created(.meetingApp, [s2s, general, "General app", general]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "Click the General app you made for Greenroom.", rowIndex: 1))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 3", text: "Click the General app you made for Greenroom.", rowIndex: 1, then: ZoomCoachRules.createFlow(.meetingApp)))
         XCTAssertEqual(created(.hostingApp, [general, s2s, s2s]),
-                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "Click the Server-to-Server OAuth app you made for Greenroom.", rowIndex: 1))
+                       ZoomCoach(label: nil, kind: .appRow, counter: "Step 1 of 4", text: "Click the Server-to-Server OAuth app you made for Greenroom.", rowIndex: 1, then: ZoomCoachRules.createFlow(.hostingApp)))
     }
 
     func testNoMatchingRowPointsAtThePlusButton() {
         XCTAssertEqual(created(.meetingApp, [s2s]),
-                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 3", text: "Press + to build your Meeting app."))
+                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 3", text: "Press + to build your Meeting app.", then: ZoomCoachRules.createFlow(.meetingApp)))
         XCTAssertEqual(created(.hostingApp, []),
-                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 4", text: "Press + to build your Hosting app."))
+                       ZoomCoach(label: nil, kind: .build, counter: "Step 1 of 4", text: "Press + to build your Hosting app.", then: ZoomCoachRules.createFlow(.hostingApp)))
         XCTAssertEqual(created(.hostingApp, [general])?.kind, .build)
     }
 

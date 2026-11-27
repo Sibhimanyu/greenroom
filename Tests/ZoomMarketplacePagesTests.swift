@@ -194,4 +194,19 @@ final class ZoomMarketplacePagesTests: XCTestCase {
         XCTAssertTrue(ZoomMarketplacePage.signIn.isSignIn)
         XCTAssertFalse(ZoomMarketplacePage.createdApps.isSignIn)
     }
+
+    /// Owner live test, 2026-11-27: after signing in, Zoom lands on Marketplace's home page.
+    /// The window goes back to where setup was heading, once, and only after a sign-in.
+    func testAfterSignInTheWindowGoesBackToWhereSetupWasHeading() {
+        let home = URL(string: "https://marketplace.zoom.us/")!
+        let created = URL(string: "https://marketplace.zoom.us/user/build")!
+        XCTAssertEqual(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: home, heading: created), created)
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: false, now: home, heading: created), "no sign-in: leave them be")
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: created, heading: created), "already there")
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: home, heading: nil))
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us/signin")!, heading: created),
+                     "still signing in")
+        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://marketplace.zoom.us/develop/apps/abcdefghijKLMN_-1234/scope")!, heading: created),
+                     "a guided page of its own: stay")
+    }
 }

@@ -128,6 +128,9 @@ enum ZoomHomeFix: Equatable {
     case settings
     /// The setup guide's Zoom step, at your own Zoom apps.
     case setupGuide
+    /// Straight into the Zoom window at the first unfinished app, with the setup
+    /// guide's Zoom step behind it (owner, 2026-11-27: no detour through Settings).
+    case zoomWindow
 }
 
 /// The words for the route. One phrase, used by Settings, the log and failures.
@@ -179,7 +182,11 @@ enum ZoomRouteWords {
     /// Where Home's Zoom pill and the menu bar's Zoom line take you.
     /// Someone who used the sign-in has nothing to fix in Settings: the guide sets up their own apps.
     static func homeFix(_ route: ZoomRoute) -> ZoomHomeFix {
-        route == .none(.signInComingSoon) ? .setupGuide : .settings
+        switch route {
+        case .none(.signInComingSoon): return .setupGuide
+        case .none(.ownAppsNotSetUp), .none(.ownAppsIncomplete): return .zoomWindow
+        default: return .settings
+        }
     }
 
     /// Home's, the menu bar's and Settings' status for someone who used the sign-in.

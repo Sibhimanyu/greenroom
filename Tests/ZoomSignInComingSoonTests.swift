@@ -107,11 +107,13 @@ final class ZoomSignInComingSoonTests: XCTestCase {
         XCTAssertFalse(ZoomRouteWords.line(gap).lowercased().contains("class"))
     }
 
-    /// Home's pill and the menu bar open the setup guide for it; every other gap opens Settings.
+    /// Home's pill and the menu bar open the setup guide for it; own apps not (fully) set up
+    /// open the Zoom window straight away (owner, 2026-11-27: skip Settings); the rest opens Settings.
     func testTheGapOpensTheSetupGuide() {
         XCTAssertEqual(ZoomRouteWords.homeFix(.none(.signInComingSoon)), .setupGuide)
-        for other: ZoomRoute in [.none(.ownAppsNotSetUp), .none(.ownAppsIncomplete), .none(.notSignedIn),
-                                 .none(.signInNotFinished), Self.own, .greenroomApp(account: "A")] {
+        XCTAssertEqual(ZoomRouteWords.homeFix(.none(.ownAppsNotSetUp)), .zoomWindow)
+        XCTAssertEqual(ZoomRouteWords.homeFix(.none(.ownAppsIncomplete)), .zoomWindow)
+        for other: ZoomRoute in [.none(.notSignedIn), .none(.signInNotFinished), Self.own, .greenroomApp(account: "A")] {
             XCTAssertEqual(ZoomRouteWords.homeFix(other), .settings, "\(other)")
         }
     }

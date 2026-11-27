@@ -44,6 +44,40 @@ enum ZoomAppListScript {
         }
         out.push({ el: row, typeText: type.slice(0, 80) });
       }
+      if (out.length) return out;
+      // No table: Zoom's real list (2026-11-27) is plain divs. Find each Type label by
+      // its own text, then climb to the smallest ancestor that is wide (most of the
+      // list) and holds exactly one Type label: that is the row.
+      var labels = [];
+      var all = document.querySelectorAll('body *');
+      for (var a = 0; a < all.length; a++) {
+        var el = all[a];
+        if (el.children.length > 2 || !vis(el)) continue;
+        var t = nn(el.textContent);
+        for (var b = 0; b < KNOWN.length; b++) {
+          if (t.indexOf(KNOWN[b]) === 0 && t.length < KNOWN[b].length + 60) {
+            if (!labels.some(function (l) { return l.el.contains(el) || el.contains(l.el); })) labels.push({ el: el, type: t });
+            break;
+          }
+        }
+      }
+      function typeCount(node) {
+        var n = 0;
+        for (var c = 0; c < labels.length; c++) if (node.contains(labels[c].el)) n++;
+        return n;
+      }
+      var main = document.querySelector('main') || document.body;
+      var wide = main.getBoundingClientRect().width * 0.5;
+      labels.forEach(function (l) {
+        var node = l.el, row = null;
+        while (node && node !== document.body) {
+          if (typeCount(node) > 1) break;
+          if (node.getBoundingClientRect().width >= wide) row = node;
+          node = node.parentElement;
+        }
+        if (row && !out.some(function (o) { return o.el === row; })) out.push({ el: row, typeText: l.type.slice(0, 80) });
+      });
+      out.sort(function (x, y) { return x.el.getBoundingClientRect().top - y.el.getBoundingClientRect().top; });
       return out;
     }
     """

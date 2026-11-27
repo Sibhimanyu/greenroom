@@ -142,12 +142,18 @@ final class SetupForMe {
         return nil
     }
 
+    private var signInWaits = 0, waitedForPerson = false
+
     /// The whole one-button loop.
     func run() async -> SetupForMeEnd {
         stopRequested = false
         attempts = [:]
-        for _ in 0..<60 {
+        signInWaits = 0
+        var turns = 0
+        while turns < 60 {
+            waitedForPerson = false
             if let end = await advance() { return end }
+            if !waitedForPerson { turns += 1 }
         }
         return .handedOver(ZoomSetupFlow.step(for: facts(nil)), why: "Greenroom kept going round in circles.")
     }
@@ -186,6 +192,14 @@ final class SetupForMe {
             if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
         case .backToGreenroom:
             return .done
+        case .press(.signIn, _), .press(.tryAnotherWay, _):
+            // Sign-in is the person's (owner, 2026-11-27): wait for it in place, then carry on by itself.
+            signInWaits += 1
+            if signInWaits > (pacing.pause > 0 ? 2400 : 50) {   // about 10 minutes live
+                return .handedOver(step, why: "Greenroom waited for the sign-in to Zoom.")
+            }
+            waitedForPerson = true
+            if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }
         default:
             return .handedOver(step, why: "That one is yours to do.")
         }

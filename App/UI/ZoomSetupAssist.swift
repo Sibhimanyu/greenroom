@@ -37,7 +37,7 @@ final class ZoomSetupAssist: ObservableObject {
     private var answers = SetupAnswers(info: InfoValues(name: NSFullUserName()))
     /// The form's starting values: the Zoom account's own name and email when its profile could be read
     /// (owner, 2026-11-27), else the Mac account's name and no email.
-    @Published private(set) var formDefaults = InfoValues(name: NSFullUserName(), company: NSFullUserName())
+    @Published private(set) var formDefaults = InfoValues(name: NSFullUserName(), company: "Zoho")
     private var stepNow: SetupStep?
     private var working = false
     /// Why the last turn handed over (shown on the step's card until the page moves on).
@@ -250,11 +250,14 @@ final class ZoomSetupAssist: ObservableObject {
             }
             let found = await profile
             var info = formDefaults
-            if let n = found.name, !n.isEmpty { info.name = n; info.company = n }
+            if let n = found.name, !n.isEmpty { info.name = n }
             if let e = found.email { info.email = e }
             formDefaults = info
             guard setUpForMe == .preparing else { return }
-            setUpForMe = .asking(existing: existing)
+            // Nothing to ask (owner, 2026-11-27): company Zoho, the account's own name and email, existing
+            // apps used. The run starts straight away.
+            _ = existing
+            startSetUpForMe(info, buildNew: [])
         }
     }
 

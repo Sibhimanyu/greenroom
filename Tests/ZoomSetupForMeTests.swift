@@ -220,17 +220,17 @@ final class SetupForMeTests: XCTestCase {
     }
 
     /// Sign-in is the person's: the run hands over at once, presses nothing, and works when run again after signing in.
-    func testSignInIsTheirsThenItCarriesOn() async {
+    /// Owner, 2026-11-27: "what if it was not logged in in the beginning". Sign-in is the person's, so the run waits
+    /// for it in place (the HUD lifts so they can type) and carries on by itself once Zoom shows them signed in.
+    func testSignInIsTheirsThenTheSameRunCarriesOn() async {
         let zoom = FixturePage.signedOutAccount()
-        let (first, keys) = start(zoom, keys: MemoryKeys(), answers: person)
-        let end = await first.run()
-        guard case .handedOver(let step, _) = end else { return XCTFail("expected a hand over, got \(end)") }
-        XCTAssertEqual(step.title, "Sign in to Zoom")
-        XCTAssertTrue(zoom.log.allSatisfy { if case .press = $0 { return false } else { return true } }, "nothing was pressed on the sign-in page")
-        zoom.personSignsIn()
-        let second = SetupForMe(page: zoom, keys: keys, checker: checker(zoom, keys), answers: person, pacing: .instant)
-        let again = await second.run()
-        XCTAssertEqual(again, .done)
+        zoom.signsInAfterReads = 5
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        var waitedForSignIn = false
+        run.onStep = { step in if step.title == "Sign in to Zoom" { waitedForSignIn = true } }
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertTrue(waitedForSignIn, "the run said it was waiting for the sign-in")
     }
 
     /// A fault the actor cannot fix by pressing (Zoom keeps saying no) ends the run instead of going round and round.
@@ -321,5 +321,17 @@ final class SetupForMeTests: XCTestCase {
         let end = await run.run()
         XCTAssertEqual(end, .done)
         XCTAssertEqual(zoom.apps.last?.info[.contactEmail], person.info.email)
+    }
+
+    /// Live run 9, 2026-11-27: the eighth scope was ticked and Done pressed in the same instant, before Zoom had
+    /// registered the tick, so only seven stuck. Each tick is waited for before the next step.
+    func testEveryTickIsSeenBeforeDoneIsPressed() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.ticksRegisterOnRead = true
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.last?.scopes, Set(ZoomScopes.names))
+        XCTAssertEqual(zoom.log.filter { $0 == .press(.addScopes) }.count, 1, "all eight in one pass, no retry")
     }
 }

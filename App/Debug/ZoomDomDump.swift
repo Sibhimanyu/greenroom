@@ -172,7 +172,7 @@ enum ZoomDomDump {
             Task { @MainActor in
                 let p = await ZoomProfileReader.read()
                 var info = InfoValues(name: p.name ?? NSFullUserName())
-                info.company = info.name; info.email = p.email ?? ""
+                info.company = "Zoho"; info.email = p.email ?? ""
                 report("setupforme", "profile email \(p.email == nil ? "not found" : "found")")
                 c.zoomAssist.startSetUpForMe(info, buildNew: word.contains(" new") ? [.meeting, .hosting] : [])
                 report("setupforme", "run started")

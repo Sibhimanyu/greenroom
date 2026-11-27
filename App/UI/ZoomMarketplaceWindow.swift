@@ -600,7 +600,30 @@ private struct ZoomWindowView: View {
                         onSignOut: { window.signOut() },
                         autopilot: window.autopilotLine, onStop: { window.onStop() })
             Divider()
-            ZoomWebView(web: web)
+            ZStack {
+                ZoomWebView(web: web)
+                if let line = window.autopilotLine {
+                    ZoomAutopilotHUD(line: line, step: window.step?.number, total: SetupStep.total,
+                                     needsYou: needsYou, onStop: { window.onStop() })
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: window.autopilotLine == nil)
+            .animation(.easeOut(duration: 0.2), value: needsYou)
+            .onChange(of: blocking) { _, now in
+                // While Greenroom drives, typing must not land on Zoom's page either.
+                if now { web.window?.makeFirstResponder(nil) }
+            }
         }
     }
+
+    /// What Set up for me is waiting for the person to do (sign-in is always theirs).
+    private var needsYou: String? {
+        guard window.autopilotLine != nil, let cta = window.step?.cta else { return nil }
+        switch cta {
+        case .press(.signIn, _): return "Sign in to Zoom in this window. Greenroom carries on by itself once you\u{2019}re in."
+        case .press(.tryAnotherWay, _): return "Passkeys don\u{2019}t work in this window: press Try another way and use your password. Greenroom carries on after."
+        default: return nil
+        }
+    }
+    private var blocking: Bool { window.autopilotLine != nil && needsYou == nil }
 }

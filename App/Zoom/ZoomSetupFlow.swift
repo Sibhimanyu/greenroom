@@ -543,7 +543,9 @@ enum ZoomSetupFlow {
     static func scopesPlan(missing: [String]) -> ActionPlan {
         var steps: [ZoomPlanStep] = [.press(.addScopes, unless: .dialogIs(.addScopes)), .waitFor(.dialogIs(.addScopes))]
         for name in missing {
-            steps += [.type(.scopeSearch, name), .waitFor(.hasControl(.scopeCheckbox(name))), .press(.scopeCheckbox(name), unless: .scopeTicked(name))]
+            // Wait for Zoom to show each tick (live run 9: the last tick and Done in the same instant lost it).
+            steps += [.type(.scopeSearch, name), .waitFor(.hasControl(.scopeCheckbox(name))), .press(.scopeCheckbox(name), unless: .scopeTicked(name)),
+                      .waitFor(.scopeTicked(name))]
         }
         // Zoom keeps scopes only when the Scopes page's own Continue is pressed (live run 4): Done alone shows
         // them, then leaving the page drops them.

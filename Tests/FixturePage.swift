@@ -51,6 +51,12 @@ final class FixturePage: ZoomPage {
     /// Live run 7, 2026-11-27: a page draws its menu links first and its own controls up to seconds later.
     /// The next `contentLateReads` reads after a page change show only the app's menu links.
     var contentLateReads = 0
+    /// The person signs in by themselves after this many reads of the sign-in page (0: never).
+    var signsInAfterReads = 0
+    /// Live run 9, 2026-11-27: a tick in the Add scopes window registers only once the page redraws; Done pressed
+    /// straight after the last tick lost it. With this on, a tick counts after the next read.
+    var ticksRegisterOnRead = false
+    private var pendingTicks: Set<String> = []
     private var lateContentReads = 0
     private var lateListReads = 0
     var signedIn = true
@@ -94,6 +100,8 @@ final class FixturePage: ZoomPage {
     // MARK: ZoomPage
 
     func read() async -> ZoomPageSnapshot? {
+        if !pendingTicks.isEmpty { ticked.formUnion(pendingTicks); pendingTicks = [] }
+        if !signedIn, signsInAfterReads > 0 { signsInAfterReads -= 1; if signsInAfterReads == 0 { personSignsIn() } }
         guard signedIn else { return ZoomPageSnapshot(address: address, signedIn: false) }
         if blankReads > 0 { blankReads -= 1; return ZoomPageSnapshot(address: address, signedIn: true, dialog: .none) }
         if lateContentReads > 0, address != .createdApps {
@@ -216,8 +224,11 @@ final class FixturePage: ZoomPage {
                 }
             }
         case .addScopes: dialog = .addScopes(searchPresent: true, ticked: []); search = ""; ticked = []
-        case .scopeCheckbox(let n): if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
+        case .scopeCheckbox(let n):
+            if ticksRegisterOnRead { pendingTicks.insert(n) }
+            else if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
         case .scopesDone:
+            pendingTicks = []
             if case .s2s(let id, _) = address { edit(id) { $0.unsavedScopes.formUnion(ticked) } }
             dialog = .none
         case .activate:

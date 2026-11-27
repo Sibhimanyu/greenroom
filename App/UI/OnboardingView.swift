@@ -200,7 +200,7 @@ struct OnboardingView: View {
             onCheck: { setupChecker.showingIn = .guide; runConnectionTest() },
             onViewResults: { setupChecker.showingIn = .guide },
             setUp: coordinator.zoomAssist.setUpForMe,
-            infoDefaults: InfoValues(name: NSFullUserName()),
+            infoDefaults: coordinator.zoomAssist.formDefaults,
             onSetUpForMe: { coordinator.zoomAssist.beginSetUpForMe() },
             onStartSetUp: { coordinator.zoomAssist.startSetUpForMe($0, buildNew: $1) },
             onCancelSetUp: { coordinator.zoomAssist.cancelSetUpForMe() },

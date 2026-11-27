@@ -412,6 +412,7 @@ targets:
       - path: App/Zoom/ZoomRouteChoiceRules.swift
       - path: App/Zoom/ZoomSignInAvailability.swift
       - path: App/Zoom/ZoomGuideFlowRules.swift
+      - path: App/Zoom/ZoomProfile.swift
       - path: App/Zoom/ZoomSetupCheckRules.swift
       - path: App/Zoom/ZoomCheckActionRules.swift
       - path: App/Zoom/ZoomMarketplacePages.swift

@@ -68,6 +68,11 @@ enum ZoomDomDump {
                 let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 if word.hasPrefix("go "), let u = URL(string: String(word.dropFirst(3))), ZoomMarketplacePages.isMarketplace(u) {
                     ZoomMarketplaceWindow.shared.debugLoad(u)
+                } else if word == "profile" {
+                    Task { @MainActor in
+                        let p = await ZoomProfileReader.read()
+                        report("profile", "name \(p.name == nil ? "none" : "found, \(p.name!.count) chars") · email \(p.email == nil ? "none" : "found, \(p.email!.count) chars")")
+                    }
                 } else if word == "backupkeys" || word == "restorekeys" || word.hasPrefix("setupforme") {
                     report(word, e2e(word))
                 } else if let js = driverScript(word) {
@@ -159,15 +164,16 @@ enum ZoomDomDump {
             _ = chain.delete(service: backupService, account: backupAccount)
             return "restored and backup removed"
         default:
-            // setupforme <email>: the form's answers for a fresh build of both apps.
-            let email = word.split(separator: " ").dropFirst().first.map(String.init) ?? ""
+            // setupforme [new]: as the button does, with the form's answers from the Zoom profile.
             guard case .found = chain.read(service: backupService, account: backupAccount) else { return "refused: run backupkeys first" }
-            var info = InfoValues()
-            info.name = NSFullUserName(); info.email = email; info.company = NSFullUserName()
             c.zoomAssist.stopSetUpForMe()
             // As the button does: the Zoom window first, then the run.
             c.zoomAssist.open(ZoomMarketplaceGuide.builderURL, part: .meetingApp)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            Task { @MainActor in
+                let p = await ZoomProfileReader.read()
+                var info = InfoValues(name: p.name ?? NSFullUserName())
+                info.company = info.name; info.email = p.email ?? ""
+                report("setupforme", "profile email \(p.email == nil ? "not found" : "found")")
                 c.zoomAssist.startSetUpForMe(info, buildNew: word.contains(" new") ? [.meeting, .hosting] : [])
                 report("setupforme", "run started")
             }

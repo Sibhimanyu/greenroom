@@ -235,10 +235,15 @@ final class FixtureChecker: ZoomChecker {
     let zoom: FixturePage
     let keys: MemoryKeys
     private(set) var runs = 0
+    /// Things Zoom does between checks (a scope revoked, a switch turned off): one is run before each check, in order.
+    var beforeRun: [() -> Void] = []
+    /// Zoom always answers "no" for the Meeting app (a fault Greenroom cannot fix by pressing things).
+    var meetingAlwaysFails = false
     init(zoom: FixturePage, keys: MemoryKeys) { self.zoom = zoom; self.keys = keys }
 
     func run() async -> [ZoomCheckLine] {
         runs += 1
+        if !beforeRun.isEmpty { beforeRun.removeFirst()() }
         let ids = ZoomCheckActionContext()
         func line(_ id: String, _ title: String, _ ok: Bool, _ detail: String, _ problem: ZoomCheckProblem = .nothing) -> ZoomCheckLine {
             let status: ZoomCheckStatus = ok ? .passed : .failed
@@ -252,7 +257,7 @@ final class FixtureChecker: ZoomChecker {
         if mine[.clientID] == nil || mine[.clientSecret] == nil {
             lines.append(line("sdk", "Meeting and chat credentials", false, "Add both General App values under Meeting and chat.", .badCredentials))
         } else {
-            let ok = sdk != nil && mine[.clientID] == sdk?.clientID && mine[.clientSecret] == sdk?.secret && sdk?.sdkOn == true
+            let ok = !meetingAlwaysFails && sdk != nil && mine[.clientID] == sdk?.clientID && mine[.clientSecret] == sdk?.secret && sdk?.sdkOn == true
             lines.append(line("sdk", "Meeting and chat credentials", ok, ok ? "Zoom accepted the General App credentials." : "Zoom said no. Check the General App credentials and that Meeting SDK is enabled.", .badCredentials))
         }
         let theirs = keys.keys(for: .hosting)

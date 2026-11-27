@@ -142,4 +142,106 @@ final class SetupForMeTests: XCTestCase {
         let newest = zoom.apps.last { $0.kind == .meeting }
         XCTAssertEqual(keys.keys(for: .meeting)[.clientID], newest?.clientID, "the keys are the new app's")
     }
+
+    // MARK: Whole-flow replays
+
+    private func checker(_ zoom: FixturePage, _ keys: MemoryKeys) -> FixtureChecker { FixtureChecker(zoom: zoom, keys: keys) }
+
+    /// A failing check re-opens the step it names: Zoom drops a permission after the keys are copied, the check says
+    /// that scope is missing, Greenroom adds it again, and the next check passes.
+    func testAFailingCheckReopensTheStepItNames() async {
+        let zoom = FixturePage.freshAccount()
+        let keys = MemoryKeys()
+        let fixture = checker(zoom, keys)
+        // The checks run after each app's keys; the fault shows in the second.
+        fixture.beforeRun = [{}, { zoom.apps[1].scopes.remove("user:read:token:admin") }]
+        let run = SetupForMe(page: zoom, keys: keys, checker: fixture, answers: person, pacing: .instant)
+        var seen: [Int?] = []
+        run.onStep = { step in if seen.last != step.number { seen.append(step.number) } }
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps[1].scopes, Set(ZoomScopes.names), "the missing permission is back")
+        XCTAssertEqual(Array(seen.suffix(3)), [6, 8, nil], "the check named permissions (step 6), then the keys are copied last again, then done")
+        XCTAssertEqual(fixture.runs, 3, "after the meeting keys, after the hosting keys (the fault shows), after the fix")
+    }
+
+    /// Existing hosting app that is half finished: it is used, its missing permissions and activation are done, nothing new is built.
+    func testAHalfFinishedExistingHostingAppIsFinished() async {
+        var half = finishedHostingApp()
+        half.scopes = Set(ZoomScopes.names.prefix(6)); half.activated = false
+        let zoom = FixturePage.freshAccount().existing(finishedMeetingApp()).existing(half)
+        let keys = MemoryKeys()
+        let (run, _) = start(zoom, keys: keys, answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.count, 2)
+        XCTAssertEqual(zoom.apps[1].scopes, Set(ZoomScopes.names))
+        XCTAssertTrue(zoom.apps[1].activated)
+    }
+
+    /// "The app the person picks wins": the window is already on an older Server-to-Server app the person opened,
+    /// so that app is the hosting app; no second one is built.
+    func testTheAppThePersonOpenedWins() async {
+        var theirs = finishedHostingApp()
+        theirs.scopes = []; theirs.activated = false
+        let zoom = FixturePage.freshAccount().existing(theirs)
+        zoom.address = .s2s(theirs.id, .credentials)
+        let keys = MemoryKeys()
+        let (run, _) = start(zoom, keys: keys, answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.filter { $0.kind == .hosting }.count, 1)
+        XCTAssertEqual(keys.keys(for: .hosting)[.clientID], theirs.clientID)
+        XCTAssertTrue(zoom.apps.first { $0.id == theirs.id }?.activated ?? false)
+    }
+
+    /// Live finding: on an account that cannot edit Server-to-Server apps the Information fields are disabled. That is a
+    /// blocker only the Zoom admin can lift, so Greenroom hands over at step 5 with the words to say.
+    func testAnAccountThatCannotEditHandsOverWithTheAdminWords() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.accountCannotEditS2S = true
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        guard case .handedOver(let step, _) = end else { return XCTFail("expected a hand over, got \(end)") }
+        XCTAssertEqual(step.number, 5)
+        XCTAssertEqual(step.cta, .checkAgain)
+        XCTAssertTrue(step.status?.contains("Server-to-Server OAuth app: Edit") ?? false)
+        XCTAssertTrue(step.status?.contains("Ask your Zoom admin") ?? false)
+        XCTAssertEqual(zoom.apps.last?.info[.contactEmail], nil, "nothing was typed into disabled fields")
+    }
+
+    func testStopEndsBeforeTheNextActionAndLeavesZoomAsItIs() async {
+        let zoom = FixturePage.freshAccount()
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        run.onStep = { step in if step.number == 2 { run.stop() } }
+        let end = await run.run()
+        XCTAssertEqual(end, .stopped)
+        XCTAssertEqual(zoom.apps.first?.sdkOn, false, "step 2 had not been done when Stop was pressed")
+    }
+
+    /// Sign-in is the person's: the run hands over at once, presses nothing, and works when run again after signing in.
+    func testSignInIsTheirsThenItCarriesOn() async {
+        let zoom = FixturePage.signedOutAccount()
+        let (first, keys) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await first.run()
+        guard case .handedOver(let step, _) = end else { return XCTFail("expected a hand over, got \(end)") }
+        XCTAssertEqual(step.title, "Sign in to Zoom")
+        XCTAssertTrue(zoom.log.allSatisfy { if case .press = $0 { return false } else { return true } }, "nothing was pressed on the sign-in page")
+        zoom.personSignsIn()
+        let second = SetupForMe(page: zoom, keys: keys, checker: checker(zoom, keys), answers: person, pacing: .instant)
+        let again = await second.run()
+        XCTAssertEqual(again, .done)
+    }
+
+    /// A fault the actor cannot fix by pressing (Zoom keeps saying no) ends the run instead of going round and round.
+    func testAStubbornFailureHandsOverInsteadOfLooping() async {
+        let zoom = FixturePage.freshAccount()
+        let keys = MemoryKeys()
+        let fixture = checker(zoom, keys)
+        fixture.meetingAlwaysFails = true
+        let run = SetupForMe(page: zoom, keys: keys, checker: fixture, answers: person, pacing: .instant)
+        let end = await run.run()
+        guard case .handedOver(_, let why) = end else { return XCTFail("expected a hand over, got \(end)") }
+        XCTAssertTrue(why.contains("still"), why)
+    }
 }

@@ -357,6 +357,10 @@ enum ZoomSetupFlow {
                         createOrUse(.hosting, f))
         case 5:
             let place = ZoomMarketplacePage.s2s(hid, .information)
+            if e.app(.hosting).infoLocked {
+                return step("Ask your Zoom admin for permission", "Zoom asks for a contact before it turns the app on.", place,
+                            .checkAgain, status: "Your Zoom account can\u{2019}t edit this app. Ask your Zoom admin to allow \u{2018}Server-to-Server OAuth app: Edit\u{2019} (User Management \u{2192} Roles \u{2192} Role Settings \u{2192} Advanced features), then Check again.")
+            }
             return infoStep(step("Fill in Information", "Zoom asks for a contact before it turns the app on.", place, .goTo(place, "Open Information")), f, place)
         case 6:
             let place = ZoomMarketplacePage.s2s(hid, .scopes)

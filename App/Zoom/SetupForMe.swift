@@ -136,7 +136,7 @@ final class SetupForMe {
                 guard let app = step.app else { return .handedOver(step, why: "That one is yours to do.") }
                 let plan = ActionPlan(app: app, effect: .nothing, steps: [.press(.appRow(row)), .waitFor(.onApp(app))])
                 if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: reason.words) }
-            case .checkAgain:
+            case .checkAgain where step.number == nil:
                 if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
             case .backToGreenroom:
                 return .done

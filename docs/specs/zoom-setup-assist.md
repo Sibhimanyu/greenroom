@@ -22,7 +22,7 @@ Owner, 2026-11-27: "I don't mind how you do it". Greenroom opens Zoom Marketplac
 
 ## Non-goals
 
-- Greenroom never presses anything on Zoom's pages: no Create, Save, Activate, Add Scopes or Regenerate. People press Zoom's buttons themselves. The window may point at an element (R6) with a coach drawn over the page, never click it.
+- Greenroom never presses anything on Zoom's pages on its own. The coach only points (R6). The one exception is R16 ("Do this step"): on the person's press, for four listed safe steps, through an allow-list and a deny-list (never Regenerate, Delete, Remove, Deactivate, Disable, Submit, Publish, Agree, Accept, Terms, Sign out, Log out or Uninstall). Everything else is pressed by the person.
 - No Marketplace REST API. Its app list is reported to return empty results, and it would need another scope.
 - No change to Sign in with Zoom (still Coming soon).
 - Scopes are not read back from the page. Check Zoom setup stays the judge.
@@ -168,6 +168,22 @@ Owner live test, 2026-11-27: the window opened on Created apps and no coach appe
 Acceptance: `ZoomCoachRulesTests`, `ZoomBarRulesTests`, `ZoomMarketplacePagesTests`, `ZoomSignInStateRulesTests` (rows, matching, passkey pages); mock renders in `scripts/render/zoom-coach.sh` (Created apps with two rows, no match, passkey page; through the real scan).
 
 Status: built; the real Created apps table and Google's real passkey page are untested live (the mocks follow the structure the owner described).
+
+### R16. Do this step
+
+Owner decision, 2026-11-27 (A). The coach card gets a green **Do this step** button next to Hide tips, only on four steps, with a small secondary line saying what it will do first ("Greenroom will press + \u2192 Build, choose General app and press Create."). One press runs that step only; while it runs the button and the bar say "Working\u2026"; afterwards the card says what happened (`ZoomActorRules.message`) and the coach moves on as usual.
+1. Created apps / the chooser: press + (only if the dialog is not open), press the menu's Build, choose the part's radio, press Create; stop there.
+2. Hosting app, Scopes: for each of the eight scopes not already on the page, type its exact name into the panel's search field (native value setter and an input event, so React sees it), wait for the result, tick the checkbox of the row holding that exact string, clear the search; then press Done (else Save, else Continue, else stop: "Press Done to save the scopes."); then verify every scope is visible on the page and report "Added 8 scopes." or "Added 6 of 8; couldn't find X, Y: add them by hand (Copy scopes is in the bar)."
+3. Hosting app, Activation: press Activate / Activate your app; verify the page shows an activated state.
+4. Meeting app, Embed: turn on the Meeting SDK switch if it is off; verify it is on.
+
+Safety, in one place: `ZoomActorRules` (pure, table tests) holds each step's allow-list of exact labels and the deny-list, which wins even over an allowed label. The page script (`ZoomActorScript`) gets those lists as arguments and has exactly ONE call that clicks; every press is matched to the allow-list first. It touches no input except the scopes panel's search field, never runs on a credentials or Information address, runs only on the person's press, waits about 5s per action for its expected result and stops on any surprise. Each action is logged in DEBUG to `zoom-window.log` as `step:scopes click done ok` (allow-list labels only, never values or app names).
+
+Related coach behaviour (same round): each in-page step has a done state that moves the coach on without an address change (the Meeting SDK switch on \u2192 Basic information; all eight scopes visible \u2192 Activation; activated \u2192 App Credentials); an open dialog is exclusive (the coach points only inside it, otherwise shows the card alone beside it, "Finish this window first."); the name dialog ("Create a Server-to-Server OAuth app" / "Create a General app") spotlights the App Name field while empty (only whether it has text is read) and then Create; and the part follows the type a dialog names or the person picks (`ZoomCoachRules.part(forHeading:)`, `partFollowing`).
+
+Acceptance: `ZoomActorRulesTests`, `ZoomCoachRulesTests`, `ZoomBarRulesTests`; the dry-run harness `scripts/render/zoom-actor.sh` (the real scripts against mock Zoom pages in an off-screen web view, each with Regenerate / Delete / Deactivate buttons that must stay unpressed; exits 1 on a failure).
+
+Status: built; harness 100% on the mocks; untested on the real Marketplace pages (see the report: the mocks follow what the owner described and what the DEBUG log showed, not a structural dump of the real DOM). DEBUG-only tools for that: `-zoomDomDump YES` writes the page's control structure (never values) to `~/Library/Logs/Greenroom/zoom-dom.jsonl`; `-zoomWindowURL <url>` opens the Zoom window at a marketplace.zoom.us page.
 
 ## Plan
 

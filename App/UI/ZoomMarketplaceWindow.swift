@@ -240,6 +240,14 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
             return
         }
         guard let page = ZoomMarketplacePages.page(for: url) else { note(nil, "no-page"); return }
+        #if DEBUG
+        if ZoomDomDump.enabled, ZoomMarketplacePages.isMarketplace(url) {
+            let labelsOnly = ZoomMarketplacePages.keyFields(on: page) != nil
+            webView.evaluateJavaScript(ZoomDomDump.script(labelsOnly: labelsOnly), in: nil, in: .defaultClient) { result in
+                if case .success(let v) = result, let json = v as? String { ZoomDomDump.append(kind: page.kindName, json: json) }
+            }
+        }
+        #endif
         if page.isSignIn { sawSignIn = true }
         if page == .createdApps {
             scanAppRows(page) { [weak self] in

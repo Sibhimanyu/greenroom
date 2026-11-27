@@ -103,6 +103,12 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         ucc.add(self, contentWorld: .defaultClient, name: "coach")
         ucc.addUserScript(WKUserScript(source: Self.routeScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         ucc.add(self, name: "zoomCopy")
+        #if DEBUG
+        if ZoomDomDump.enabled {
+            ucc.add(self, name: "zoomDiag")
+            ucc.addUserScript(WKUserScript(source: Self.diagScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        #endif
         ucc.addUserScript(WKUserScript(source: Self.copyHookScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG
         if ZoomRecorder.enabled {
@@ -422,6 +428,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         #endif
         case "route": scheduleRefresh()
         case "zoomCopy": copiedByZoom(message.body as? String)
+        #if DEBUG
+        case "zoomDiag": if let t = message.body as? String { ZoomDomDump.log("page " + t) }
+        #endif
         case "coach":
             switch message.body as? String {
             case "hide": tipsOn = false
@@ -444,6 +453,24 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         note(page, "copied key len=\(key.count)")
         #endif
     }
+
+    #if DEBUG
+    /// DEBUG diagnostics: the page's own errors and failed requests (path and status only, never bodies or queries).
+    static let diagScript = """
+    (function () {
+      if (window.__grDiag) return; window.__grDiag = true;
+      function post(t) { try { window.webkit.messageHandlers.zoomDiag.postMessage(String(t).replace(/[A-Za-z0-9_-]{16,}/g, '#').slice(0, 220)); } catch (e) {} }
+      function path(u) { try { var x = new URL(u, location.href); return x.host + x.pathname; } catch (e) { return '?'; } }
+      window.addEventListener('error', function (e) { post('error ' + (e.message || '') + ' @' + path(e.filename || '')); }, true);
+      window.addEventListener('unhandledrejection', function (e) { post('rejection ' + ((e.reason && e.reason.message) || String(e.reason)).slice(0, 120)); });
+      var of = window.fetch;
+      if (of) window.fetch = function (u, o) { var p = path(typeof u === 'string' ? u : (u && u.url)); return of.apply(this, arguments).then(function (r) { if (r.status >= 400) post('fetch ' + r.status + ' ' + p); return r; }, function (err) { post('fetch failed ' + p + ' ' + (err && err.message)); throw err; }); };
+      var oo = XMLHttpRequest.prototype.open, os = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__grP = path(u); return oo.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () { var x = this; x.addEventListener('loadend', function () { if (x.status === 0 || x.status >= 400) post('xhr ' + x.status + ' ' + x.__grP); }); return os.apply(this, arguments); };
+    })();
+    """
+    #endif
 
     /// Page world, document start: wraps navigator.clipboard.writeText and the copy event so the text a
     /// Copy button hands over reaches Greenroom, then lets the page's own copy carry on.

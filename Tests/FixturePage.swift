@@ -32,7 +32,7 @@ final class FixturePage: ZoomPage {
     }
 
     var apps: [App] = []
-    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads } } }
+    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads; lockedInfoReads = infoLockedReads } } }
     /// Live finding, 2026-11-27: right after a page opens Zoom shows nothing yet (no switch state, no keys)
     /// for a second or two. The next `loadingReads` reads after a page change come back empty.
     var loadingReads = 0
@@ -40,6 +40,10 @@ final class FixturePage: ZoomPage {
     /// Live finding, 2026-11-27: Created apps shows its + button about a second before it fills the list.
     /// The next `listLateReads` reads of Created apps after a page change show + and no apps.
     var listLateReads = 0
+    /// Live finding, 2026-11-27: Information's fields stay disabled for up to a minute after the page opens,
+    /// then unlock by themselves. The next `infoLockedReads` reads of Information show them disabled.
+    var infoLockedReads = 0
+    private var lockedInfoReads = 0
     private var lateListReads = 0
     var signedIn = true
     /// Every action the page performed, in order (a press, a type, a navigation), for tests that watch for forbidden ones.
@@ -111,7 +115,7 @@ final class FixturePage: ZoomPage {
                 s.controls.formUnion([.copy(.clientID), .copy(.clientSecret), .continue])
             case .information:
                 for f in ZoomInfoField.allCases {
-                    s.infoFields[f] = a.infoDisabled ? .disabled : ((a.info[f] ?? "").isEmpty ? .empty : .filled)
+                    s.infoFields[f] = (a.infoDisabled || lockedInfoReads > 0) ? .disabled : ((a.info[f] ?? "").isEmpty ? .empty : .filled)
                     s.controls.insert(.infoField(f))
                 }
                 s.controls.insert(.continue)
@@ -132,6 +136,7 @@ final class FixturePage: ZoomPage {
             }
         default: break
         }
+        if case .s2s(_, .information) = address, lockedInfoReads > 0 { lockedInfoReads -= 1 }
         return s
     }
 

@@ -284,4 +284,16 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(end, .done)
         XCTAssertEqual(zoom.apps.count, 2, "nothing new was built")
     }
+
+    /// Live run 3, 2026-11-27: Information's fields were disabled when the run looked, so it stopped with "ask your Zoom
+    /// admin"; a minute later Zoom had unlocked them by itself. Disabled fields are Zoom still opening the page until
+    /// they have stayed disabled for a long while.
+    func testInformationThatUnlocksLateIsFilledInNotTreatedAsTheBlocker() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.infoLockedReads = 10
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.last?.info[.contactEmail], person.info.email)
+    }
 }

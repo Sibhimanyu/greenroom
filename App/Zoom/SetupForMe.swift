@@ -122,11 +122,18 @@ final class SetupForMe {
     private func settledRead() async -> ZoomPageSnapshot? {
         var last: ZoomPageSnapshot?, same = 0
         let emptyListNeeds = max(6, pacing.polls / 2)
-        for _ in 0..<max(12, pacing.polls * 3) {
+        // Information keeps its fields disabled for up to a minute after opening, then unlocks by itself
+        // (live run 3). Only fields still disabled after about 90s live are the account's own limit.
+        let lockedInfoNeeds = max(20, pacing.polls * 15)
+        for _ in 0..<(lockedInfoNeeds + 12) {
             guard let s = await page.read() else { return nil }
             if s.isSignedOut { return s }
             same = (s == last) ? same + 1 : 0
-            let needs = (s.address == .createdApps && s.appList.isEmpty) ? emptyListNeeds : 1
+            let locked: Bool = {
+                if case .s2s(_, .information)? = s.address { return s.infoFields.values.contains(.disabled) }
+                return false
+            }()
+            let needs = locked ? lockedInfoNeeds : (s.address == .createdApps && s.appList.isEmpty) ? emptyListNeeds : 1
             if !s.controls.isEmpty, same >= needs { return s }
             last = s
             if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }

@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MenuBarStatusItem.install()
             #if DEBUG
             DebugTour.start()
+            ZoomMarketplaceProbe.startIfRequested()
             #endif
         }
     }

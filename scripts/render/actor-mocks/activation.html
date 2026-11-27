@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mock: Activation page (sample, not Zoom's)</title>
+<style>body{font:14px -apple-system,system-ui,sans-serif;padding:30px 40px;background:#f4f5f7;color:#222}</style></head><body>
+<nav><a href="#">Information</a> <a href="#">Scopes</a> <a href="#">Activation</a> <a href="#">App Credentials</a></nav>
+<h1>Activation</h1><p id="status">Status: Not activated</p>
+<p><button id="act">Activate your app</button> <button id="deact" style="display:none">Deactivate</button> <button id="regen">Regenerate</button></p>
+<script>
+ var st = window.__state = {activated:0, deact:0, regen:0};
+ var $ = function(i){return document.getElementById(i)};
+ $('act').onclick=function(){st.activated++; $('status').textContent='Status: Activated'; $('act').style.display='none'; $('deact').style.display='inline-block'};
+ $('deact').onclick=function(){st.deact++}; $('regen').onclick=function(){st.regen++};
+</script></body></html>

@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mock: Created apps with the + menu and the Build dialog (sample, not Zoom's)</title>
+<style>
+ body{font:14px -apple-system,system-ui,sans-serif;margin:0;padding:30px 40px;background:#f4f5f7;color:#222}
+ .head{display:flex;align-items:center;gap:14px}.head h1{font-size:22px;margin:0}
+ .plus{width:34px;height:34px;border-radius:50%;border:0;background:#2d8cff;color:#fff;font-size:22px}
+ [role=menu]{display:none;position:absolute;left:190px;top:80px;background:#fff;border:1px solid #ccc;border-radius:6px;padding:4px 0;min-width:140px}
+ [role=menuitem]{padding:8px 16px;list-style:none}
+ [role=dialog]{display:none;position:fixed;left:200px;top:90px;width:600px;background:#fff;border-radius:12px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.3)}
+ label.card{display:flex;gap:12px;border:1px solid #d8dbe0;border-radius:8px;padding:14px;margin:10px 0}
+ .card span{display:block;color:#6b7280}
+ .danger{margin-top:30px}
+</style></head><body>
+<div class="head"><h1>Developer</h1><button class="plus" aria-label="Build App" id="plus">+</button></div>
+<ul role="menu" id="menu"><li role="menuitem" id="build">Build</li></ul>
+<div class="danger"><button id="regen">Regenerate</button> <button id="del">Delete app</button></div>
+<div role="dialog" id="dlg"><h2>What kind of app are you creating</h2>
+ <label class="card"><input type="radio" name="t" value="General app"><div><b>General app</b><span>OAuth, Meeting SDK, chatbots.</span></div></label>
+ <label class="card"><input type="radio" name="t" value="Server to server OAuth app"><div><b>Server to server OAuth app</b><span>Call Zoom's API from your server.</span></div></label>
+ <label class="card"><input type="radio" name="t" value="Webhook only app"><div><b>Webhook only app</b><span>Receive events.</span></div></label>
+ <p><button id="create">Create</button> <button id="cancel">Cancel</button></p></div>
+<script>
+ var st = window.__state = {plus:0, build:0, chosen:null, created:null, cancel:0, regen:0, del:0};
+ var $ = function(i){return document.getElementById(i)};
+ $('plus').onclick=function(){st.plus++; $('menu').style.display='block'};
+ $('build').onclick=function(){st.build++; $('menu').style.display='none'; $('dlg').style.display='block'};
+ document.querySelectorAll('input[type=radio]').forEach(function(r){r.onchange=function(){st.chosen=r.value}});
+ $('create').onclick=function(){st.created=st.chosen; $('dlg').style.display='none'};
+ $('cancel').onclick=function(){st.cancel++; $('dlg').style.display='none'};
+ $('regen').onclick=function(){st.regen++}; $('del').onclick=function(){st.del++};
+</script></body></html>

@@ -37,6 +37,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     @Published private(set) var bar = ZoomBar(title: "", context: .none, primary: .none, offersSignOut: false)
     @Published private(set) var signIn = ZoomSignInState.unknown
     @Published private(set) var copied = false
+    /// A "Do this step" run is under way, and the words after the last one (cleared when the page changes).
+    @Published private(set) var working = false
+    private var actorNote: String?
     @Published private(set) var loadFailed = false
     /// The coach on or off for this setup; "Hide tips" and the toolbar's Tips both set it.
     @Published var tipsOn = true { didSet { if tipsOn != oldValue { refresh() } } }
@@ -175,7 +178,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         let s = barState()
         bar = ZoomBarRules.bar(ZoomBarFacts(part: requestedPart, page: lastPage, ids: s.ids, meetingComplete: s.meeting,
                                             hostingComplete: s.hosting, signIn: signIn,
-                                            hasMatchingRow: appRows.map { !ZoomCoachRules.matchingRows(requestedPartForBar, $0).isEmpty } ?? false))
+                                            hasMatchingRow: appRows.map { !ZoomCoachRules.matchingRows(requestedPartForBar, $0).isEmpty } ?? false,
+                                            working: working))
     }
 
     /// The same address in Safari (R8).
@@ -206,7 +210,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         loadFailed = false
         location = (url.host ?? "") + url.path
         let page = ZoomMarketplacePages.page(for: url)
-        if page != lastPage { lastPage = page; onPage(page) }
+        if page != lastPage { lastPage = page; actorNote = nil; onPage(page) }
         signIn = ZoomSignInStateRules.state(page: page, header: nil, current: signIn)
         updateBar()
         scheduleRefresh()
@@ -238,7 +242,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         guard let page = ZoomMarketplacePages.page(for: url) else { note(nil, "no-page"); return }
         if page.isSignIn { sawSignIn = true }
         if page == .createdApps {
-            scanAppRows(page) { [weak self] in self?.drawCoach(page) }
+            scanAppRows(page) { [weak self] in
+                self?.followDialog(page) { self?.drawCoach(page) }
+            }
         } else {
             if appRows != nil { appRows = nil; updateBar() }
             drawCoach(page)
@@ -250,14 +256,17 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     private func drawCoach(_ page: ZoomMarketplacePage) {
         guard let webView else { return }
         let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
-        let coach = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
-                                         needsApp: needsApp(part), appRows: appRows)
-        let ring = Self.ringColor, mark = Self.markDataURI
+        var coach = ZoomCoachRules.offeringAction(
+            ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
+                                 needsApp: needsApp(part), appRows: appRows), part: part, page: page)
+        coach?.busy = working
+        coach?.note = actorNote
+        let ring = Self.ringColor, mark = Self.markDataURI, fill = Self.fillColor
         webView.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { [weak self] result in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if case .failure(let error) = result { self.note(page, "coach-source-error " + Self.describe(error)) }
-                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring, mark: mark), in: nil, in: .defaultClient) { result in
+                self.webView?.evaluateJavaScript(ZoomCoachScript.call(coach?.json, ring: ring, mark: mark, fill: fill), in: nil, in: .defaultClient) { result in
                     MainActor.assumeIsolated {
                         switch result {
                         case .success(let value): self.note(page, coach == nil ? "no-coach" : "coach " + ((value as? String) ?? "?"))
@@ -265,6 +274,24 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// A dialog that names a type ("Create a Server-to-Server OAuth app", or the type picked in "What kind of app")
+    /// moves the coach, the bar and the next pages to that part (spec R16).
+    private func followDialog(_ page: ZoomMarketplacePage, then done: @escaping () -> Void) {
+        webView?.evaluateJavaScript(ZoomDialogScript.source, in: nil, in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if case .success(let value) = result, let json = value as? String, json != "null",
+                   let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+                   let part = ZoomCoachRules.partFollowing(obj["heading"] as? String, obj["chosen"] as? String), part != self.requestedPart {
+                    self.requestedPart = part
+                    self.note(page, "part follows dialog")
+                    self.updateBar()
+                }
+                done()
             }
         }
     }
@@ -365,6 +392,47 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         #endif
     }
 
+    // MARK: Do this step (R16)
+
+    /// Runs the page's one safe step, on the person's press only (the coach card's button).
+    private func runStep() {
+        guard !working, let webView, let url = webView.url, ZoomMarketplacePages.isMarketplace(url),
+              let page = ZoomMarketplacePages.page(for: url) else { return }
+        let part = page.app.map { $0 == .sdk ? ZoomGuidePart.meetingApp : .hostingApp } ?? requestedPart
+        let kind = ZoomCoachRules.coach(part: part, page: page, keysFilled: keysFilled(), tipsOn: tipsOn,
+                                        needsApp: needsApp(part), appRows: appRows)?.kind ?? .none
+        guard let step = ZoomActorRules.step(part: part, page: page, coachKind: kind) else { note(page, "step refused"); return }
+        working = true; actorNote = nil
+        updateBar(); drawCoach(page)
+        note(page, "step:\(step.logName) start")
+        webView.callAsyncJavaScript(ZoomActorScript.body, arguments: ZoomActorScript.arguments(step, part: part), in: nil,
+                                    in: .defaultClient) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                var r = ZoomActorResult(code: "error")
+                switch result {
+                case .success(let value):
+                    if let json = value as? String, let decoded = try? JSONDecoder().decode(ZoomActorResult.self, from: Data(json.utf8)) { r = decoded }
+                case .failure(let error):
+                    self.note(page, "step:\(step.logName) error " + Self.describe(error))
+                }
+                for line in r.log ?? [] { self.note(page, "step:\(step.logName) \(line)") }
+                self.note(page, "step:\(step.logName) result \(r.code)")
+                self.actorNote = ZoomActorRules.message(step, r)
+                self.working = false
+                self.updateBar()
+                self.refresh()
+            }
+        }
+    }
+
+    /// Brand.buttonFill as a CSS colour: the coach's "Do this step" fill (white label).
+    private static var fillColor: String {
+        let c = NSColor(Brand.buttonFill).usingColorSpace(.sRGB) ?? .systemGreen
+        return String(format: "rgb(%d,%d,%d)", Int((c.redComponent * 255).rounded()), Int((c.greenComponent * 255).rounded()),
+                      Int((c.blueComponent * 255).rounded()))
+    }
+
     /// Brand.green as a CSS colour for the coach's ring (never a literal in code).
     private static var ringColor: String {
         let c = NSColor(Brand.green).usingColorSpace(.sRGB) ?? NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? .systemGreen
@@ -402,7 +470,12 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         // The page's own messages are only a nudge to look again; the web view's address is the truth.
         switch message.name {
         case "route": scheduleRefresh()
-        case "coach": if (message.body as? String) == "hide" { tipsOn = false }
+        case "coach":
+            switch message.body as? String {
+            case "hide": tipsOn = false
+            case "do": runStep()
+            default: break
+            }
         default: break
         }
     }

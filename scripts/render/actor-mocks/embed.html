@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mock: Embed page with the Meeting SDK switch (sample, not Zoom's)</title>
+<style>body{font:14px -apple-system,system-ui,sans-serif;margin:0;display:flex;background:#f4f5f7;color:#222;min-height:420px}
+ nav{width:200px;background:#fff;padding:24px;line-height:2.2}nav a{display:block;color:#222;text-decoration:none}main{padding:30px 40px}
+ .MuiSwitch-root{display:inline-block;width:44px;height:24px}</style></head><body>
+<nav><a href="#">Basic information</a><a href="#">Features</a><a href="#">Embed</a><a href="#">Scopes</a></nav>
+<main><h1>Embed</h1><div class="row"><span class="MuiSwitch-root"><input type="checkbox" role="switch" id="sw" style="width:44px;height:24px"></span> <b>Meeting SDK</b></div>
+<p><button id="regen">Regenerate</button> <button id="del">Delete app</button></p></main>
+<script>
+ var st = window.__state = {on:false, toggles:0, regen:0, del:0};
+ var $ = function(i){return document.getElementById(i)};
+ $('sw').onchange=function(){st.toggles++; st.on=$('sw').checked};
+ $('regen').onclick=function(){st.regen++}; $('del').onclick=function(){st.del++};
+</script></body></html>

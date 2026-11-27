@@ -10,7 +10,7 @@ write_brand
 export COACH_MARK="$ROOT/Branding/greenroom-mark/png/App-icon-64.png"
 export COACH_DIR="$ROOT/scripts/render"
 render zoom-coach-render zoom-coach-main.swift "$STAGE/Brand.swift" \
-  App/Zoom/ZoomCoachRules.swift App/Zoom/ZoomCoachScript.swift App/Zoom/ZoomAppListScript.swift App/Zoom/ZoomMarketplacePages.swift \
+  App/Zoom/ZoomCoachRules.swift App/Zoom/ZoomActorRules.swift App/Zoom/ZoomFinderScript.swift App/Zoom/ZoomCoachScript.swift App/Zoom/ZoomAppListScript.swift App/Zoom/ZoomMarketplacePages.swift \
   App/Zoom/ZoomGuideFollowRules.swift App/Zoom/ZoomStartOverRules.swift App/Zoom/ZoomMarketplaceGuide.swift App/Zoom/ZoomGuideFlowRules.swift \
   App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift App/Zoom/ZoomRouteRules.swift \
   App/Zoom/ZoomScopes.swift App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift \

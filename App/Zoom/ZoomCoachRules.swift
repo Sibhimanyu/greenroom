@@ -19,10 +19,25 @@ struct ZoomCoachStage: Equatable, Codable {
         case chooseRow
         /// The dialog's Create button, once the row with this label is chosen.
         case createAfter
+        /// Done when the switch named `switchLabel` is on: spotlight the nav link `label`.
+        case afterSwitchOn
+        /// Done when every text in `texts` is visible on the page (outside any open panel): spotlight `label`.
+        case afterTextsPresent
+        /// Done when the page shows an activated state: spotlight `label`.
+        case afterActivated
+        /// The name dialog ("Create a ... app", heading starts with `label`): spotlight its name field while empty.
+        case nameField
+        /// The same dialog once the name field has text (read: non-empty only): spotlight Create.
+        case createNamed
     }
     var kind: Kind
+    /// What to spotlight (a row, button, menu item or, for the "after" kinds, a nav link).
     var label: String
     var text: String
+    /// The counter to show once this stage is the furthest.
+    var counter: String? = nil
+    var texts: [String]? = nil
+    var switchLabel: String? = nil
 }
 
 struct ZoomCoach: Equatable, Codable {
@@ -40,6 +55,13 @@ struct ZoomCoach: Equatable, Codable {
     var optional = false
     /// Later stages on the same address, furthest last (Created apps' create flow).
     var then: [ZoomCoachStage]? = nil
+    /// "Do this step" (R16): the actor step the button runs, its plan line, a result note, and busy.
+    var action: String? = nil
+    var plan: String? = nil
+    var note: String? = nil
+    var busy = false
+    /// The card's line while a dialog the coach doesn't know is open (nothing behind it is pointed at).
+    var dialogText = "Finish this window first. Greenroom carries on after it."
 
     /// The JSON the coach script takes. Only these fields, only Swift's own words.
     var json: String {
@@ -53,9 +75,29 @@ enum ZoomCoachRules {
     /// part's app type in the dialog, then Create once that type is chosen.
     static func createFlow(_ part: ZoomGuidePart) -> [ZoomCoachStage] {
         let type = part == .hostingApp ? "Server to server OAuth app" : "General app"
+        let heading = part == .hostingApp ? "Create a Server-to-Server OAuth app" : "Create a General app"
         return [ZoomCoachStage(kind: .menuItem, label: "Build", text: "Press Build."),
                 ZoomCoachStage(kind: .chooseRow, label: type, text: "Choose \(type)."),
-                ZoomCoachStage(kind: .createAfter, label: type, text: "Press Create.")]
+                ZoomCoachStage(kind: .createAfter, label: type, text: "Press Create."),
+                ZoomCoachStage(kind: .nameField, label: heading, text: "Name it, for example Greenroom, then press Create."),
+                ZoomCoachStage(kind: .createNamed, label: heading, text: "Press Create.")]
+    }
+
+    /// Zoom's name dialog is headed "Create a Server-to-Server OAuth app" / "Create a General app".
+    static func part(forHeading heading: String) -> ZoomGuidePart? {
+        let t = heading.lowercased().replacingOccurrences(of: "-", with: " ")
+        if t.contains("server to server oauth") { return .hostingApp }
+        if t.contains("general app") { return .meetingApp }
+        return nil
+    }
+
+    /// The part a dialog moves the coach to: the name dialog's own heading, or the type picked in "What kind of app".
+    static func partFollowing(_ heading: String?, _ chosen: String?) -> ZoomGuidePart? {
+        guard let heading else { return nil }
+        let h = heading.lowercased()
+        if h.hasPrefix("create a ") { return part(forHeading: heading) }
+        if h.hasPrefix("what kind of app"), let chosen { return part(forHeading: chosen) }
+        return nil
     }
 
     /// `needsApp`: the part's keys are filled but its app's ID is not known yet (R12).
@@ -89,8 +131,8 @@ enum ZoomCoachRules {
         guard tipsOn, let step = ZoomGuideFollowRules.step(part: part, page: page) else { return nil }
         let total = part == .meetingApp ? ZoomMarketplaceGuide.sdkSteps.count : ZoomMarketplaceGuide.s2sSteps.count
         let counter = "Step \(step) of \(total)"
-        func make(_ label: String?, _ kind: ZoomCoach.Kind, _ text: String, search: String? = nil) -> ZoomCoach {
-            ZoomCoach(label: label, kind: kind, counter: counter, text: text, searchText: search)
+        func make(_ label: String?, _ kind: ZoomCoach.Kind, _ text: String, search: String? = nil, then: [ZoomCoachStage]? = nil) -> ZoomCoach {
+            ZoomCoach(label: label, kind: kind, counter: counter, text: text, searchText: search, then: then)
         }
         switch page {
         case .chooseType:
@@ -98,16 +140,31 @@ enum ZoomCoachRules {
             return make(name, .row, "Choose \(name), then press Create.")
         case .s2s(_, .scopes):
             return make("Add Scopes", .control, "Press + Add Scopes.",
-                        search: "Paste one scope, tick it, repeat. Copy scopes is in the guide.")
+                        search: "Paste one scope, tick it, repeat. Copy scopes is in the guide.",
+                        then: [ZoomCoachStage(kind: .afterTextsPresent, label: "Activation", text: "All \(ZoomScopes.count) scopes are in. Now open Activation.",
+                                              counter: "Step 3 of 4", texts: ZoomScopes.names)])
         case .s2s(_, .activation):
-            return make("Activate", .control, "Press Activate to turn the app on.")
+            return make("Activate", .control, "Press Activate to turn the app on.",
+                        then: [ZoomCoachStage(kind: .afterActivated, label: "App Credentials", text: "The app is on. Now open App Credentials for the keys.",
+                                              counter: "Step 4 of 4")])
         case .general(_, .embed):
-            return make("Meeting SDK", .toggle, "Turn on Meeting SDK.")
+            return make("Meeting SDK", .toggle, "Turn on Meeting SDK.",
+                        then: [ZoomCoachStage(kind: .afterSwitchOn, label: "Basic information",
+                                              text: "Meeting SDK is on. Now open Basic information for the keys.",
+                                              counter: "Step 3 of 3", switchLabel: "Meeting SDK")])
         case .s2s(_, .credentials), .general(_, .information):
             return keysFilled ? make(nil, .none, "Got it: the keys are in Greenroom.") : nil
         default:
             return nil
         }
+    }
+
+    /// Adds the "Do this step" button and its plan line when the page's step has one (R16).
+    static func offeringAction(_ coach: ZoomCoach?, part: ZoomGuidePart, page: ZoomMarketplacePage) -> ZoomCoach? {
+        guard var c = coach, let step = ZoomActorRules.step(part: part, page: page, coachKind: c.kind) else { return coach }
+        c.action = step.rawValue
+        c.plan = ZoomActorRules.plan(step, part: part)
+        return c
     }
 
     /// Rows whose Type text is the part's kind (Meeting app: General app; Hosting app: Server-to-Server OAuth).

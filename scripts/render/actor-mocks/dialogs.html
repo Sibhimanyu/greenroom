@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Mock: Created apps with a modal open (sample, not Zoom's)</title>
+<style>
+ body{font:14px -apple-system,system-ui,sans-serif;margin:0;padding:30px 40px;background:#f4f5f7;color:#222}
+ .head{display:flex;align-items:center;gap:14px}.head h1{font-size:22px;margin:0}
+ .plus{width:34px;height:34px;border-radius:50%;border:0;background:#2d8cff;color:#fff;font-size:22px}
+ .app{background:#fff;border:1px solid #e3e6ea;border-radius:8px;padding:14px;margin:10px 0;width:760px;display:flex;gap:40px}
+ [role=dialog]{display:none;position:fixed;left:150px;top:90px;width:480px;background:#fff;border-radius:12px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.3)}
+ label.card{display:flex;gap:12px;border:1px solid #d8dbe0;border-radius:8px;padding:12px;margin:8px 0}.card span{display:block;color:#6b7280}
+ input.nm{width:100%;padding:8px;margin:6px 0 16px;box-sizing:border-box}
+</style></head><body>
+<div class="head"><h1>Developer</h1><button class="plus" aria-label="Build App">+</button></div>
+<div class="app"><b>Greenroom</b><span>Activated</span><span>Server-to-Server OAuth</span></div>
+<div class="app"><b>Greenroom</b><span>Create request submitted</span><span>General app</span></div>
+<div role="dialog" id="dlg"></div>
+<script>
+ var d = document.getElementById('dlg');
+ function show(kind, heading) {
+   d.style.display = 'block';
+   if (kind === 'unknown') d.innerHTML = '<h2>Something else entirely</h2><p>Some other dialog.</p><button>Close</button>';
+   if (kind === 'name') d.innerHTML = '<h2>' + heading + '</h2><label>App Name</label><input class="nm" type="text" placeholder="Name your app"><button disabled id="c">Create</button> <button>Cancel</button>';
+   if (kind === 'chooser') d.innerHTML = '<h2>What kind of app are you creating</h2>' +
+     ['General app','Server to server OAuth app','Webhook only app'].map(function (t) { return '<label class="card"><input type="radio" name="t" value="' + t + '"><div><b>' + t + '</b><span>Description</span></div></label>'; }).join('') +
+     '<button>Create</button> <button>Cancel</button>';
+ }
+ function fill() { var i = d.querySelector('input.nm'); i.value = 'Greenroom'; document.getElementById('c').disabled = false; }
+ function pick(t) { d.querySelectorAll('input[type=radio]').forEach(function (r) { if (r.value === t) r.checked = true; }); }
+</script></body></html>

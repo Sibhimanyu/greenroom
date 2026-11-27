@@ -21,6 +21,8 @@ struct ZoomBarFacts: Equatable {
     var signIn: ZoomSignInState = .unknown
     /// On Created apps: a row of the part's app type is in the table.
     var hasMatchingRow = false
+    /// A "Do this step" run is under way.
+    var working = false
 }
 
 enum ZoomBarContext: Equatable {
@@ -31,6 +33,8 @@ enum ZoomBarContext: Equatable {
     case signIn
     /// On a passkey page: Safari is the way through, right there in the bar.
     case openInSafari
+    /// A "Do this step" run is under way.
+    case working
 
     var title: String {
         switch self {
@@ -39,6 +43,7 @@ enum ZoomBarContext: Equatable {
         case .setUp(let text): return text
         case .signIn: return "Sign in"
         case .openInSafari: return "Open in Safari"
+        case .working: return ZoomActorRules.busyTitle
         }
     }
 }
@@ -95,7 +100,8 @@ enum ZoomBarRules {
         let partComplete = part == .meetingApp ? f.meetingComplete : f.hostingComplete
         let onCredentials = f.page.map { ZoomMarketplacePages.keyFields(on: $0) != nil } ?? false
         let context: ZoomBarContext
-        if f.page == .passkey { context = .openInSafari }
+        if f.working && !onSignInPage { context = .working }
+        else if f.page == .passkey { context = .openInSafari }
         else if onSignInPage { context = .none }
         else if f.signIn == .signedOut { context = .signIn }
         else if f.page == .s2s(f.page?.appID ?? "", .scopes), part == .hostingApp { context = .copyScopes }

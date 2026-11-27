@@ -27,98 +27,25 @@ enum ZoomCoachScript {
     }
 
     /// `window.__grCoachSet(cfg, ring, mark)`; cfg null clears the coach.
-    static func call(_ json: String?, ring: String, mark: String? = nil) -> String {
+    static func call(_ json: String?, ring: String, mark: String? = nil, fill: String? = nil) -> String {
         let m = mark.flatMap(safeMark).map { "'\($0)'" } ?? "null"
-        return "window.__grCoachSet && window.__grCoachSet(\(json ?? "null"), '\(ring)', \(m));"
+        let f = fill.map { "'\($0)'" } ?? "null"
+        return "window.__grCoachSet && window.__grCoachSet(\(json ?? "null"), '\(ring)', \(m), \(f));"
     }
 
     static let source = """
     (function () {
       if (window.__grCoachSet) return;
       \(ZoomAppListScript.scanFunction)
-      var host = null, root = null, ui = null, cfg = null, ring = 'currentColor', mark = null;
+      var host = null;
+      \(ZoomFinderScript.functions)
+      var root = null, ui = null, cfg = null, ring = 'currentColor', fill = '#4E8C30', mark = null;
       var status = 'cleared', target = null, resizeObs = null, mutObs = null, timer = 0, pending = 0, dismissed = false;
       var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-      function norm(s) { return (s || '').replace(/\\s+/g, ' ').replace(/\\+/g, '').trim().toLowerCase(); }
-      function rectOf(el) { return el.getBoundingClientRect(); }
-      function shown(el) {
-        var r = rectOf(el);
-        if (r.width < 4 || r.height < 4) return false;
-        var cs = window.getComputedStyle(el);
-        return cs.visibility !== 'hidden' && cs.display !== 'none';
-      }
-      function ownText(el) {
-        var t = '';
-        for (var i = 0; i < el.childNodes.length; i++) if (el.childNodes[i].nodeType === 3) t += el.childNodes[i].nodeValue;
-        return norm(t);
-      }
-      // The smallest visible element whose own text is the label.
-      function textElement(label, scope) {
-        var want = norm(label), best = null, bestArea = 1e12;
-        var all = (scope || document.body) ? (scope || document.body).getElementsByTagName('*') : [];
-        for (var i = 0; i < all.length; i++) {
-          var el = all[i];
-          if (el === host) continue;
-          var tag = el.tagName;
-          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
-          if (ownText(el) !== want && !(el.children.length === 0 && norm(el.textContent) === want)) continue;
-          if (!shown(el)) continue;
-          var r = rectOf(el), a = r.width * r.height;
-          if (a < bestArea) { best = el; bestArea = a; }
-        }
-        return best;
-      }
-      function radiosIn(el) { return el.querySelectorAll('input[type=radio],[role=radio]').length; }
-      function findRow(label, scope) {
-        var el = textElement(label, scope);
-        if (!el) return null;
-        var hops = 0;
-        while (el.parentElement && el.parentElement !== document.body && hops < 6) {
-          var p = el.parentElement;
-          if (radiosIn(p) > 1) break;
-          el = p; hops++;
-        }
-        return shown(el) ? el : null;
-      }
-      function findControl(label, scope) {
-        var el = textElement(label, scope);
-        if (!el) return null;
-        var c = el.closest('button,[role=button],a');
-        return c && shown(c) ? c : el;
-      }
-      function findToggle(label) {
-        var el = textElement(label);
-        if (!el) return null;
-        var p = el;
-        for (var hops = 0; p && p !== document.body && hops < 6; hops++, p = p.parentElement) {
-          var sw = p.querySelector('[role=switch],input[type=checkbox]');
-          if (sw) {
-            var r = rectOf(sw);
-            return r.width >= 4 && r.height >= 4 ? sw : (sw.parentElement || sw);
-          }
-        }
-        return null;
-      }
       function findAppRow(index) {
         var rows = scanAppRows();
         return rows[index] ? rows[index].el : null;
-      }
-      // The round "+" (Build App) beside the "Developer" heading: by its label, else the button after the heading.
-      function findBuildButton() {
-        var btns = document.querySelectorAll('button,[role=button],a');
-        for (var i = 0; i < btns.length; i++) {
-          var hint = norm((btns[i].getAttribute('aria-label') || '') + ' ' + (btns[i].getAttribute('title') || '')).toLowerCase();
-          if (shown(btns[i]) && (hint.indexOf('build') >= 0 || hint.indexOf('create') >= 0 || hint.indexOf('add') >= 0)) return btns[i];
-        }
-        var el = textElement('Developer');
-        for (var hops = 0; el && el !== document.body && hops < 4; hops++, el = el.parentElement) {
-          var sib = el.nextElementSibling;
-          if (!sib) continue;
-          var b = sib.matches('button,[role=button],a') ? sib : sib.querySelector('button,[role=button],a');
-          if (b && shown(b)) return b;
-        }
-        return null;
       }
       function findSearch() {
         var dialogs = document.querySelectorAll('[role=dialog],[aria-modal="true"]');
@@ -152,9 +79,13 @@ enum ZoomCoachScript {
           '.name{font-weight:600;font-size:13px;}',
           '.count{font-size:12px;font-weight:400;color:#6e6e73;}',
           '.text{font-weight:500;}',
-          '.hide{display:inline-block;margin-top:8px;font-size:12px;color:#6e6e73;text-decoration:underline;cursor:pointer;pointer-events:auto;}',
+          '.plan,.note{font-size:12px;color:#6e6e73;margin-top:4px;}',
+          '.row{display:flex;align-items:center;gap:14px;margin-top:8px;}',
+          '.do{border:0;border-radius:8px;padding:5px 12px;font:600 12px -apple-system,system-ui,sans-serif;color:#fff;cursor:pointer;pointer-events:auto;}',
+          '.do[disabled]{opacity:.6;cursor:default;}',
+          '.hide{display:inline-block;font-size:12px;color:#6e6e73;text-decoration:underline;cursor:pointer;pointer-events:auto;}',
           '@media (prefers-color-scheme: dark){.card{background:#2c2c2e;color:#f5f5f7;box-shadow:0 6px 24px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.18);}',
-          ' .count,.hide{color:#a1a1a6;}}',
+          ' .count,.hide,.plan,.note{color:#a1a1a6;}}',
           '@media (prefers-reduced-motion: reduce){.spot.move,.card.move{transition:none}}'
         ].join('');
         root.appendChild(style);
@@ -178,45 +109,24 @@ enum ZoomCoachScript {
           clear();
           try { window.webkit.messageHandlers.coach.postMessage('hide'); } catch (err) {}
         });
-        card.appendChild(head); card.appendChild(text); card.appendChild(hide);
+        var plan = document.createElement('div'); plan.className = 'plan';
+        var note = document.createElement('div'); note.className = 'note';
+        var row = document.createElement('div'); row.className = 'row';
+        var go = document.createElement('button'); go.className = 'do'; go.type = 'button'; go.textContent = 'Do this step';
+        go.setAttribute('tabindex', '-1');
+        go.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        go.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (go.disabled) return;
+          try { window.webkit.messageHandlers.coach.postMessage('do'); } catch (err) {}
+        });
+        row.appendChild(go); row.appendChild(hide);
+        card.appendChild(head); card.appendChild(text); card.appendChild(plan); card.appendChild(note); card.appendChild(row);
         root.appendChild(spot); root.appendChild(card);
-        ui = { spot: spot, ring: ringEl, card: card, count: count, markEl: markEl, text: text, placed: false };
+        ui = { spot: spot, ring: ringEl, card: card, count: count, markEl: markEl, text: text, plan: plan, note: note, go: go, placed: false };
         (document.documentElement || document.body).appendChild(host);
       }
 
-      // The "What kind of app are you creating" dialog (or page), if shown.
-      function chooserRoot() {
-        var all = document.body ? document.body.getElementsByTagName('*') : [];
-        for (var i = 0; i < all.length; i++) {
-          var el = all[i];
-          if (el === host || el.children.length > 3) continue;
-          if (norm(el.textContent).indexOf('what kind of app are you creating') !== 0 || !shown(el)) continue;
-          var d = el.closest('[role=dialog],[aria-modal="true"]');
-          if (d) return d;
-          var p = el;
-          for (var hops = 0; p.parentElement && p.parentElement !== document.body && hops < 8; hops++) {
-            p = p.parentElement;
-            if (radiosIn(p) >= 2) return p;
-          }
-          return document.body;
-        }
-        return null;
-      }
-      // A visible menu item whose whole text is the label (the + menu's "Build").
-      function findMenuItem(label) {
-        var want = norm(label), best = null, bestArea = 1e12;
-        var els = document.querySelectorAll('[role=menuitem],[role=option],li,button,[role=button],a');
-        for (var i = 0; i < els.length; i++) {
-          if (norm(els[i].textContent) !== want || !shown(els[i])) continue;
-          if (!els[i].closest('[role=menu],[role=listbox],[role=presentation],[role=tooltip],.MuiPopover-root,.MuiMenu-root,.MuiPopper-root')) continue;
-          var r = rectOf(els[i]), a = r.width * r.height;
-          if (a < bestArea) { best = els[i]; bestArea = a; }
-        }
-        return best;
-      }
-      function isChosen(row) {
-        return !!(row && row.querySelector('input[type=radio]:checked,[role=radio][aria-checked="true"],.Mui-checked'));
-      }
       function stageTarget(st) {
         if (st.kind === 'menuItem') return findMenuItem(st.label);
         var root = chooserRoot();
@@ -226,16 +136,47 @@ enum ZoomCoachScript {
         if (st.kind === 'createAfter') return isChosen(row) ? findControl('Create', root) : null;
         return null;
       }
-      var stageText = null, lostAt = 0;
+      var stageText = null, stageCounter = null, stageDone = false, lostAt = 0;
 
+      // A later stage the page has reached: {target} (the target may be null), or null when not reached.
+      function stageResult(st) {
+        if (st.kind === 'afterSwitchOn') { var sw = findToggle(st.switchLabel); return sw && isOn(sw) ? { target: findNavLink(st.label), done: true } : null; }
+        if (st.kind === 'afterTextsPresent') {
+          var all = st.texts && st.texts.length;
+          for (var i = 0; all && i < st.texts.length; i++) if (!textVisibleOutside(st.texts[i])) { all = false; }
+          return all ? { target: findNavLink(st.label), done: true } : null;
+        }
+        if (st.kind === 'afterActivated') return pageActivated() ? { target: findNavLink(st.label), done: true } : null;
+        if (st.kind === 'nameField' || st.kind === 'createNamed') {
+          var d = openDialog();
+          if (!d || dialogHeading(d).indexOf(nn2(st.label)) !== 0) return null;
+          var field = null, ins = d.querySelectorAll('input[type=text],input:not([type])');
+          for (var k = 0; k < ins.length; k++) if (shown(ins[k])) { field = ins[k]; break; }
+          if (!field) return null;
+          var hasText = (field.value || '').length > 0;   // only whether it is empty, never the text
+          if (st.kind === 'nameField') return hasText ? null : { target: field, done: false };
+          return hasText ? { target: findControl('Create', d), done: false } : null;
+        }
+        var t = stageTarget(st);
+        return t ? { target: t, done: false } : null;
+      }
+
+      var dialogEl = null;
       function resolve() {
         if (!cfg) return null;
-        stageText = null;
+        stageText = null; stageCounter = null; stageDone = false;
+        dialogEl = openDialog();
+        var t = resolveInner();
+        // With a dialog open the coach only ever points INSIDE it; nothing behind it.
+        if (dialogEl && (!t || !dialogEl.contains(t))) { if (t) { stageText = null; stageCounter = null; stageDone = false; } return null; }
+        return t;
+      }
+      function resolveInner() {
         if (cfg.then) {
           // The furthest later stage the page shows wins; else the first spotlight.
           for (var si = cfg.then.length - 1; si >= 0; si--) {
-            var t = stageTarget(cfg.then[si]);
-            if (t) { stageText = cfg.then[si].text; return t; }
+            var r = stageResult(cfg.then[si]);
+            if (r) { stageText = cfg.then[si].text; stageCounter = cfg.then[si].counter || null; stageDone = r.done; return r.target; }
           }
         }
         if (cfg.kind === 'appRow') return findAppRow(cfg.rowIndex);
@@ -251,14 +192,26 @@ enum ZoomCoachScript {
         pending = 0;
         if (!cfg || dismissed) { status = 'cleared'; return; }
         status = 'drawn';
+        dialogEl = openDialog();
         // A flow with later stages looks again every time; others keep their target while it lasts.
-        if (cfg.then || !target || !target.isConnected || !shown(target)) target = resolve();
+        if (cfg.then || !target || !target.isConnected || !shown(target) || openDialog()) target = resolve();
         if (!host) build();
         if (!host.isConnected) (document.documentElement || document.body).appendChild(host);
         var useSearch = cfg.searchText && target && target.tagName === 'INPUT';
-        ui.count.textContent = cfg.counter ? ' \\u00B7 ' + cfg.counter : '';
+        var counter = stageCounter || cfg.counter;
+        ui.count.textContent = counter ? ' \\u00B7 ' + counter : '';
         if (mark) { ui.markEl.src = mark; ui.markEl.style.display = 'block'; }
-        ui.text.textContent = useSearch ? cfg.searchText : (stageText || cfg.text);
+        var behindDialog = !!dialogEl && !target && !stageText;
+        ui.text.textContent = behindDialog ? cfg.dialogText : (useSearch ? cfg.searchText : (stageText || cfg.text));
+        var canDo = !!cfg.action && !stageDone && !behindDialog;
+        ui.go.style.display = canDo ? 'inline-block' : 'none';
+        ui.go.style.background = fill;
+        ui.go.disabled = !!cfg.busy;
+        ui.go.textContent = cfg.busy ? 'Working\\u2026' : 'Do this step';
+        ui.plan.textContent = canDo && !cfg.busy && cfg.plan ? cfg.plan : '';
+        ui.plan.style.display = ui.plan.textContent ? 'block' : 'none';
+        ui.note.textContent = cfg.note || '';
+        ui.note.style.display = cfg.note ? 'block' : 'none';
         var animate = !reduce && ui.placed;
         ui.spot.className = 'spot' + (animate ? ' move' : '');
         ui.card.className = 'card' + (animate ? ' move' : '');
@@ -278,6 +231,15 @@ enum ZoomCoachScript {
           // Create button, which Zoom puts on the left.
           else if (r.bottom + 16 + ch <= vh - 8) { left = r.right - cw; top = r.bottom + 16 + pad; }
           else { left = r.right - cw; top = Math.max(8, r.top - 16 - ch - pad); }
+        } else if (dialogEl) {
+          // A dialog is open and nothing inside it is ours to point at: the card sits BESIDE it, never over it.
+          ui.spot.style.display = 'none';
+          lostAt = 0;
+          var dr = rectOf(dialogEl);
+          if (dr.right + 16 + cw <= vw - 8) { left = dr.right + 16; top = dr.top; }
+          else if (dr.left - 16 - cw >= 8) { left = dr.left - 16 - cw; top = dr.top; }
+          else if (dr.bottom + 16 + ch <= vh - 8) { left = dr.left; top = dr.bottom + 16; }
+          else { left = dr.left; top = Math.max(8, dr.top - 16 - ch); }
         } else {
           ui.spot.style.display = 'none';
           left = vw - cw - 16; top = vh - ch - 16;
@@ -286,7 +248,7 @@ enum ZoomCoachScript {
           // and one that may stand alone moves to the corner.
           if (!lostAt) lostAt = Date.now();
           if (ui.placed && Date.now() - lostAt < 1500) { status = 'held'; return; }
-          if (cfg.kind && cfg.kind !== 'none' && !cfg.optional && !cfg.then) { ui.card.style.display = 'none'; ui.placed = false; status = 'no-target'; return; }
+          if (cfg.kind && cfg.kind !== 'none' && !cfg.optional && !stageText && !(cfg.then && (cfg.kind === 'build' || cfg.kind === 'appRow'))) { ui.card.style.display = 'none'; ui.placed = false; status = 'no-target'; return; }
         }
         ui.card.style.display = 'block';
         ui.card.style.left = Math.min(Math.max(8, left), vw - cw - 8) + 'px';
@@ -318,8 +280,9 @@ enum ZoomCoachScript {
         host = null; root = null; ui = null;
       }
 
-      window.__grCoachSet = function (next, color, markUri) {
+      window.__grCoachSet = function (next, color, markUri, fillColor) {
         if (color) ring = color;
+        if (fillColor) fill = fillColor;
         if (markUri) mark = markUri;
         if (!next) { dismissed = false; clear(); return 'cleared'; }
         dismissed = false;

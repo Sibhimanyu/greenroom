@@ -6,9 +6,9 @@ final class ZoomBarRulesTests: XCTestCase {
     private let mid = "AbC_123-xyZ789qrstuvw1", hid = "ZzZ_999-aaBBcc1122"
 
     private func bar(_ part: ZoomGuidePart, _ page: ZoomMarketplacePage?, meeting: Bool = false, hosting: Bool = false,
-                     ids: ZoomAppIDs = ZoomAppIDs(), signIn: ZoomSignInState = .signedIn, hasRow: Bool = false) -> ZoomBar {
+                     ids: ZoomAppIDs = ZoomAppIDs(), signIn: ZoomSignInState = .signedIn, hasRow: Bool = false, working: Bool = false) -> ZoomBar {
         ZoomBarRules.bar(ZoomBarFacts(part: part, page: page, ids: ids, meetingComplete: meeting, hostingComplete: hosting, signIn: signIn,
-                                      hasMatchingRow: hasRow))
+                                      hasMatchingRow: hasRow, working: working))
     }
 
     func testTheTitleNamesThePartStepAndWhatToDo() {
@@ -137,5 +137,14 @@ final class ZoomBarRulesTests: XCTestCase {
             XCTAssertFalse(b.offersSignOut)
         }
         XCTAssertEqual(bar(.meetingApp, .passkey, meeting: true, hosting: true).primary, ZoomBarPrimary.none)
+    }
+
+    func testWhileAStepRunsTheBarSaysWorking() {
+        let b = bar(.hostingApp, .s2s(hid, .scopes), working: true)
+        XCTAssertEqual(b.context, .working)
+        XCTAssertEqual(ZoomBarContext.working.title, "Working\u{2026}")
+        XCTAssertEqual(b.title, "Hosting app \u{00B7} Step 2 of 4 \u{00B7} Add the scopes")
+        XCTAssertEqual(bar(.hostingApp, .createdApps, working: true).context, .working)
+        XCTAssertEqual(bar(.hostingApp, .s2s(hid, .scopes), working: false).context, .copyScopes)
     }
 }

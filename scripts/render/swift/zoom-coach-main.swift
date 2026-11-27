@@ -15,6 +15,10 @@ let markURI: String? = {
     guard let d = FileManager.default.contents(atPath: path) else { return nil }
     return "data:image/png;base64," + d.base64EncodedString()
 }()
+/// A window macOS never drags back on screen (a titled one at (-4000,-4000) is constrained onto the display).
+final class OffscreenWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
 func spin(_ s: Double) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
 
 let ringColor: String = {
@@ -36,9 +40,10 @@ let ringColor: String = {
 @MainActor func shoot(html: String, part: ZoomGuidePart, page: ZoomMarketplacePage, dark: Bool, file: String, needsApp: Bool = false,
                       width: CGFloat = 1000, height: CGFloat = 620) {
     let web = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-    let win = NSWindow(contentRect: NSRect(x: -4000, y: -4000, width: width, height: height), styleMask: [.titled], backing: .buffered, defer: false)
+    let win = OffscreenWindow(contentRect: NSRect(x: -20000, y: -20000, width: width, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
     win.contentView = web
     win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    win.hasShadow = false
     win.orderBack(nil)
     web.loadHTMLString(mock(html), baseURL: nil)
     spin(1.0)

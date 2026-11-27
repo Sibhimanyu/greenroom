@@ -22,14 +22,19 @@ final class ZoomCoachRulesTests: XCTestCase {
         XCTAssertEqual(coach(.hostingApp, .s2s(id, .scopes)),
                        ZoomCoach(label: "Add Scopes", kind: .control, counter: "Step 2 of 4",
                                  text: "Press + Add Scopes.",
-                                 searchText: "Paste one scope, tick it, repeat. Copy scopes is in the guide."))
+                                 searchText: "Paste one scope, tick it, repeat. Copy scopes is in the guide.",
+                                 then: [ZoomCoachStage(kind: .afterTextsPresent, label: "Activation", text: "All \(ZoomScopes.count) scopes are in. Now open Activation.",
+                                                       counter: "Step 3 of 4", texts: ZoomScopes.names)]))
     }
 
     func testActivationAndEmbed() {
         XCTAssertEqual(coach(.hostingApp, .s2s(id, .activation)),
-                       ZoomCoach(label: "Activate", kind: .control, counter: "Step 3 of 4", text: "Press Activate to turn the app on."))
+                       ZoomCoach(label: "Activate", kind: .control, counter: "Step 3 of 4", text: "Press Activate to turn the app on.",
+                                 then: [ZoomCoachStage(kind: .afterActivated, label: "App Credentials", text: "The app is on. Now open App Credentials for the keys.", counter: "Step 4 of 4")]))
         XCTAssertEqual(coach(.meetingApp, .general(id, .embed)),
-                       ZoomCoach(label: "Meeting SDK", kind: .toggle, counter: "Step 2 of 3", text: "Turn on Meeting SDK."))
+                       ZoomCoach(label: "Meeting SDK", kind: .toggle, counter: "Step 2 of 3", text: "Turn on Meeting SDK.",
+                                 then: [ZoomCoachStage(kind: .afterSwitchOn, label: "Basic information", text: "Meeting SDK is on. Now open Basic information for the keys.",
+                                                       counter: "Step 3 of 3", switchLabel: "Meeting SDK")]))
     }
 
     func testCredentialsPagesHaveNoSpotlightAndSpeakOnlyAfterTheFill() {
@@ -106,9 +111,12 @@ final class ZoomCoachRulesTests: XCTestCase {
             ZoomCoachStage(kind: .menuItem, label: "Build", text: "Press Build."),
             ZoomCoachStage(kind: .chooseRow, label: "General app", text: "Choose General app."),
             ZoomCoachStage(kind: .createAfter, label: "General app", text: "Press Create."),
+            ZoomCoachStage(kind: .nameField, label: "Create a General app", text: "Name it, for example Greenroom, then press Create."),
+            ZoomCoachStage(kind: .createNamed, label: "Create a General app", text: "Press Create."),
         ])
         XCTAssertEqual(ZoomCoachRules.createFlow(.hostingApp).map(\.label),
-                       ["Build", "Server to server OAuth app", "Server to server OAuth app"])
+                       ["Build", "Server to server OAuth app", "Server to server OAuth app",
+                        "Create a Server-to-Server OAuth app", "Create a Server-to-Server OAuth app"])
         XCTAssertEqual(created(.meetingApp, [])?.then, ZoomCoachRules.createFlow(.meetingApp))
         XCTAssertEqual(created(.hostingApp, [s2s, general])?.then, ZoomCoachRules.createFlow(.hostingApp),
                        "someone with an app may still build a new one")
@@ -181,5 +189,100 @@ final class ZoomCoachRulesTests: XCTestCase {
         }
         XCTAssertNil(ZoomCoachRules.coach(part: .meetingApp, page: .passkey, keysFilled: false, tipsOn: false))
         XCTAssertTrue(ZoomCoachScript.source.contains("optional"))
+    }
+
+    // R16: the card's "Do this step".
+
+    func testTheCardOffersDoThisStepOnlyOnItsSteps() {
+        let hostScopes = ZoomCoachRules.coach(part: .hostingApp, page: .s2s(id, .scopes), keysFilled: false, tipsOn: true)
+        let withAction = ZoomCoachRules.offeringAction(hostScopes, part: .hostingApp, page: .s2s(id, .scopes))
+        XCTAssertEqual(withAction?.action, "addScopes")
+        XCTAssertEqual(withAction?.plan, ZoomActorRules.plan(.addScopes, part: .hostingApp))
+        XCTAssertEqual(withAction?.text, hostScopes?.text)
+        let credentials = ZoomCoachRules.coach(part: .hostingApp, page: .s2s(id, .credentials), keysFilled: true, tipsOn: true)
+        XCTAssertNil(ZoomCoachRules.offeringAction(credentials, part: .hostingApp, page: .s2s(id, .credentials))?.action)
+        let rows = ZoomCoachRules.coach(part: .meetingApp, page: .createdApps, keysFilled: false, tipsOn: true, appRows: ["general app"])
+        XCTAssertNil(ZoomCoachRules.offeringAction(rows, part: .meetingApp, page: .createdApps)?.action)
+        let build = ZoomCoachRules.coach(part: .meetingApp, page: .createdApps, keysFilled: false, tipsOn: true, appRows: [])
+        XCTAssertEqual(ZoomCoachRules.offeringAction(build, part: .meetingApp, page: .createdApps)?.action, "createApp")
+        XCTAssertNil(ZoomCoachRules.offeringAction(nil, part: .meetingApp, page: .createdApps))
+    }
+
+    func testBusyAndNoteTravelInTheJSON() throws {
+        var c = try XCTUnwrap(ZoomCoachRules.offeringAction(
+            ZoomCoachRules.coach(part: .hostingApp, page: .s2s(id, .activation), keysFilled: false, tipsOn: true), part: .hostingApp, page: .s2s(id, .activation)))
+        c.busy = true; c.note = "Added 8 scopes."
+        let obj = try JSONSerialization.jsonObject(with: Data(c.json.utf8)) as? [String: Any]
+        XCTAssertEqual(obj?["busy"] as? Bool, true)
+        XCTAssertEqual(obj?["note"] as? String, "Added 8 scopes.")
+        XCTAssertEqual(obj?["action"] as? String, "activate")
+        XCTAssertTrue(ZoomCoachScript.source.contains("Do this step"))
+        XCTAssertTrue(ZoomCoachScript.source.contains("Working"))
+    }
+
+    func testDoneStagesMoveTheCoachOnWithoutAnAddressChange() {
+        let e = coach(.meetingApp, .general(id, .embed))?.then?.first
+        XCTAssertEqual(e?.kind, .afterSwitchOn)
+        XCTAssertEqual(e?.switchLabel, "Meeting SDK")
+        XCTAssertEqual(e?.label, "Basic information")
+        let s = coach(.hostingApp, .s2s(id, .scopes))?.then?.first
+        XCTAssertEqual(s?.texts, ZoomScopes.names)
+        XCTAssertEqual(s?.label, "Activation")
+        let a = coach(.hostingApp, .s2s(id, .activation))?.then?.first
+        XCTAssertEqual(a?.kind, .afterActivated)
+        XCTAssertEqual(a?.label, "App Credentials")
+        // Tips off: nothing.
+        XCTAssertNil(coach(.hostingApp, .s2s(id, .activation), tips: false))
+    }
+
+    func testDoneStagesTravelInTheJSON() throws {
+        let c = try XCTUnwrap(coach(.hostingApp, .s2s(id, .scopes)))
+        let obj = try JSONSerialization.jsonObject(with: Data(c.json.utf8)) as? [String: Any]
+        let stage = (obj?["then"] as? [[String: Any]])?.first
+        XCTAssertEqual(stage?["kind"] as? String, "afterTextsPresent")
+        XCTAssertEqual((stage?["texts"] as? [String])?.count, ZoomScopes.count)
+        let js = ZoomCoachScript.source
+        for k in ["afterSwitchOn", "afterTextsPresent", "afterActivated"] { XCTAssertTrue(js.contains(k), k) }
+    }
+
+    // Dialogs: the coach never points behind an open one, knows the name dialog, and the part follows the type.
+
+    func testThePartFollowsTheTypeAHeadingOrAChoiceNames() {
+        let p = ZoomCoachRules.part(forHeading:)
+        XCTAssertEqual(p("Create a Server-to-Server OAuth app"), .hostingApp)
+        XCTAssertEqual(p("create a server to server oauth app"), .hostingApp)
+        XCTAssertEqual(p("Server to server OAuth app"), .hostingApp)
+        XCTAssertEqual(p("Create a General app"), .meetingApp)
+        XCTAssertEqual(p("General app Use OAuth, embed the Meeting SDK"), .meetingApp)
+        XCTAssertNil(p("What kind of app are you creating"))
+        XCTAssertNil(p("Webhook only app"))
+        XCTAssertNil(p(""))
+    }
+
+    func testTheNameDialogDecidesThePartAndTheChooserFollowsTheChoice() {
+        let f = ZoomCoachRules.partFollowing
+        XCTAssertEqual(f("Create a Server-to-Server OAuth app", nil), .hostingApp)
+        XCTAssertEqual(f("Create a General app", nil), .meetingApp)
+        XCTAssertEqual(f("What kind of app are you creating", "server to server oauth app call zoom"), .hostingApp)
+        XCTAssertEqual(f("What kind of app are you creating", "general app oauth"), .meetingApp)
+        XCTAssertNil(f("What kind of app are you creating", nil))
+        XCTAssertNil(f("What kind of app are you creating", "webhook only app"))
+        XCTAssertNil(f(nil, "general app"))
+        XCTAssertNil(f("Something else", "general app"))
+    }
+
+    func testEveryCardCarriesAPlainLineForAnUnknownDialog() {
+        XCTAssertEqual(ZoomCoach(label: nil, kind: .none, counter: "", text: "x").dialogText,
+                       "Finish this window first. Greenroom carries on after it.")
+        let c = created(.meetingApp, [])
+        XCTAssertEqual(c?.dialogText, "Finish this window first. Greenroom carries on after it.")
+    }
+
+    func testTheScriptKnowsDialogsAndNameStages() {
+        let js = ZoomCoachScript.source
+        for k in ["nameField", "createNamed", "openDialog", "dialogEl", "dialogText"] { XCTAssertTrue(js.contains(k), k) }
+        let scan = ZoomDialogScript.source
+        XCTAssertTrue(scan.contains("openDialog"))
+        for banned in [".click(", ".focus(", "dispatchEvent", ".value", "fetch(", "console.", "postMessage"] { XCTAssertFalse(scan.contains(banned), banned) }
     }
 }

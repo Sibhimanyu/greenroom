@@ -83,6 +83,8 @@ enum CameraState: Equatable, CaseIterable {
 
 /// The saved default (Settings -> Layouts) and the running meeting's own change.
 /// A live change never reaches `saved`; Start and Snap Back drop it.
+/// P3 of docs/specs/meeting-setup.md retires this type: `MeetingSetup` (App/Layout) wraps it
+/// until then, so its rules (`lastOn`, click and turn-on targets) live in one place only.
 struct CameraStateSession: Equatable {
     private(set) var saved: CameraState
     private(set) var live: CameraState?
@@ -127,6 +129,12 @@ struct CameraStateSession: Equatable {
     mutating func setSaved(_ state: CameraState) {
         saved = state
         if live == nil { lastOn = Self.onState(of: state) }
+    }
+    /// Keep: the live change becomes the saved value and goes. The camera is unchanged, so the
+    /// `lastOn` memory stays as it is.
+    mutating func keepLive() {
+        if let live { saved = live }
+        live = nil
     }
     /// Start and Snap Back: the live change goes, and the memory returns to the default's on-state.
     mutating func resetToDefault() {

@@ -105,6 +105,17 @@ personal room"), never "PMI" in UI text. Code: `App/Zoom/ZoomPersonalRoom.swift`
   its number with a fresh host key. It is never edited or deleted from Greenroom.
 - No scope or no PMI means no entry, never an error on Home.
 
+## Zoom window
+
+Greenroom's own window onto Zoom App Marketplace, opened beside the setup guide
+by "Open Zoom App Marketplace" (`App/UI/ZoomMarketplaceWindow.swift`). It keeps
+the Zoom sign-in in Greenroom, apart from Safari ("Sign out of Zoom" clears it).
+The guide follows its page (`ZoomMarketplacePages`), the **coach** draws a dim
+layer, a ringed spotlight and a one-line card on Zoom's page, and on the
+credentials pages Greenroom reads the keys into the guide's fields. Greenroom
+never clicks or submits anything on Zoom's pages. Say **Zoom window**, not
+"browser". Spec: `docs/specs/zoom-setup-assist.md`.
+
 ## Layouts
 
 **Layout**: a main-display arrangement, plus optionally a second-display arrangement used only when that display is connected: where each window goes and where the owner's camera sits. What the owner arranges is what everyone in the meeting sees, except windows hidden from everyone. The camera is the one piece that can be in everyone's picture without being on the owner's screen. Exactly one layout is active at a time.

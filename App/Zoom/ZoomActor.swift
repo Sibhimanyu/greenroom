@@ -22,6 +22,8 @@ struct ZoomActor {
         case signedOut
         /// A key could not be read or copied.
         case noKey(ZoomKeyField)
+        /// The person pressed Stop (checked on every look at the page, even mid-wait).
+        case cancelled
     }
 
     enum Outcome: Equatable {
@@ -33,6 +35,8 @@ struct ZoomActor {
     var pacing: ZoomPacing = .live
     /// Told every page reading the actor takes, so evidence also grows from pages the plan only passes through.
     var observer: @MainActor (ZoomPageSnapshot) -> Void = { _ in }
+    /// True once the person pressed Stop: every wait ends at its next look.
+    var shouldStop: @MainActor () -> Bool = { false }
 
     /// What a plan may press, by ID. Sign-in, "try another way" and closing someone else's window are the person's.
     static func mayPress(_ c: ZoomControl) -> Bool {
@@ -71,6 +75,7 @@ struct ZoomActor {
                     case .holds: continue
                     case .doesNot: break
                     case .signedOut: return .stopped(.signedOut)
+                    case .cancelled: return .stopped(.cancelled)
                     case .unknown: return .stopped(.timedOut(unless))
                     }
                 }
@@ -97,6 +102,7 @@ struct ZoomActor {
     private func act(_ action: ZoomPageAction, _ control: ZoomControl) async -> Reason? {
         // A control may need a moment to appear (a menu, a dialog): look a few times before giving up.
         for poll in 0..<max(1, pacing.polls) {
+            if shouldStop() { return .cancelled }
             switch await page.perform(action) {
             case .done: return nil
             case .denied: return .denied(control)
@@ -108,11 +114,12 @@ struct ZoomActor {
         return .notFound(control)
     }
 
-    private enum Judgement { case holds, doesNot, signedOut, unknown }
+    private enum Judgement { case holds, doesNot, signedOut, unknown, cancelled }
     /// Waits until the page shows whether `condition` holds (a sign-out ends the wait at once).
     @MainActor
     private func judge(_ condition: ZoomCondition) async -> Judgement {
         for poll in 0..<max(1, pacing.polls) {
+            if shouldStop() { return .cancelled }
             if let s = await page.read() {
                 observer(s)
                 if s.isSignedOut { return .signedOut }
@@ -126,6 +133,7 @@ struct ZoomActor {
     @MainActor
     private func wait(_ condition: ZoomCondition) async -> Reason? {
         for poll in 0..<max(1, pacing.polls) {
+            if shouldStop() { return .cancelled }
             if let s = await page.read() {
                 observer(s)
                 if s.isSignedOut { return .signedOut }
@@ -142,6 +150,7 @@ struct ZoomActor {
         // The page may still be loading: look until the key is readable or its Copy control is there.
         var copyable = false
         for poll in 0..<max(1, pacing.polls) {
+            if shouldStop() { return .failure(.cancelled) }
             if let s = await page.read() {
                 observer(s)
                 if let v = s.keys[field]?.text, ZoomMarketplacePages.isKey(v) { return .success(v) }
@@ -175,6 +184,7 @@ extension ZoomActor.Reason {
         case .timedOut: return "Zoom didn\u{2019}t answer the way Greenroom expected."
         case .signedOut: return "You\u{2019}re signed out of Zoom."
         case .noKey(let f): return "Greenroom couldn\u{2019}t copy the \(f.label)."
+        case .cancelled: return "You stopped Set up for me."
         }
     }
 }

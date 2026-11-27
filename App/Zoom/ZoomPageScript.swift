@@ -573,6 +573,15 @@ enum ZoomPageScript {
         var snap = {};
         var header = headerState();
         if (header.signedIn !== null) snap.signedIn = header.signedIn;
+        // An app the person deleted in Zoom: its page says "The application is not found" / "An Error Occurred".
+        if (path().indexOf('/develop/apps/') === 0 || path().indexOf('/develop/applications/') === 0) {
+          var said = norm(document.body.innerText || '');
+          if (said.indexOf('the application is not found') >= 0 || (said.indexOf('an error occurred') >= 0 && said.indexOf('refresh the page') >= 0)) snap.appMissing = true;
+        }
+        // Zoom's generic error page, wherever it shows (a deleted Server-to-Server app redirects there).
+        var page = norm((document.body && document.body.innerText) || '');
+        if ((page.indexOf('something went wrong') >= 0 && page.indexOf('contact support') >= 0) ||
+            (page.indexOf('an error occurred') >= 0 && page.indexOf('refresh the page') >= 0)) snap.pageError = true;
 
         var dlg = openDialog(), dialog = { kind: 'none' };
         if (dlg) {

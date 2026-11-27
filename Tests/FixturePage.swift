@@ -53,9 +53,17 @@ final class FixturePage: ZoomPage {
     var contentLateReads = 0
     /// The person signs in by themselves after this many reads of the sign-in page (0: never).
     var signsInAfterReads = 0
+    /// Called on every read (a test presses Stop mid-wait from here).
+    var onRead: () -> Void = {}
+    /// The person types this into Information's Email after this many reads (0: never).
+    var personTypesEmail: (afterReads: Int, email: String)? = nil
     /// Live run 9, 2026-11-27: a tick in the Add scopes window registers only once the page redraws; Done pressed
     /// straight after the last tick lost it. With this on, a tick counts after the next read.
     var ticksRegisterOnRead = false
+    /// Live runs 9 and 10, 2026-11-27: Zoom showed the eighth tick at once yet dropped it on Done. With this on, the
+    /// first Done loses its last tick.
+    var firstDoneDropsLastTick = false
+    private var lastTicked: String?
     private var pendingTicks: Set<String> = []
     private var lateContentReads = 0
     private var lateListReads = 0
@@ -100,10 +108,28 @@ final class FixturePage: ZoomPage {
     // MARK: ZoomPage
 
     func read() async -> ZoomPageSnapshot? {
+        onRead()
+        if let t = personTypesEmail, case .s2s(let id, .information) = address {
+            if t.afterReads <= 1 { edit(id) { $0.info[.contactEmail] = t.email }; personTypesEmail = nil }
+            else { personTypesEmail = (t.afterReads - 1, t.email) }
+        }
         if !pendingTicks.isEmpty { ticked.formUnion(pendingTicks); pendingTicks = [] }
         if !signedIn, signsInAfterReads > 0 { signsInAfterReads -= 1; if signsInAfterReads == 0 { personSignsIn() } }
         guard signedIn else { return ZoomPageSnapshot(address: address, signedIn: false) }
         if blankReads > 0 { blankReads -= 1; return ZoomPageSnapshot(address: address, signedIn: true, dialog: .none) }
+        // Live, 2026-11-27: the person deleted an app in Zoom; its page now says "The application is not found".
+        if let id = address.appID, app(id) == nil {
+            // A deleted Server-to-Server app: Zoom redirects to a generic "Something went wrong" page (live, 2026-11-27).
+            if address.zoomApp == .hosting {
+                var error = ZoomPageSnapshot(address: nil, signedIn: true, dialog: .none)
+                error.pageError = true
+                return error
+            }
+            var gone = ZoomPageSnapshot(address: address, signedIn: true, dialog: .none)
+            gone.appMissing = true
+            gone.controls.insert(.navLink(.basicInformation))
+            return gone
+        }
         if lateContentReads > 0, address != .createdApps {
             lateContentReads -= 1
             var menu = ZoomPageSnapshot(address: address, signedIn: true, dialog: .none)
@@ -225,10 +251,12 @@ final class FixturePage: ZoomPage {
             }
         case .addScopes: dialog = .addScopes(searchPresent: true, ticked: []); search = ""; ticked = []
         case .scopeCheckbox(let n):
+            lastTicked = n
             if ticksRegisterOnRead { pendingTicks.insert(n) }
             else if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
         case .scopesDone:
             pendingTicks = []
+            if firstDoneDropsLastTick, let last = lastTicked { ticked.remove(last); firstDoneDropsLastTick = false }
             if case .s2s(let id, _) = address { edit(id) { $0.unsavedScopes.formUnion(ticked) } }
             dialog = .none
         case .activate:

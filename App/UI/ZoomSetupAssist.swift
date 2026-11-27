@@ -65,12 +65,25 @@ final class ZoomSetupAssist: ObservableObject {
 
     // MARK: The session
 
+    /// Apps deleted in Zoom this session: their addresses are never remembered again.
+    private var goneIDs: Set<String> = []
+    private func appGone(_ app: ZoomApp) {
+        let own: ZoomOwnApp = app == .meeting ? .sdk : .s2s
+        var next = state
+        if let id = next.ids.id(for: own) { goneIDs.insert(id) }
+        next.ids.forget(own)
+        state = next
+        defaults.set(next.ids.meeting, forKey: Self.meetingKey)
+        defaults.set(next.ids.hosting, forKey: Self.hostingKey)
+    }
+
     private func makeSession() -> SetupForMe? {
         if let session { return session }
         guard let coordinator else { return nil }
         let s = SetupForMe(page: ZoomMarketplaceWindow.shared, keys: CoordinatorZoomKeys(assist: self, coordinator: coordinator),
                            checker: CoordinatorZoomChecker(coordinator: coordinator), answers: answers)
         s.onStep = { [weak self] step in self?.stepChanged(step) }
+        s.onForgotApp = { [weak self] app in self?.appGone(app) }
         session = s
         return s
     }
@@ -127,7 +140,7 @@ final class ZoomSetupAssist: ObservableObject {
     private func pageChanged(_ page: ZoomMarketplacePage?) {
         var next = state
         next.page = page
-        if let page { next.ids.see(page) }
+        if let page, !(page.appID.map(goneIDs.contains) ?? false) { next.ids.see(page) }
         state = next
         defaults.set(next.ids.meeting, forKey: Self.meetingKey)
         defaults.set(next.ids.hosting, forKey: Self.hostingKey)
@@ -276,6 +289,7 @@ final class ZoomSetupAssist: ObservableObject {
         answers.info = info
         answers.buildNew = buildNew
         run.answers = answers
+        run.lookUpInfo = { let p = await ZoomProfileReader.read(); return (name: p.name, email: p.email) }
         handoverNote = nil
         let window = ZoomMarketplaceWindow.shared
         run.onStep = { [weak self] step in

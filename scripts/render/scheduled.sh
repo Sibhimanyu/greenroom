@@ -10,5 +10,6 @@ render scheduled-render scheduled-main.swift App/UI/ScheduledPickerField.swift "
   App/Zoom/ZoomPersonalRoom.swift App/Zoom/ZoomServerToServerClient.swift App/Zoom/ZoomScopes.swift \
   App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift App/Zoom/ZoomMarketplaceGuide.swift \
   App/Zoom/NewMeetingRequest.swift App/Zoom/ZoomRouteRules.swift App/Zoom/ZoomUserAuthRules.swift \
-  App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift
+  App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift \
+  App/Zoom/ZoomMarketplacePages.swift App/Zoom/ZoomGuideFlowRules.swift App/Zoom/ZoomStartOverRules.swift App/Zoom/ZoomSetupFlow.swift App/Zoom/ZoomPageSnapshot.swift App/Zoom/ZoomPage.swift
 finish

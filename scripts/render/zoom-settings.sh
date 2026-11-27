@@ -33,6 +33,6 @@ SWIFT
 printf 'enum SessionNotes { static let enabledKey = "sessionNotesEnabled" }\nenum CoordinatorController { static let copyInviteOnStartKey = "copyInviteOnStart" }\n' > "$STAGE/Stub.swift"
 render zoom-settings-render zoom-settings-main.swift "$STAGE/ZoomSettingsTab.swift" "$STAGE/ZoomSignInSection.swift" \
   "$STAGE/Brand.swift" "$STAGE/Stub.swift" App/UI/SettingsKit.swift App/UI/Segmented.swift App/UI/SegmentedMath.swift App/UI/Tiles.swift App/UI/TileAppearance.swift App/UI/Glass.swift App/Zoom/ZoomScopes.swift App/Zoom/ZoomMarketplaceGuide.swift App/Zoom/ZoomMarketplacePages.swift App/Zoom/ZoomStartOverRules.swift App/UI/ZoomStartOverButton.swift \
-  App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift App/Zoom/ZoomGuideFlowRules.swift App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift \
+  App/Zoom/ZoomUserAuthRules.swift App/Zoom/ZoomRouteRules.swift App/Zoom/ZoomRouteChoiceRules.swift App/Zoom/ZoomSignInAvailability.swift App/Zoom/ZoomGuideFlowRules.swift App/Zoom/ZoomSetupFlow.swift App/Zoom/ZoomPageSnapshot.swift App/Zoom/ZoomPage.swift App/Zoom/ZoomSetupCheckRules.swift App/Zoom/ZoomCheckActionRules.swift \
   "$STAGE/ZoomCheckPanel.swift" "$STAGE/CheckRowStub.swift"
 finish

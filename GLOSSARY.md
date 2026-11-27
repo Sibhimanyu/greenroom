@@ -197,6 +197,10 @@ neighbours. Spec: `docs/specs/zoom-setup-flow.md`. Decision: `docs/adr/0003-one-
 
 **What's shared**: what a layout gives everyone: the screen, an app, a window, the whiteboard, or nothing (just the camera). Saved per layout; changed live from Home during a meeting.
 
+**Saved**: a setting's value as kept across launches: in the active layout (camera state, camera piece, what's shared) or for the whole app. Before a meeting, every place that changes it, Home included, changes the saved value, and Home names the layout it changes. _Avoid_: default, global (when it lives in a layout).
+
+**For this meeting**: a change made while a meeting is live that sets a value for the rest of that meeting only and leaves the saved value alone. It ends when the meeting ends. Every place that shows the setting shows the value in use, and a place that edits the saved value says when a for-this-meeting change is in effect. _Avoid_: override, live value, temporary setting.
+
 ## YouTube
 
 Code lives in `App/YouTube/`.

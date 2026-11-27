@@ -108,13 +108,56 @@ personal room"), never "PMI" in UI text. Code: `App/Zoom/ZoomPersonalRoom.swift`
 ## Zoom window
 
 Greenroom's own window onto Zoom App Marketplace, opened large and centred on the
-setup guide's screen by "Set up Zoom" / "Continue setup" (`App/UI/ZoomMarketplaceWindow.swift`). It keeps
+setup guide's screen by "Set up for me" or "Guide me instead" (`App/UI/ZoomMarketplaceWindow.swift`). It keeps
 the Zoom sign-in in Greenroom, apart from Safari ("Sign out of Zoom" clears it).
-A bar at its top (the **Greenroom bar**) says the part and step. The guide follows its page (`ZoomMarketplacePages`), the **coach** draws a dim
-layer, a ringed spotlight and a one-line card on Zoom's page, and on the
-credentials pages Greenroom reads the keys into the guide's fields. Greenroom
-never clicks or submits anything on Zoom's pages. Say **Zoom window**, not
-"browser". Spec: `docs/specs/zoom-setup-assist.md`.
+A bar at its top (the **Greenroom bar**, `ZoomBarView`) says "Step n of 8 · title" and shows the step's one button, or the Set up for me line with Stop.
+The **coach** draws a dim layer, a ringed spotlight and a one-line card on Zoom's page. It
+only draws what the current step says. Greenroom clicks on Zoom's pages only through a plan
+the person started (see **Plan**). Say **Zoom window**, not "browser".
+Specs: `docs/specs/zoom-setup-flow.md` (current), `docs/specs/zoom-setup-assist.md` (what Zoom's pages taught us).
+
+## Zoom setup
+
+One flow sets up the two Zoom apps Greenroom needs. Code: `App/Zoom/ZoomSetupFlow.swift` and its
+neighbours. Spec: `docs/specs/zoom-setup-flow.md`. Decision: `docs/adr/0003-one-setup-flow.md`.
+
+- **Set up for me**: the main button of the Connect Zoom step. Greenroom does the steps itself,
+  one after another (`SetupForMe.run()`), after one small form (name, email, company, and per app
+  "Use my existing app" or "Build a new one"). The bar shows the step and a **Stop** button the whole time.
+  "Guide me instead" is the fallback: the same steps, one press each. The guided "Do this step"
+  is one turn (`advance()`) of the same loop, so both use the same steps, plans and safety.
+- **Step** (`SetupStep`): everything a surface shows about where setup stands: number (of 8),
+  title, why, where, a status line and exactly one call to action. The guide, the bar and the coach
+  only render it. It is the first step of the fixed table whose evidence is missing
+  (`ZoomSetupFlow.step(for:)`). Sign-in and the final check have no number.
+- **Call to action** (`CallToAction`): the one thing a step asks for: take me there (`goTo`), do this
+  step (`doThisStep`), the person presses a control (`press`), the person types (`fill`), wait,
+  check again, back to Greenroom. There is no way to write a step with none.
+- **Evidence** (`Evidence`): what Greenroom has seen proved about the person's apps (an app's ID, Meeting SDK on,
+  Information filled, scopes present, activated, when keys were copied). It only grows, unless a page
+  or the check shows it is no longer true. It has a logical clock (`lastChange`, `keysAt`): keys copied
+  before the app's last change count as stale, and a check older than a change is ignored.
+- **Plan** (`ActionPlan`): the list of presses, typings and verified waits for one step, naming
+  controls by `ZoomControl` ID, never by label. `ZoomActor.run(plan)` is the only thing that acts on Zoom's pages.
+  Its allow-list is the plan's own controls minus the person's (sign-in, passkey, closing someone else's
+  window); the **deny-list** (regenerate, delete, remove, deactivate, disable, submit, publish, agree,
+  accept, terms, sign out, log out, uninstall) is checked on the element's text at press time and always wins.
+  A plan's `unless` condition skips a press when the page already shows the right state, so Greenroom never
+  toggles what is already right.
+- **ZoomPage seam**: what the flow needs from a Zoom page, as four verbs (`ZoomPage`: `read`,
+  `perform`, `takeCopiedKey`, `draw`). Two adapters: `ZoomMarketplaceWindow` (the real WKWebView) and
+  `FixturePage` (a scripted Zoom in tests).
+- **FixturePage** (`Tests/FixturePage.swift`): a small hand-written model of Marketplace that behaves the way the
+  live run showed Zoom behaving. It answers `ZoomPage` so Set up for me can be tested from a fresh account to done.
+- **Hand over**: Greenroom stops doing steps and the guided step takes the person from there, saying where
+  it stopped and why. It happens on sign-in, a control only the person can press, a plan that stops, a
+  check Greenroom cannot run, or a step that still fails after 3 tries. Not the same as **Stop**
+  (the person's button): Stop also hands over, after the current action.
+- **Blocker**: a step with nothing Greenroom can do, because Zoom itself says no. The one today: the hosting
+  app's Information fields are all disabled, so the Zoom account may not edit it. The step then says to ask the
+  Zoom admin for "Server-to-Server OAuth app: Edit" and offers Check again.
+- **Keys copied last**: each app's keys are copied only after the app's settings are done, because Zoom can change
+  the keys when settings change. The secret arrives through the window's copy hook (in memory), never the clipboard.
 
 ## Layouts
 

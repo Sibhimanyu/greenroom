@@ -24,6 +24,14 @@ enum ZoomMarketplacePage: Equatable, Hashable {
 
     var isSignIn: Bool { self == .signIn || self == .passkey }
 
+    /// The two pages that show an app's keys.
+    var isCredentialsPage: Bool {
+        switch self {
+        case .s2s(_, .credentials), .general(_, .information): return true
+        default: return false
+        }
+    }
+
     /// Which of your two apps the page belongs to; nil for pages that are neither (yet).
     var app: ZoomOwnApp? {
         switch self {

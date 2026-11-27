@@ -305,10 +305,12 @@ enum ZoomPageScript {
         return labelEl.parentElement || labelEl;
       }
       function copyControlIn(row) {
-        var els = row.querySelectorAll('button,[role=button],a,svg,span');
+        // Zoom's General app card uses <div aria-label="Copy"> (live run, 2026-11-27).
+        var els = row.querySelectorAll('button,[role=button],a,svg,span,div[aria-label],i[aria-label]');
         for (var i = 0; i < els.length; i++) {
           var el = els[i], t = norm(els[i].textContent), a = norm((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || ''));
-          if (t === 'copy' || /^copy\\b/.test(a)) { var c = el.closest('button,[role=button],a') || el; if (shown(c)) return c; }
+          // A hover-only copy control has no size until hovered; it is still the one to press.
+          if (t === 'copy' || /^copy\\b/.test(a)) { var c = el.closest('button,[role=button],a') || el; return c; }
         }
         return null;
       }
@@ -417,6 +419,11 @@ enum ZoomPageScript {
       function infoInput(field) {
         var p = path();
         if (p.indexOf('/develop/apps/') < 0 || p.indexOf('/information') < 0 || !INFO[field]) return null;
+        // Zoom's own placeholders first (live run, 2026-11-27): steadier than the labels.
+        var PH = { appName: 'name your app', shortDescription: 'short description', companyName: 'e.g. acme',
+                   contactName: 'e.g. john doe', contactEmail: 'e.g. john.doe@company.com' };
+        var byPh = document.querySelectorAll('input[placeholder],textarea[placeholder]');
+        for (var b = 0; b < byPh.length; b++) if (norm(byPh[b].getAttribute('placeholder')) === PH[field]) return byPh[b];
         var scope = document.body, want = bareLabel(INFO[field]);
         if (field === 'contactName' || field === 'contactEmail') {
           var sec = textElement('Developer Contact Information');
@@ -496,6 +503,7 @@ enum ZoomPageScript {
           case 'closeDialog': return dlg ? closeIn(dlg) : null;
           case 'pageScopeSearch': return pageSearch();
           case 'pageScopeAddLink': return addLink();
+          case 'meetingSDKSwitch': return path().indexOf('/features/sdk') >= 0 ? metaSwitch() : null;
         }
         var dot = id.indexOf('.'), colon = id.indexOf(':');
         if (colon > 0 && id.slice(0, colon) === 'scopeCheckbox') {
@@ -513,6 +521,11 @@ enum ZoomPageScript {
           return null;
         }
         if (kind === 'infoField') return infoInput(arg);
+        if (kind === 'keyRow') {
+          if (!keysPath() || !KEYLABEL[arg]) return null;
+          var kl = labelElement(arg);
+          return kl ? credRowOf(kl) : null;
+        }
         if (kind === 'copy') {
           if (!keysPath() || !KEYLABEL[arg]) return null;
           var lab = labelElement(arg);

@@ -68,11 +68,75 @@ enum ZoomDomDump {
                 let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 if word.hasPrefix("go "), let u = URL(string: String(word.dropFirst(3))), ZoomMarketplacePages.isMarketplace(u) {
                     ZoomMarketplaceWindow.shared.debugLoad(u)
+                } else if let js = driverScript(word) {
+                    ZoomMarketplaceWindow.shared.debugEval(js) { result in report(word, result) }
                 } else if let js = commands[word] {
                     ZoomMarketplaceWindow.shared.debugRun(js)
                 }
             }
         }
+    }
+
+    // MARK: Test driver (DEBUG, owner-asked end-to-end run 2026-11-27)
+
+    /// `press <ZoomControl id>`, `hover <id>`, `type <id> <text>`: through the reader's own finder,
+    /// the deny-list checked on the element's text before every press. Never on credential values.
+    static func driverScript(_ word: String) -> String? {
+        let parts = word.split(separator: " ", maxSplits: 2).map(String.init)
+        guard parts.count >= 2, ["press", "hover", "type", "inspect", "pressdeep"].contains(parts[0]) else { return nil }
+        if parts[0] == "type" && parts.count < 3 { return nil }
+        func q(_ s: String) -> String {
+            let d = try? JSONSerialization.data(withJSONObject: [s]); let j = d.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+            return String(j.dropFirst().dropLast())
+        }
+        let verb = q(parts[0]), id = q(parts[1]), text = q(parts.count > 2 ? parts[2] : "")
+        return """
+        (function () {
+          \(ZoomPageScript.library)
+          var verb = \(verb), id = \(id), text = \(text);
+          var el = resolve(id);
+          if (!el) return 'none';
+          var said = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || ''));
+          if (/(regenerate|delete|remove|deactivate|disable|submit|publish|agree|accept|terms|sign out|log out|uninstall)/i.test(said)) return 'denied';
+          if (verb === 'inspect') {
+            function d(e) { if (!e) return '-'; var r = e.getBoundingClientRect(); return e.tagName.toLowerCase() + (e.getAttribute('role') ? '[' + e.getAttribute('role') + ']' : '') + (e.type ? '{' + e.type + '}' : '') + (e.checked !== undefined ? ' checked=' + e.checked : '') + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' ' + (typeof e.className === 'string' ? e.className.split(' ').slice(0, 3).join('.') : ''); }
+            var kids = [];
+            Array.prototype.forEach.call(el.querySelectorAll('*'), function (k, i) {
+              if (i > 25) return;
+              var cs = getComputedStyle(k);
+              kids.push(k.tagName.toLowerCase() + (k.getAttribute('role') ? '[' + k.getAttribute('role') + ']' : '') + (k.getAttribute('aria-label') ? '(' + k.getAttribute('aria-label') + ')' : '') + (k.getAttribute('title') ? '<' + k.getAttribute('title') + '>' : '') + (k.children.length === 0 && (k.textContent || '').trim().length < 12 ? '"' + (k.textContent || '').trim().replace(/[A-Za-z0-9_-]{10,}/g, '#') + '"' : '') + (cs.display === 'none' ? ' hidden' : cs.visibility === 'hidden' ? ' invis' : cs.opacity === '0' ? ' op0' : ''));
+            });
+            return d(el) + ' | parent ' + d(el.parentElement) + ' | kids ' + kids.join(', ');
+          }
+          if (verb === 'hover') {
+            var n = el; for (var i = 0; n && i < 4; i++, n = n.parentElement) { ['pointerover','mouseover','mouseenter','pointermove','mousemove'].forEach(function (t) { n.dispatchEvent(new MouseEvent(t, { bubbles: t !== 'mouseenter', cancelable: true, view: window })); }); }
+            return 'ok';
+          }
+          if (verb === 'type') {
+            var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            el.focus(); setter.call(el, text);
+            el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+            return 'ok';
+          }
+          el.scrollIntoView({ block: 'center' });
+          if (verb === 'pressdeep') {
+            var inner = el.querySelector('svg path, svg, i, img') || el;
+            ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function (t) { inner.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); });
+            return 'ok ' + inner.tagName.toLowerCase();
+          }
+          el.click();
+          return 'ok';
+        })();
+        """
+    }
+
+    static let driverLogURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Greenroom/zoom-driver.log")
+    private static func report(_ word: String, _ result: String) {
+        let shown = word.hasPrefix("type ") ? word.split(separator: " ").prefix(2).joined(separator: " ") + " …" : word
+        let line = ISO8601DateFormatter().string(from: Date()) + " " + shown + " -> " + result + "\n"
+        if !FileManager.default.fileExists(atPath: driverLogURL.path) { FileManager.default.createFile(atPath: driverLogURL.path, contents: nil) }
+        if let h = try? FileHandle(forWritingTo: driverLogURL) { defer { try? h.close() }; _ = try? h.seekToEnd(); try? h.write(contentsOf: Data(line.utf8)) }
     }
 
     /// Read-only. `labelsOnly`: credentials pages, where no control is described.

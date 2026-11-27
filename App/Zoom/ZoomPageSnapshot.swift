@@ -97,6 +97,10 @@ enum ZoomControl: Hashable {
     /// The Scopes PAGE's own search field and the "click here" in its "Found N matching scopes" line
     /// (distinct from `scopeSearch`, the field inside the Add scopes dialog).
     case pageScopeSearch, pageScopeAddLink
+    /// The Meeting SDK switch on a General app's Embed page (live run, 2026-11-27).
+    case meetingSDKSwitch
+    /// A key's row on a credentials page (hover it to show a hover-only copy control).
+    case keyRow(ZoomKeyField)
     case infoField(ZoomInfoField)
 
     var id: String {
@@ -121,6 +125,8 @@ enum ZoomControl: Hashable {
         case .closeDialog: return "closeDialog"
         case .pageScopeSearch: return "pageScopeSearch"
         case .pageScopeAddLink: return "pageScopeAddLink"
+        case .meetingSDKSwitch: return "meetingSDKSwitch"
+        case .keyRow(let f): return "keyRow.\(f.rawValue)"
         case .infoField(let f): return "infoField.\(f.rawValue)"
         }
     }
@@ -143,10 +149,12 @@ enum ZoomControl: Hashable {
         case "closeDialog": self = .closeDialog
         case "pageScopeSearch": self = .pageScopeSearch
         case "pageScopeAddLink": self = .pageScopeAddLink
+        case "meetingSDKSwitch": self = .meetingSDKSwitch
         default:
             if let s = suffix("typeRadio."), let a = ZoomAppKind(rawValue: s) { self = .typeRadio(a) }
             else if let s = suffix("scopeCheckbox:"), !s.isEmpty { self = .scopeCheckbox(s) }
             else if let s = suffix("copy."), let f = ZoomKeyField(rawValue: s) { self = .copy(f) }
+            else if let s = suffix("keyRow."), let f = ZoomKeyField(rawValue: s) { self = .keyRow(f) }
             else if let s = suffix("navLink."), let n = ZoomNavLink(rawValue: s) { self = .navLink(n) }
             else if let s = suffix("infoField."), let f = ZoomInfoField(rawValue: s) { self = .infoField(f) }
             else if let s = suffix("appRow."), let i = Int(s), i >= 0 { self = .appRow(i) }
@@ -157,7 +165,7 @@ enum ZoomControl: Hashable {
     /// Every control whose ID has no parameter (the script resolves each by name).
     static let fixedIDs: [String] = ["plus", "buildApp", "create", "cancel", "nameField", "addScopes", "scopeSearch",
                                      "scopesDone", "activate", "continue", "signIn", "tryAnotherWay", "closeDialog",
-                                     "pageScopeSearch", "pageScopeAddLink"]
+                                     "pageScopeSearch", "pageScopeAddLink", "meetingSDKSwitch"]
 }
 
 extension ZoomControl: Codable {

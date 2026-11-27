@@ -142,6 +142,8 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         ucc.add(self, name: "route")
         ucc.add(self, contentWorld: .defaultClient, name: "coach")
         ucc.addUserScript(WKUserScript(source: Self.routeScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        ucc.add(self, name: "zoomCopy")
+        ucc.addUserScript(WKUserScript(source: Self.copyHookScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG
         if ZoomRecorder.enabled {
             ucc.add(self, contentWorld: .defaultClient, name: "zoomRecord")
@@ -500,6 +502,17 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         }
     }
     func debugLoad(_ url: URL) { webView?.load(URLRequest(url: url)) }
+    func debugEval(_ js: String, _ done: @escaping (String) -> Void) {
+        guard let webView else { done("no window"); return }
+        webView.evaluateJavaScript(js, in: nil, in: .defaultClient) { result in
+            MainActor.assumeIsolated {
+                switch result {
+                case .success(let v): done((v as? String) ?? "?")
+                case .failure(let e): done("error \((e as NSError).code)")
+                }
+            }
+        }
+    }
     #endif
 
     // MARK: DEBUG log (never page text, never values)
@@ -657,6 +670,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
             recorderNudge()
         #endif
         case "route": scheduleRefresh()
+        case "zoomCopy": copied(message.body as? String)
         case "coach":
             switch message.body as? String {
             case "hide": tipsOn = false
@@ -666,6 +680,37 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         default: break
         }
     }
+
+    /// What Zoom's own Copy tried to put on the clipboard (live run, 2026-11-27: WebKit refuses a
+    /// page's clipboard write without a real click, so a pressed Copy copied nothing). Kept only on a
+    /// credentials page and only when key-shaped; in memory, never logged.
+    private(set) var lastCopiedKey: (text: String, at: Date)?
+    var onCopiedKey: ((String) -> Void)?
+    private func copied(_ text: String?) {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), let url = webView?.url,
+              let page = ZoomMarketplacePages.page(for: url), page.isCredentialsPage, ZoomMarketplacePages.isKey(text) else { return }
+        lastCopiedKey = (text, Date())
+        #if DEBUG
+        note(page, "copied key len=\(text.count)")
+        #endif
+        onCopiedKey?(text)
+    }
+
+    /// Page world, document start: wraps navigator.clipboard.writeText and the copy event so the text a
+    /// Copy button hands over reaches Greenroom, then lets the page's own copy carry on.
+    static let copyHookScript = """
+    (function () {
+      if (window.__grCopy || location.host !== 'marketplace.zoom.us') return; window.__grCopy = true;
+      function post(t) { try { if (typeof t === 'string' && t.length && t.length < 200) window.webkit.messageHandlers.zoomCopy.postMessage(t); } catch (e) {} }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          var orig = navigator.clipboard.writeText.bind(navigator.clipboard);
+          navigator.clipboard.writeText = function (t) { post(t); return orig(t).catch(function () {}); };
+        }
+      } catch (e) {}
+      document.addEventListener('copy', function () { try { post(String(window.getSelection() || '')); } catch (e) {} }, true);
+    })();
+    """
 
     /// Reports history.pushState / replaceState / popstate so a route change is noticed at once.
     static let routeScript = """

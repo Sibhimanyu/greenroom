@@ -103,6 +103,22 @@ enum StopVideoRules {
         }
     }
 
+    // MARK: Zoom starts the meeting with the owner's video off (R49.13)
+
+    /// Zoom's own flag for the owner, as a status.
+    static func status(isVideoOn: Bool) -> OwnVideoStatus { isVideoOn ? .on : .off }
+
+    /// At join only (once per meeting): Zoom says the owner's video is off (a room set to "Host video:
+    /// off"), so Greenroom starts it. Never after the owner's own stop in this meeting, never when a
+    /// host stopped it, never a second try. A later stop, by the owner, a co-host or Zoom, is never
+    /// undone: this is asked once, at join, and nowhere else.
+    static func shouldAutoStart(atJoin status: OwnVideoStatus, ownerStoppedThisMeeting: Bool, alreadyTried: Bool) -> Bool {
+        status == .off && !ownerStoppedThisMeeting && !alreadyTried
+    }
+
+    /// The one log line when Zoom refuses the automatic start (e.g. a host-only restriction).
+    static let autoStartRefusedLine = "Zoom started the meeting with your video off and refused to start it. Video stopped; use Start video."
+
     // MARK: The camera button
 
     /// Stopped, a click starts the video again (never a camera-state change). Otherwise the camera

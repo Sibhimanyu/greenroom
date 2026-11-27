@@ -86,6 +86,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Zoom's word on the owner's own video (Stop video, R49), from `onVideoStatusChange`: the truth
     /// for "video stopped", whoever stopped it (Greenroom, a co-host, Zoom). Set once by the coordinator.
     var onMyVideoStatus: ((OwnVideoStatus) -> Void)?
+    /// Zoom's own flag for the owner's video, read once shortly after InMeeting (R49.13): the status
+    /// callback only fires on a CHANGE, so a meeting that starts with video off never reported it.
+    var onMyVideoAtJoin: ((OwnVideoStatus) -> Void)?
     /// The lock state Zoom last reported; there is no getter, only the event.
     var meetingIsLocked = false
 
@@ -1804,6 +1807,7 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
             joinCompletion?(.success(()))
             joinCompletion = nil
             onParticipantCountChanged?()
+            scheduleJoinVideoRead()
         case ZoomSDKMeetingStatus_Disconnecting:
             // Transitional, not terminal - it sits between InMeeting and Ended,
             // and the SDK also passes through it while tearing the PREVIOUS

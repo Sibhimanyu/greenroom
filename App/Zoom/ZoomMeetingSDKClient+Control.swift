@@ -154,6 +154,23 @@ extension ZoomMeetingSDKClient {
         return setMuted(muted, userID: me)
     }
 
+    /// Reads Zoom's own video flag for the owner once, a moment after InMeeting (R49.13). Waits 1.5 s so
+    /// a meeting that starts with video on has reported it, then retries up to 5 times a second apart
+    /// while Zoom has not yet named "myself". Reports exactly once per join, never loops on a result.
+    func scheduleJoinVideoRead(attempt: Int = 0) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: attempt == 0 ? 1_500_000_000 : 1_000_000_000)
+            guard let self, self.isJoined else { return }
+            guard let me = self.actionController?.getMyself() else {
+                if attempt < 5 { self.scheduleJoinVideoRead(attempt: attempt + 1) }
+                return
+            }
+            let status = StopVideoRules.status(isVideoOn: me.isVideoOn())
+            Self.videoLog("my video at join -> \(status)")
+            self.onMyVideoAtJoin?(status)
+        }
+    }
+
     /// Zoom's own video mute for the owner. Called from one place only, Stop video
     /// (CoordinatorController+StopVideo.swift, R49); every other control goes through the camera state.
     func setMyVideo(on: Bool) -> Bool {

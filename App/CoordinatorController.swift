@@ -886,6 +886,10 @@ final class CoordinatorController: ObservableObject {
     /// Not a camera state. Written only from Zoom's video-status callback (`noteOwnVideoStatus`) and at
     /// Start and the end (`resetPresenceBubbleToLayoutDefault`): CoordinatorController+StopVideo.swift.
     @Published var videoStopped = false
+    /// R49.13: the owner pressed Stop video in this meeting / Greenroom already asked Zoom to start the
+    /// video once at join. Both clear at Start and at the end.
+    var ownerStoppedVideoThisMeeting = false
+    var autoStartedVideoThisMeeting = false
     var savedCameraState: CameraState {
         CameraState(noCamera: cameraDirectorSettings.noCamera, shownOnMyScreen: cameraShownOnMyScreen)
     }
@@ -1921,6 +1925,10 @@ final class CoordinatorController: ObservableObject {
         // Stop video is not part of the camera state: only Start and the end clear it (R49).
         let stopped = StopVideoRules.videoStopped(after: moment, was: videoStopped)
         if stopped != videoStopped { videoStopped = stopped }
+        if moment == .start || moment == .end {
+            ownerStoppedVideoThisMeeting = false
+            autoStartedVideoThisMeeting = false
+        }
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
         // A live "Off" or "Only me" put the picture back to the default along with it.
         if hadLiveChange, stage != nil { applyCameraStateLive() }

@@ -240,6 +240,7 @@ final class CutoutPublisher: NSObject {
     private func resolveDevice(excluding dead: Set<String>) -> (device: AVCaptureDevice, standingIn: Bool)? {
         let usable: (AVCaptureDevice) -> Bool = { [skipUntilReconnect, uid] in
             $0.isConnected && !dead.contains($0.uniqueID) && !(skipUntilReconnect && $0.uniqueID == uid)
+                && CameraDeviceFilterRules.isListable(uniqueID: $0.uniqueID, modelID: $0.modelID, name: $0.localizedName)
         }
         if let device = AVCaptureDevice(uniqueID: uid), usable(device) { return (device, false) }
         guard allowsStandIn else { return nil }

@@ -41,6 +41,12 @@ final class MeetingSetupLibraryTests: XCTestCase {
                        MeetingSetup.Values(cameraState: .off, cameraPiece: piece(.cutout), share: share(.window)))
     }
 
+    // Spec: meeting-setup R2.4 (one app is no longer offered: it reads as the whole screen)
+    func testASavedAppShareReadsAsTheWholeScreen() {
+        let t = layout("App", share: share(.app))
+        XCTAssertEqual(t.setupValues(fallback: fallback).share.kind, .display)
+    }
+
     // Spec: meeting-setup R2.5
     func testWritingBackTouchesOnlyTheNamedSettingsOfTheActiveLayout() {
         var lib = library(layout("A"), layout("B"))

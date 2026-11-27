@@ -13,9 +13,12 @@ extension LayoutTemplate {
     /// The three saved values of this layout. A layout that saves no camera state, camera piece or
     /// share resolves it to `fallback` (the app's own values, as before there were layouts).
     func setupValues(fallback: MeetingSetup.Values) -> MeetingSetup.Values {
-        MeetingSetup.Values(cameraState: cameraState ?? fallback.cameraState,
-                            cameraPiece: camera ?? fallback.cameraPiece,
-                            share: share ?? fallback.share)
+        // One app is no longer offered: a saved one shares the whole screen.
+        var shared = share ?? fallback.share
+        if shared.kind == .app { shared.kind = .display }
+        return MeetingSetup.Values(cameraState: cameraState ?? fallback.cameraState,
+                                   cameraPiece: camera ?? fallback.cameraPiece,
+                                   share: shared)
     }
 }
 

@@ -121,6 +121,7 @@ final class OneArrangementMigrationTests: XCTestCase {
             var asShipped = lib.templates[0]
             asShipped.name = "Raj San Mode"   // the rename is its own migration, done already here
             asShipped.camera = LayoutLibrary.shipped(LayoutLibrary.rajMode)?.camera   // the owner's own camera shape is kept (R43)
+            asShipped.cameraState = .everyoneAndMe   // filled by the coordinator's one-time camera-state migration (meeting-setup R1.2), not by this load
             XCTAssertTrue(asShipped.isAsShipped, "the pieces are the new Raj San Mode (\(middle))")
         }
     }

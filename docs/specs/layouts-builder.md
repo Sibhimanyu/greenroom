@@ -236,8 +236,8 @@ different order; this table is the authority.
   toolbar button, Home, the camera shortcut (its toast names the state: "Camera: Off") and the "You" tile's hover button.
   Zoom's own video mute for the owner (`setMyVideo`) is called only by Stop video (R49; a source scan allows that one call). Home's camera
   chip names the state when the camera is out of the picture ("Only me", not "Off"). The owner's own People row is
-  struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps the
-  live camera state (the state is not part of a layout; owner confirmed, 2026-11-26, option A); Start, Snap Back and the end drop it (R6.3).
+  struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps a
+  camera that was turned Off, and drops every other for-this-meeting camera state (superseded by meeting-setup D3, D8, R5.4: the camera state is part of a layout now); Start, Snap Back and the end drop it (R6.3).
   `Tests/CameraMatrixTests.swift` holds the whole matrix.
 - R6.9 (owner, 2026-11-26, option (a)) The Meeting window's "You" tile shows Zoom's render of the owner's own video,
   which is the Stage: what everyone sees. In Off and Only me the Stage leaves the camera out, so the tile shows the
@@ -774,9 +774,9 @@ what everyone sees. Record the date and the R numbers against each line.
 4. Start with layout A, then layout B with a different camera spot and shape:
    each shows its own camera. (R4.2)
 5. Drag the bubble during the meeting, stop, open Settings: the layout's saved
-   camera is unchanged. (R4.3)
+   camera is unchanged. (R4.3; superseded by meeting-setup R4.1)
 6. Change what's shared from Home's Share panel, then Snap Back: the layout's
-   share returns. (R5.2, R5.3)
+   share returns. (R5.2, R5.3; superseded by meeting-setup R3 to R5: before a meeting the pick is saved, so there is nothing to snap back)
 7. Each of the four camera states from the bar menu: the other person sees the
    camera only for Everyone and me and Only everyone; your screen shows it only
    for Everyone and me and Only me. (R6)

@@ -51,7 +51,7 @@ extension CoordinatorController {
     /// The camera shortcut keeps `toggleLiveCameraState`: it is unchanged.
     func pressCameraButton() {
         let press = StopVideoRules.press(
-            state: cameraState, lastOn: cameraSession.lastOn,
+            state: cameraState, lastOn: meetingSetup.cameraLastOn,
             noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: shareTarget.sharesNothing),
             videoStopped: videoStopped)
         switch press {

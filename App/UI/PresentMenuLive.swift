@@ -8,9 +8,10 @@
 //  when its menu opens, so the app and window lists are read then, not when the
 //  surface was drawn.
 //
-//  Picking a target does what Home's SHARE chip does: set it, then ask the
-//  compositor to rebuild (`requestShapeApply(rebuild: true)`), which applies
-//  live.
+//  Picking a target does what Home's SHARE chip does: it is one change to the Meeting
+//  setup (saved into the active layout before a meeting, for this meeting during one),
+//  and the setup tells the compositor, which applies it live (meeting-setup R2.5).
+//  Only the display pick, which is not one of the three settings, still asks it itself.
 //
 import AppKit
 
@@ -48,28 +49,32 @@ extension CoordinatorController {
         var a = PresentMenu.Actions()
         a.pickKind = { [weak self] kind in
             guard let self, let k = ShareTarget.Kind(rawValue: kind.rawValue) else { return }
-            self.shareTarget.kind = k
-            self.requestShapeApply(rebuild: true)
+            var target = self.shareTarget
+            target.kind = k
+            self.shareTarget = target
         }
         a.pickDisplay = { [weak self] id in
             guard let self else { return }
             self.screenCaptureDisplayUUID = id
-            self.shareTarget.kind = .display
+            var target = self.shareTarget
+            target.kind = .display
+            self.shareTarget = target
+            // The display is not one of the three settings: the picture is asked for it here.
             self.requestShapeApply(rebuild: true)
         }
         a.pickWindow = { [weak self] w in
             guard let self else { return }
-            self.shareTarget.kind = .window
-            self.shareTarget.appBundleID = w.bundleID
-            self.shareTarget.appName = w.appName
-            self.shareTarget.windowTitle = w.title
-            self.requestShapeApply(rebuild: true)
+            var target = self.shareTarget
+            target.kind = .window
+            target.appBundleID = w.bundleID
+            target.appName = w.appName
+            target.windowTitle = w.title
+            self.shareTarget = target
             self.bringSharedWindowForward(bundleID: w.bundleID, title: w.title)
         }
         a.pickShape = { [weak self] id in
             guard let self, let shape = WebcamShape(rawValue: id) else { return }
             self.webcamShape = shape
-            self.requestShapeApply()
         }
         a.pickLayout = { [weak self] id in
             guard let self, let uuid = UUID(uuidString: id) else { return }

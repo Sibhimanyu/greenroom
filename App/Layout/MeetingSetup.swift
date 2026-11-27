@@ -17,7 +17,7 @@
 //  and which values in use changed (tell the Stage). Callers need no other rule.
 //
 //  Camera state's rules (`lastOn`, click and turn-on targets) stay in
-//  `CameraStateSession`, which this wraps; P3 retires that type into this one.
+//  `CameraStateSession`, which this wraps and is its only holder (see the note on that type).
 //  Foundation only; compiled by the test target as it is.
 //
 import Foundation

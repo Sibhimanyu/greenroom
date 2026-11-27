@@ -113,7 +113,6 @@ extension CoordinatorController {
         if let value = transfer.s2sAccountID { s2sAccountID = value }
         if let value = transfer.s2sClientID { s2sClientID = value }
         if let value = transfer.s2sClientSecret { s2sClientSecret = value }
-        if let value = transfer.webcamShape, let shape = WebcamShape(rawValue: value) { webcamShape = shape }
         if let value = transfer.backgroundRemoval, let mode = BackgroundRemoval(rawValue: value) { backgroundRemoval = mode }
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
@@ -129,7 +128,6 @@ extension CoordinatorController {
         if let value = transfer.youtubeClientID { youtubeClientID = value }
         if let value = transfer.youtubeClientSecret { youtubeClientSecret = value }
         if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }
-        if let value = transfer.shareTarget { shareTarget = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
@@ -139,11 +137,9 @@ extension CoordinatorController {
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }
         if let value = transfer.cameraShownOnMyScreen { cameraShownOnMyScreen = value }   // import-only (R1.3)
-        if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }
-        if let value = transfer.bubbleRightInset { bubbleRightInset = value }
-        if let value = transfer.bubbleBottomInset { bubbleBottomInset = value }
-        if let value = transfer.cutoutHeightFraction { cutoutHeightFraction = value }
-        if let value = transfer.cutoutRightInset { cutoutRightInset = value }
+        // The camera piece and what's shared travel inside each layout. An older file with no library
+        // brings them alone: they go to the active layout, as a change from Home would (meeting-setup R1.3).
+        if transfer.layoutLibrary == nil { importOldCameraPiece(from: transfer) }
         if let value = transfer.cuesUseWhisper { cuesUseWhisper = value }
         if let value = transfer.screenroomAgent {
             Self.setJSONString(value, forKey: ScreenroomAgentSettings.key)
@@ -203,5 +199,21 @@ extension CoordinatorController {
         }
         log("Imported settings.")
         return SettingsImportReport(notes: notes)
+    }
+}
+
+extension CoordinatorController {
+    /// An older settings file's camera shape, spot, size and share (no layouts inside it): onto the
+    /// active layout, in one change each. Keys the file omits keep what the layout has.
+    fileprivate func importOldCameraPiece(from transfer: SettingsTransfer) {
+        var piece = meetingSetup.cameraPiece
+        if let value = transfer.webcamShape, let shape = WebcamShape(rawValue: value) { piece.shape = shape }
+        if let value = transfer.bubbleWidthFraction { piece.widthFraction = value }
+        if let value = transfer.bubbleRightInset { piece.rightInset = value }
+        if let value = transfer.bubbleBottomInset { piece.bottomInset = value }
+        if let value = transfer.cutoutHeightFraction { piece.cutoutHeightFraction = value }
+        if let value = transfer.cutoutRightInset { piece.cutoutRightInset = value }
+        if piece != meetingSetup.cameraPiece { currentCameraPiece = piece }
+        if let value = transfer.shareTarget { shareTarget = value }
     }
 }

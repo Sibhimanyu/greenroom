@@ -40,12 +40,20 @@ struct ZoomSetUpForMeForm: View {
             if !existing.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Apps you already have in Zoom").font(.headline)
-                    ForEach([ZoomApp.meeting, .hosting].filter(existing.contains), id: \.self) { app in
-                        Picker(app == .meeting ? "Meeting app" : "Hosting app", selection: choice(app)) {
-                            Text("Use my existing app").tag(false)
-                            Text("Build a new one").tag(true)
+                    // A grid, so both labels share one column and both pickers are the same width.
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                        ForEach([ZoomApp.meeting, .hosting].filter(existing.contains), id: \.self) { app in
+                            let title = app == .meeting ? "Meeting app" : "Hosting app"
+                            GridRow {
+                                Text(title)
+                                Picker(title, selection: choice(app)) {
+                                    Text("Use my existing app").tag(false)
+                                    Text("Build a new one").tag(true)
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.segmented)
+                            }
                         }
-                        .pickerStyle(.segmented)
                     }
                 }
             }

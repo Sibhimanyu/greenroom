@@ -145,3 +145,17 @@ final class EndConfirmTests: XCTestCase {
         XCTAssertEqual(c.remaining(now: t0.addingTimeInterval(99)), 0)
     }
 }
+
+/// Owner, 2026-11-27: a personal room started as host said "Leave" while End actually ended it for
+/// everyone. The words follow what End will do: the SDK's own answer (started as host, or host now).
+final class LiveExitKindTests: XCTestCase {
+    func testAMeetingGreenroomCreatedIsHosted() {
+        XCTAssertEqual(LiveExit.meetingKind(createdHere: true, endsForAll: false), .host)
+    }
+    func testAPersonalRoomOrScheduledMeetingStartedAsHostIsHosted() {
+        XCTAssertEqual(LiveExit.meetingKind(createdHere: false, endsForAll: true), .host)
+    }
+    func testHostGivenAwayIsLeave() {
+        XCTAssertEqual(LiveExit.meetingKind(createdHere: false, endsForAll: false), .participant)
+    }
+}

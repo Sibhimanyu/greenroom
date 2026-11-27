@@ -19,9 +19,9 @@ struct LiveExitState: Equatable {
     enum Kind: Equatable {
         /// Nothing live: closing and quitting need no question.
         case idle
-        /// A Zoom meeting Greenroom created (the user is the host).
+        /// A meeting Greenroom created, or one started (or now held) as host: End ends it for everyone.
         case host
-        /// A Zoom meeting Greenroom joined.
+        /// A meeting where End only leaves (host was given away, or never held).
         case participant
         /// The Record view: no meeting, a camera and perhaps a tape.
         case recordOnly
@@ -73,6 +73,15 @@ struct LiveExitPrompt: Equatable {
 }
 
 enum LiveExit {
+
+    /// Host or participant for the End / Leave words, matching what End will do. A meeting Greenroom
+    /// created is ended for everyone (also over REST); any other is ended for everyone exactly when the
+    /// SDK's leave would (`ZoomMeetingSDKClient.endsForAll`: started as host - Scheduled, your personal
+    /// room - or host right now). Owner, 2026-11-27: a personal room said "Leave" and ended for all.
+    static func meetingKind(createdHere: Bool, endsForAll: Bool) -> LiveExitState.Kind {
+        createdHere || endsForAll ? .host : .participant
+    }
+
 
     private static let recordingNote = "Recording will stop and be saved."
 

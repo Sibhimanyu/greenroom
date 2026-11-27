@@ -1484,6 +1484,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// just leave. Zoom's leaveMeeting reports nothing back, so an end it
     /// turned down looks exactly like one it honoured - see the coordinator's
     /// endMeetingForEveryone for what covers that.
+    /// What `leave()` will do right now: end for everyone (started as host, or host now) or just leave.
+    /// The End / Leave words read this so they always match the action.
+    var endsForAll: Bool {
+        isHosting || (ZoomSDK.shared().getMeetingService()?.getMeetingActionController().getMyself()?.isHost() ?? false)
+    }
+
     @discardableResult
     func leave() -> Bool {
         // The isHosting flag only knows about explicit host STARTS - but

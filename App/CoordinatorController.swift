@@ -4511,7 +4511,7 @@ final class CoordinatorController: ObservableObject {
         if phase.isRecordMode {
             s.kind = .recordOnly
         } else {
-            s.kind = meetingMode == .create ? .host : .participant
+            s.kind = LiveExit.meetingKind(createdHere: meetingMode == .create, endsForAll: zoomChatClient.endsForAll)
         }
         s.isRecording = isRecording
         s.canShrink = zoomChatClient.didInit && meetingWindowOpen

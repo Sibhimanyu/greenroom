@@ -83,6 +83,16 @@ Zoom's Information page requires Short Description, Company Name, Developer cont
 - The Greenroom bar shows these in a small native form (editable) with the step's Do this step; nothing is typed into Zoom before that press. Only empty required fields are typed into; a field the person already filled is kept.
 - The snapshot reports Information's required fields (label → empty / filled / error) and Activation's "missing" list; a non-empty missing list re-opens step 5 naming the fields.
 
+## Set up for me (owner, 2026-11-27: the main button)
+
+The Connect Zoom step's main button is **Set up for me**; the guided steps are the fallback ("Guide me instead", and whatever autopilot hands over).
+- Before it starts, one small native form: step 5's values (name, email, company, prefilled from the Zoom profile) and, when Created apps already has a Meeting or Hosting app, "Use my existing app / Build a new one" per app. Nothing else is asked.
+- Then a loop over the same flow: `step(for:)` → `.doThisStep(plan)`: run it with ZoomActor and verify; `.goTo(place)`: load it; `.wait`: wait (check or page load, with a timeout); `.backToGreenroom`: done. Any other action (`.press` sign-in, `.fill` something unknown, an unexpected dialog, a failed verification, a timeout) stops the loop and hands over to the guided step at that point, the card saying where it stopped and why.
+- The bar shows "Step n of 8 · <title>…" and a **Stop** button the whole time; Stop ends the loop after the current action and hands over.
+- Same safety as Do this step: only plans' ZoomControl IDs, the deny-list wins, each action verified before the next, nothing on sign-in or terms.
+- Tested by the whole-flow replay tests (one run of the loop from a fresh account to a passing check on FixturePage) and by the live end-to-end run.
+- Plan position: after the guided flow passes its whole-flow tests (it reuses the same steps).
+
 ## Testing
 
 - **Flow table tests:** `step(for:)` for every row above and every failure mapping (keys wrong → 3/8, Meeting SDK off → 2, scopes missing → 6, not activated → 7, signed out → 0). Keys read before the app's last settings step don't count: evidence records the keys' reading time against the app's last change, and a later change re-opens the keys step.
@@ -96,4 +106,5 @@ Zoom's Information page requires Short Description, Company Name, Developer cont
 2. `ZoomSetupFlow` + `ZoomControl` + `CallToAction`: pure, table tests first.
 3. `ZoomPage` seam with the WKWebView and fixture adapters; `ZoomActor` on top; whole-flow replay tests.
 4. Rewire the guide, bar and coach to render `SetupStep`; delete the modules listed above.
-5. Live end-to-end run again on fresh test apps, then the owner tries it.
+5. Set up for me: the loop above, with its replay test.
+6. Live end-to-end run again on fresh test apps (guided and Set up for me), then the owner tries it.

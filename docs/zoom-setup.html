@@ -178,7 +178,7 @@
   <h2>Who needs this</h2>
   <ul class="plain">
     <li>Everyone, for now. <strong>Sign in with Zoom</strong> shows as Coming soon until Zoom approves Greenroom's Zoom app: today it can only start meetings on the account that owns that app.</li>
-    <li>The setup guide's <strong>Connect Zoom</strong> step walks through the same steps as this page; Settings → Zoom → <strong>Set up…</strong> opens it.</li>
+    <li>The setup guide's <strong>Connect Zoom</strong> step has one big button, <strong>Set up for me</strong>. Greenroom does the clicking in Zoom for you. <strong>Guide me instead</strong> is the same steps, one press at a time. Settings → Zoom → <strong>Set up…</strong> opens it.</li>
     <li>You need a Zoom account that may build apps and add admin scopes. Ask your Zoom admin if those options are missing.</li>
     <li>Both apps must belong to the <strong>same Zoom account</strong>. About ten minutes.</li>
   </ul>
@@ -187,23 +187,45 @@
 
 <section id="zoom-window">
   <div class="kicker">The easy way</div>
-  <h2>The Zoom window</h2>
-  <p class="sec-p">In Greenroom's setup guide, press <strong>Set up Zoom</strong> (later <strong>Continue setup</strong>). Zoom App Marketplace opens in a large window of its own, in the middle of your screen. Sign in there as you would anywhere; the guide stays where it is.</p>
+  <h2>Set up for me</h2>
+  <p class="sec-p">In Greenroom's setup guide, press <strong>Set up for me</strong>. A small form asks for your name, your email and a company name (it fills in your Mac's name; you type the email). These are what Zoom asks for on the hosting app's Information page. If you already have a Meeting app or a Hosting app in Zoom, the form also asks, for each one, <strong>Use my existing app</strong> or <strong>Build a new one</strong>. Then press <strong>Start</strong>. Zoom App Marketplace opens in a large window of its own, and Greenroom works through the steps below. Sign in to Zoom there yourself, as you would anywhere; Greenroom carries on once you are in.</p>
   <ul class="mini">
-    <li>It is one run, about 8 steps across both apps. Greenroom's bar at the top of the window counts them, such as <strong>Step 7 of 8 · Add the permissions</strong>, and offers the next useful button: <strong>Copy scopes</strong> on the permissions step, <strong>Continue</strong> to the next place (Zoom's own order: App Credentials, Information, Scopes, Activation). An app counts as set up only when Greenroom's check passes for it; if the check finds something wrong, the bar shows that as the current step, and <strong>Back to Greenroom</strong> at the end.</li>
-    <li>Greenroom can do the dull steps for you: on the four steps that are safe (building the app, adding the eight scopes, Activate, and turning on Meeting SDK) the tip has a green <strong>Do this step</strong> button (it also reads your keys from Zoom's credentials page, pressing Zoom's own Copy buttons for any it can't read, and presses Continue on the Information page when Zoom's required fields are filled; it never presses Show, Regenerate or Delete). It says first what it will press, does only that step when you press it, and tells you what it did. It never touches anything else, such as Regenerate, Delete or Deactivate, and you can always press Zoom's own buttons yourself.</li>
-    <li>Tips on Zoom's page carry the Greenroom mark so you know they are ours: the rest of the page dims and a ring marks the control to use next, with a one-line note. Greenroom never presses anything for you. <strong>Hide tips</strong> (or the <strong>Tips</strong> button) turns them off.</li>
-    <li>Greenroom reads what Zoom shows; for the secret, press Zoom's copy button and Greenroom picks it up.</li>
-    <li>On the credentials pages Greenroom reads the keys and fills them in (<strong>Filled in from Zoom</strong>, with Undo). If you already typed different keys, it offers <strong>Use the keys from this page</strong> and changes nothing until you press it. When both apps are filled in, Check Zoom setup runs by itself.</li>
-    <li>The sign-in is remembered in Greenroom (separate from Safari) until Zoom ends it; <strong>Sign out of Zoom</strong> (in the bar's <strong>…</strong> menu, shown only while you are signed in) clears it. <strong>Open in Safari</strong> is in the same menu, and the manual steps below still work.</li>
+    <li>Greenroom's bar at the top of the window counts the steps, such as <strong>Step 6 of 8 · Add the permissions</strong>, and has a <strong>Stop</strong> button the whole time. Stop ends the run after the action in progress and hands over to the guided steps.</li>
+    <li>Greenroom presses only the controls a step needs, and checks that each press worked before it goes on. It never presses Regenerate, Delete, Remove, Deactivate, Disable, Submit, Publish, Agree, Accept, Terms or Sign out, and it never signs in or accepts terms for you.</li>
+    <li>If something is yours to do (signing in, a page Greenroom doesn't recognise, a step that keeps failing, a press that didn't work), Greenroom stops and the guided step says where it stopped and why. After a step that still fails the check three times, it hands over rather than going round again.</li>
+    <li>When it is done, <strong>Check Zoom setup</strong> has passed for both apps and the bar offers <strong>Back to Greenroom</strong>. The check also runs by itself after each app's keys are copied. If it finds something wrong, the step it names is opened again.</li>
+  </ul>
+  <div class="callout"><p><strong>If Zoom won't let your account edit the app.</strong> On the hosting app's Information page, Zoom may show every field greyed out. Your account is then not allowed to edit Server-to-Server apps. Greenroom stops on a step called <strong>Ask your Zoom admin for permission</strong>. Ask your Zoom admin to allow <strong>Server-to-Server OAuth app: Edit</strong> (User Management → Roles → Role Settings → Advanced features), then press <strong>Check again</strong>.</p></div>
+</section>
+
+<section id="guided">
+  <div class="kicker">The other way</div>
+  <h2>Guide me instead</h2>
+  <p class="sec-p">Press <strong>Guide me instead</strong> to open the same Zoom window and do the same steps one at a time. Greenroom's bar shows the step and one button for it. Each step opens its own page when you are somewhere else (<strong>Open Embed</strong>, <strong>Open Scopes</strong> and so on). <strong>Do this step</strong> does that one step for you, using the same safe presses as Set up for me. Where Greenroom may not press (signing in, Google's <strong>Try another way</strong>), a ring on Zoom's page marks the control and a one-line note says what to do. <strong>Hide tips</strong> (or the <strong>Tips</strong> button) turns the ring off.</p>
+  <p class="sec-p">The eight steps, in this order. Each app is built completely first and its keys are copied last, because Zoom can change an app's keys when its settings change.</p>
+  <ol class="steps">
+    <li><p><strong>Create the meeting app.</strong> It lets Greenroom join and run meetings. If you already have a General app, Greenroom offers <strong>Use this app</strong> on Zoom's Created apps page.</p></li>
+    <li><p><strong>Turn on Meeting SDK.</strong> Without it Zoom won't let the app join meetings. Greenroom turns the switch on if it is off.</p></li>
+    <li><p><strong>Copy its keys.</strong> The Client ID and Client Secret, for Greenroom to sign in to meetings. Greenroom reads the ID from the page and presses Zoom's own Copy for the secret; the value goes straight into Greenroom, not through your clipboard.</p></li>
+    <li><p><strong>Create the hosting app.</strong> A Server-to-Server OAuth app named Greenroom Hosting. It lets Greenroom create and start your meetings as host. An existing one can be used the same way.</p></li>
+    <li><p><strong>Fill in Information.</strong> Zoom asks for a short description, a company name and a contact name and email before it turns the app on. Greenroom types your confirmed values into the empty required fields only, then presses Continue.</p></li>
+    <li><p><strong>Add the permissions.</strong> The eight scopes (listed below) let Greenroom create, list, start and end meetings. Greenroom searches for each missing one, ticks it and presses Done. You can also press <strong>Copy scopes</strong> and add them yourself.</p></li>
+    <li><p><strong>Turn it on.</strong> Zoom only answers an app that is switched on. Greenroom presses Activate.</p></li>
+    <li><p><strong>Copy its keys.</strong> The Account ID, Client ID and Client Secret, for Greenroom to talk to Zoom for you.</p></li>
+  </ol>
+  <p class="sec-p">Then <strong>Check your setup</strong> makes sure both apps really work, and <strong>Back to Greenroom</strong> finishes.</p>
+  <ul class="mini">
+    <li>Zoom shows a Server-to-Server app's App Credentials tab first. Greenroom takes you past it to Information, and comes back to it at the end.</li>
+    <li>If the app you open or pick in Zoom is the other one of its kind, Greenroom follows the app you chose.</li>
+    <li>The sign-in is remembered in Greenroom (separate from Safari) until Zoom ends it; <strong>Sign out of Zoom</strong> (in the bar's <strong>…</strong> menu, shown only while you are signed in) clears it. <strong>Open in Safari</strong> is in the same menu.</li>
     <li>Passkeys aren't available inside Greenroom's Zoom window. If Google offers one, press <strong>Try another way</strong> and use your password, or sign in in Safari; the sign-in is remembered afterwards.</li>
     <li>To switch apps, press <strong>Use a different app</strong> on a finished app's line (it clears that app's keys; Undo is right there). To begin again, press <strong>Start over…</strong> under the list, or in Settings → Zoom: it forgets both apps' keys on this Mac and signs out of Zoom here. That only removes them from Greenroom. To revoke an app fully, delete or deactivate it in Zoom.</li>
-    <li>Prefer to paste the keys yourself? Open <strong>Enter the keys yourself</strong> in the setup guide.</li>
+    <li>Prefer to paste the keys yourself? Open <strong>Enter the keys yourself</strong> in the setup guide, or follow the by-hand steps below.</li>
   </ul>
 </section>
 
 <section id="sdk">
-  <div class="kicker">App 1 of 2</div>
+  <div class="kicker">By hand · app 1 of 2</div>
   <h2>Meeting SDK app</h2>
   <p class="sec-p">Powers Greenroom's built-in meeting client and the chat window.</p>
   <ol class="steps">
@@ -229,7 +251,7 @@
 </section>
 
 <section id="s2s">
-  <div class="kicker">App 2 of 2</div>
+  <div class="kicker">By hand · app 2 of 2</div>
   <h2>Server-to-Server OAuth app</h2>
   <p class="sec-p">Powers New meeting, the scheduled list and hosting your own meetings.</p>
   <ol class="steps">

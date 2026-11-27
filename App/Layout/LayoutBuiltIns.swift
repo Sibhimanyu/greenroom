@@ -24,9 +24,6 @@ extension LayoutLibrary {
         func browser(width: Double) -> LayoutPiece {
             LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)), rect: UnitRect(x: 0, y: 0, w: width, h: 1))
         }
-        func speaker(x: Double, w: Double, h: Double = 5.0 / 12) -> LayoutPiece {
-            LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: UnitRect(x: x, y: 0, w: w, h: h))
-        }
         func chat(x: Double, w: Double, top: Double = 5.0 / 12) -> LayoutPiece {
             LayoutPiece(kind: .chat, rect: UnitRect(x: x, y: top, w: w, h: 1 - top))
         }
@@ -50,20 +47,22 @@ extension LayoutLibrary {
             name: "Leave my windows alone", starter: leaveAlone,
             camera: camera(.roundedRectangle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget(),
             cameraState: .everyoneAndMe)
-        // Raj's camera is the Cutout (owner, 2026-11-26): the person stands at the bottom right at 40% of the
-        // picture's height, keeping clear of the top of Chat where its caption is.
+        // Raj San Mode is the owner's own saved layout (owner, 2026-11-27: "this should be the actual defaults
+        // for Raj San Mode"): the browser at three quarters of the main display and Chat in the top 7/12 of the
+        // column beside it, no speaker piece. The camera is the Cutout at 45% of the picture's height, near the
+        // right edge, shown only to the meeting (hidden on the owner's own screen). It follows a slide show.
         var rajCamera = LayoutCamera()
         rajCamera.shape = .cutout
-        rajCamera.cutoutHeightFraction = 0.4
-        rajCamera.cutoutRightInset = 0.02
-        // The old one-display arrangement, kept as main (ADR 0002): the browser, the speaker top right and
-        // Chat below, so the laptop alone still has a meeting surface. A second display holds the Meeting.
+        rajCamera.cutoutHeightFraction = 0.45
+        rajCamera.cutoutRightInset = 0.067
+        let rajChat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0.75, y: 0, w: 0.25, h: 7.0 / 12))
+        // Main kept as the one-display arrangement (ADR 0002). A second display holds the Meeting window.
         let raj = LayoutTemplate(
             name: "Raj San Mode", starter: rajMode,
-            oneDisplay: [browser(width: 9 * third), speaker(x: 9 * third, w: 3 * third), chat(x: 9 * third, w: 3 * third)],
+            oneDisplay: [browser(width: 0.75), rajChat],
             twoDisplays: TwoDisplay(
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)]),
-            camera: rajCamera, share: ShareTarget(), cameraState: .everyoneAndMe)
+            camera: rajCamera, share: ShareTarget(), cameraState: .onlyEveryone)
         return [leave, raj, room]
     }
 
@@ -188,7 +187,7 @@ extension LayoutLibrary {
         switch key {
         case roomLaptop: return "People in the room watch the Room screen while you work on the laptop."
         case leaveAlone: return "Moves no windows. It only says where your camera sits. Press + to start your own layout from it."
-        case rajMode: return "The browser with the speaker and chat beside it. With a second display, the meeting fills it."
+        case rajMode: return "The browser with the chat beside it. With a second display, the meeting fills it."
         default: return nil
         }
     }

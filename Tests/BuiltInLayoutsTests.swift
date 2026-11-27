@@ -438,8 +438,8 @@ extension BuiltInLayoutsTests {
         XCTAssertEqual(LayoutLibrary.builtIns().map { $0.camera?.shape }, [.roundedRectangle, .cutout, .roundedRectangle],
                        "Raj San Mode is the Cutout (owner correction)")
         let raj = try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.rajMode)?.camera)
-        XCTAssertEqual(raj.cutoutHeightFraction, 0.4)
-        XCTAssertEqual(raj.cutoutRightInset, 0.02)
+        XCTAssertEqual(raj.cutoutHeightFraction, 0.45)
+        XCTAssertEqual(raj.cutoutRightInset, 0.067)
         XCTAssertLessThan(1 - raj.cutoutHeightFraction, 1.0, "bottom right")
         XCTAssertGreaterThanOrEqual(1 - raj.cutoutHeightFraction, 5.0 / 12, "clear of Chat's top, where its caption is")
         var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())

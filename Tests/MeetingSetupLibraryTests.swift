@@ -199,6 +199,6 @@ final class MeetingSetupLibraryTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(lib.template(id: id)).isAsShipped)
         XCTAssertTrue(lib.restoreOriginal(id))
         XCTAssertTrue(try XCTUnwrap(lib.template(id: id)).isAsShipped)
-        XCTAssertEqual(lib.template(id: id)?.cameraState, .everyoneAndMe)
+        XCTAssertEqual(lib.template(id: id)?.cameraState, .onlyEveryone, "Raj San Mode ships Only the meeting")
     }
 }

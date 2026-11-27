@@ -221,18 +221,37 @@ final class LayoutMigrationTests: XCTestCase {
         for t in s {
             XCTAssertFalse(t.oneDisplay.contains { $0.kind.isMeeting }, t.name)
             let speakers = t.oneDisplay.filter { $0.kind.view == .activeSpeaker }.count
-            XCTAssertEqual(speakers, t.starter == LayoutLibrary.rajMode ? 1 : 0, t.name)
+            XCTAssertEqual(speakers, 0, t.name)
         }
+    }
+
+    // The owner's own saved layout, shipped as Raj San Mode's default (owner, 2026-11-27).
+    func testRajSanModeIsTheOwnersSavedLayout() throws {
+        let raj = starter(LayoutLibrary.rajMode)
+        XCTAssertEqual(raj.oneDisplay.count, 2)
+        XCTAssertFalse(raj.oneDisplay.contains { $0.kind.isView }, "no speaker piece")
+        XCTAssertEqual(raj.oneDisplay[0].rect, UnitRect(x: 0, y: 0, w: 0.75, h: 1))
+        XCTAssertEqual(raj.oneDisplay[1].rect, UnitRect(x: 0.75, y: 0, w: 0.25, h: 7.0 / 12))
+        XCTAssertTrue(raj.oneDisplay.allSatisfy(\.showsToEveryone))
+        XCTAssertEqual(raj.twoDisplays?.sharedSlot, .main)
+        XCTAssertEqual(raj.camera?.shape, .cutout)
+        XCTAssertEqual(raj.camera?.cutoutHeightFraction ?? 0, 0.45, accuracy: 1e-9)
+        XCTAssertEqual(raj.camera?.cutoutRightInset ?? 0, 0.067, accuracy: 1e-9)
+        XCTAssertEqual(raj.camera?.widthFraction, 0.24)
+        XCTAssertEqual(raj.camera?.rightInset, 0.045)
+        XCTAssertEqual(raj.camera?.bottomInset, 0.06)
+        XCTAssertEqual(raj.share?.kind, .display)
+        XCTAssertEqual(raj.share?.followsSlideShow, true)
+        XCTAssertEqual(raj.cameraState, .onlyEveryone, "Only the meeting")
     }
 
     func testRajModeGeometryIsValid() throws {
         let raj = starter(LayoutLibrary.rajMode)
         func cells(_ r: UnitRect) -> [Int] { [r.x, r.y, r.w, r.h].map { Int(($0 * 12).rounded()) } }
-        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 5], [9, 5, 3, 7]])
+        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 7]])
         XCTAssertEqual(raj.oneDisplay.first?.kind.app?.bundleID, LayoutLibrary.builtInBrowserBundleID)
         XCTAssertEqual(raj.oneDisplay.first?.kind.app?.opensAtStart, true)
-        XCTAssertEqual(raj.oneDisplay[1].kind.view, .activeSpeaker)
-        XCTAssertTrue(raj.oneDisplay[2].kind.isChat)
+        XCTAssertTrue(raj.oneDisplay[1].kind.isChat)
         let two = try XCTUnwrap(raj.twoDisplays)
         XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
         XCTAssertEqual(two.second.first?.rect, .full)

@@ -79,24 +79,26 @@ final class LayoutCameraStateTests: XCTestCase {
     }
 
     // Spec: meeting-setup R1.2
-    func testEveryBuiltInOriginalIsEveryoneAndMe() {
-        for t in LayoutLibrary.builtIns() { XCTAssertEqual(t.cameraState, .everyoneAndMe, t.name) }
+    func testEveryBuiltInOriginalIsEveryoneAndMeExceptRajsOnlyTheMeeting() {
+        for t in LayoutLibrary.builtIns() {
+            XCTAssertEqual(t.cameraState, t.starter == LayoutLibrary.rajMode ? .onlyEveryone : .everyoneAndMe, t.name)
+        }
     }
 
     // Spec: meeting-setup R1.2: a built-in added since keeps what it ships with.
     func testABuiltInThatShipsWithAStateKeepsIt() {
         var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
         _ = lib.migrateCameraState(saved: .off, defaults: defaults(), save: { _ in true })
-        XCTAssertEqual(lib.templates.map(\.cameraState), Array(repeating: .everyoneAndMe, count: lib.templates.count))
+        XCTAssertEqual(lib.templates.map(\.cameraState), LayoutLibrary.builtIns().map(\.cameraState))
     }
 
     // Spec: meeting-setup R1.2: Restore original puts Everyone & me back.
-    func testRestoreOriginalBringsEveryoneAndMeBack() throws {
+    func testRestoreOriginalBringsTheShippedStateBack() throws {
         var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
         let i = try XCTUnwrap(lib.templates.firstIndex { $0.starter == LayoutLibrary.rajMode })
         lib.templates[i].cameraState = .off
         XCTAssertTrue(lib.restoreOriginal(lib.templates[i].id))
-        XCTAssertEqual(lib.templates[i].cameraState, .everyoneAndMe)
+        XCTAssertEqual(lib.templates[i].cameraState, .onlyEveryone, "Raj San Mode ships Only the meeting")
     }
 
     // MARK: Settings file (R1.3)

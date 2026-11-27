@@ -312,6 +312,12 @@ enum ZoomSetupFlow {
                 let scopeLines = s.activationMissing.filter { $0.lowercased().contains("scope") }
                 e.apps[.hosting, default: AppEvidence()].infoMissing = s.activationMissing.filter { !$0.lowercased().contains("scope") }
                 if !scopeLines.isEmpty { e.apps[.hosting, default: AppEvidence()].scopes = [] }
+                // "Your app is ready for activation" (Activate showing, nothing missing): Zoom itself says Information
+                // and the scopes are done (live run 8: Scopes ✓ while the Scopes page listed none to the reader).
+                if s.activated == false, s.activationMissing.isEmpty, s.has(.activate) {
+                    e.apps[.hosting, default: AppEvidence()].scopes = Set(ZoomScopes.names)
+                    e.apps[.hosting, default: AppEvidence()].infoFilled = true
+                }
                 if let on = s.activated {
                     if on, e.app(.hosting).activated != true { e.apps[.hosting, default: AppEvidence()].lastChange = e.tick }
                     e.apps[.hosting, default: AppEvidence()].activated = on
@@ -420,10 +426,11 @@ enum ZoomSetupFlow {
             SetupStep(number: n, title: title, app: app(ofStep: n), why: why, place: place, status: status, cta: cta)
         }
         let keysWhy = "Copied last, so they're the final ones."
-        // The account may create a Server-to-Server app but not change it (fields locked for good, or a save
-        // refused): only its admin can lift that, so steps 5-7 become one plain ask, whichever step showed it.
+        // The account may create a Server-to-Server app but not change it (its fields stay locked): only its
+        // admin can lift that, so steps 5-7 become one plain ask. A 401 alone is not that (live run 8: Zoom
+        // answered something with 401 while the scopes saved fine).
         let h = e.app(.hosting)
-        if (5...7).contains(n), h.infoLocked || h.saveRefused {
+        if (5...7).contains(n), h.infoLocked {
             return step("Ask your Zoom admin for permission", "Zoom asks for a contact before it turns the app on.",
                         ZoomMarketplacePage.s2s(hid, n == 5 ? .information : n == 6 ? .scopes : .activation),
                         .checkAgain, status: "Your Zoom account can\u{2019}t edit this app. Ask your Zoom admin to allow \u{2018}Server-to-Server OAuth app: Edit\u{2019} (User Management \u{2192} Roles \u{2192} Role Settings \u{2192} Advanced features), then Check again.")

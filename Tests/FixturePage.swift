@@ -60,9 +60,10 @@ final class FixturePage: ZoomPage {
     var elementText: [ZoomControl: String] = [:]
     /// The account lacks Server-to-Server edit permission: new Hosting apps have disabled Information fields.
     var accountCannotEditS2S = false
-    /// Live run 6, 2026-11-27: an account that may create Server-to-Server apps but not change them. Zoom answers
-    /// every save (scopes, rename) with 401; the page shows the change, then it is gone on the next visit.
-    var refusesS2SWrites = false
+    /// Live runs 6-8, 2026-11-27: Zoom's app API answers some write with 401 although the scopes save fine (the owner
+    /// saw Scopes ✓ and "ready for activation"), and the Scopes page doesn't list saved scopes where the reader looks.
+    var spurious401 = false
+    var savedScopesNotListed = false
     private var refusedSave = false
 
     private var menuOpen = false
@@ -139,7 +140,7 @@ final class FixturePage: ZoomPage {
                 s.controls.insert(.continue)
             case .feature: s.controls.insert(.continue)
             case .scopes:
-                s.scopesOnPage = a.scopes.union(a.unsavedScopes).sorted()
+                s.scopesOnPage = (savedScopesNotListed ? a.unsavedScopes : a.scopes.union(a.unsavedScopes)).sorted()
                 if case .addScopes = dialog {
                     s.controls.formUnion([.scopeSearch, .scopesDone])
                     for n in ZoomScopes.names where !search.isEmpty && n.contains(search) { s.controls.insert(.scopeCheckbox(n)) }
@@ -209,8 +210,8 @@ final class FixturePage: ZoomPage {
                 else if tab == .information, missingInfo(a).isEmpty { address = .s2s(id, .feature) }
                 else if tab == .feature { address = .s2s(id, .scopes) }
                 else if tab == .scopes {
-                    if refusesS2SWrites { refusedSave = true; edit(id) { $0.unsavedScopes = [] } }
-                    else { edit(id) { $0.scopes.formUnion($0.unsavedScopes); $0.unsavedScopes = [] } }
+                    if spurious401 { refusedSave = true }
+                    edit(id) { $0.scopes.formUnion($0.unsavedScopes); $0.unsavedScopes = [] }
                     address = .s2s(id, .activation)
                 }
             }

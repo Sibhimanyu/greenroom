@@ -297,18 +297,18 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(zoom.apps.last?.info[.contactEmail], person.info.email)
     }
 
-    /// Live run 6, 2026-11-27: Zoom answered the scopes save with 401 (the account may create Server-to-Server apps
-    /// but not change them), so the scopes never stuck and the run added them three times. A refused save is the
-    /// admin blocker: Greenroom stops after one try with the words to say.
-    func testARefusedSaveIsTheAdminBlockerNotALoop() async {
+    /// Live run 8, 2026-11-27: Zoom's app API answered something with 401, the Scopes page listed no saved scopes to
+    /// the reader, and the run stopped with "ask your Zoom admin" - yet Zoom showed Scopes ✓ and "Your app is ready
+    /// for activation". What Zoom's Activation page says wins: ready means Information and scopes are done; Activate.
+    func testActivationThatSaysReadyIsTrustedOverAStray401() async {
         let zoom = FixturePage.freshAccount()
-        zoom.refusesS2SWrites = true
+        zoom.spurious401 = true
+        zoom.savedScopesNotListed = true
         let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
         let end = await run.run()
-        guard case .handedOver(let step, _) = end else { return XCTFail("expected a hand over, got \(end)") }
-        XCTAssertEqual(step.cta, .checkAgain)
-        XCTAssertTrue(step.status?.contains("Server-to-Server OAuth app: Edit") ?? false)
-        XCTAssertEqual(zoom.log.filter { $0 == .press(.addScopes) }.count, 1, "the scopes were tried once, not looped")
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.last?.activated, true)
+        XCTAssertEqual(zoom.log.filter { $0 == .press(.addScopes) }.count, 1, "the scopes were added once")
     }
 
     /// Live run 7, 2026-11-27: Information drew its menu links, then its fields seven seconds later; the run took the

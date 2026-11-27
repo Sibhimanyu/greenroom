@@ -194,7 +194,7 @@ different order; this table is the authority.
 - R4.2a With no meeting running, an edit in Settings to the active layout's camera or share reaches
   the working copy and the live picture at once (`LayoutPieceAdoption.forLibraryEdit`); an edit to
   another layout never does.
-- R4.3 A drag on Home, the bubble or in the meeting changes only the running
+- R4.3 (superseded by meeting-setup R3, R4) A drag on Home, the bubble or in the meeting changes only the running
   meeting, never the saved layout.
 - R4.4 The camera piece is drawn on the shared display's canvas (Second when
   that is shared and connected, else Main).
@@ -202,16 +202,16 @@ different order; this table is the authority.
 **R5. Each layout owns what's shared and its shared display.** (Q9, Q17)
 - R5.1 A layout saves what's shared (`LayoutTemplate.share`: kind, window,
   follow the slide show) and its shared display.
-- R5.2 Home's Share panel and the bar change only the running meeting.
-- R5.3 Start and Snap Back load the active layout's share again. A share chosen
+- R5.2 (superseded by meeting-setup R3, R4, R5) Home's Share panel and the bar change only the running meeting.
+- R5.3 (superseded by meeting-setup R3, R4, R5) Start and Snap Back load the active layout's share again. A share chosen
   on Home before Start is kept for that meeting only.
 
 **R6. Four-way camera state everywhere.** (Q12)
 - R6.1 The same four words and meanings appear in Settings > Layouts, the bar's
   camera menu and Home's camera tile.
-- R6.2 Settings holds the saved default used at each Start. A change from the
+- R6.2 (superseded by meeting-setup R3, R4, R5) Settings holds the saved default used at each Start. A change from the
   bar or Home is for the running meeting and never writes the default.
-- R6.3 Start and Snap Back drop the live change.
+- R6.3 (superseded by meeting-setup R3, R4, R5) Start and Snap Back drop the live change.
 - R6.4 Off and Only me hide the camera from everyone whatever else is set,
   camera switching included. The one exception is Just my camera (share
   Nothing): the camera is then the whole picture and stays in.

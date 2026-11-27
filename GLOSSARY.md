@@ -167,7 +167,7 @@ neighbours. Spec: `docs/specs/zoom-setup-flow.md`. Decision: `docs/adr/0003-one-
 
 **Camera piece**: the owner's camera as a piece. Its spot, size and shape belong to the layout it sits in.
 
-**Camera state**: who sees the owner's camera, one of four: *Everyone & me*, *Only the meeting* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app. *Off* takes only the camera out of the picture: everyone still gets the shared screen. Each state's one line (`CameraState.detail`, the camera menus and tooltips) says first what the meeting gets: "The meeting gets your screen and your camera" for the two "on" states, "The meeting gets your screen without your camera" for *Only me* (with the mirror) and *Off*. _Avoid_: calling Off "stop video".
+**Camera state**: who sees the owner's camera, saved per layout, one of four: *Everyone & me*, *Only the meeting* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app. *Off* takes only the camera out of the picture: everyone still gets the shared screen. Each state's one line (`CameraState.detail`, the camera menus and tooltips) says first what the meeting gets: "The meeting gets your screen and your camera" for the two "on" states, "The meeting gets your screen without your camera" for *Only me* (with the mirror) and *Off*. _Avoid_: calling Off "stop video".
 
 **Stop video**: Zoom's own full video off for the owner, like Zoom's button: nothing is sent to the meeting, not even the screen, and everyone sees the owner's name or avatar. Not a camera state and not *Off*: the camera state stays as it was and comes back with *Start video*. The local stage, the recording and the Room screen keep going. Shown by Zoom's red, filled video.slash. Zoom's own state is the truth, so a stop by a co-host or by Zoom shows too.
 
@@ -195,7 +195,9 @@ neighbours. Spec: `docs/specs/zoom-setup-flow.md`. Decision: `docs/adr/0003-one-
 
 **Devices tab**: the Settings tab for camera devices, the microphone and recording options. It holds nothing about where things go.
 
-**What's shared**: what a layout gives everyone: the screen, an app, a window, the whiteboard, or nothing (just the camera). Saved per layout; changed live from Home during a meeting.
+**What's shared**: what a layout gives everyone: the screen, an app, a window, the whiteboard, or nothing (just the camera). Saved per layout; a change on Home during a meeting is for this meeting.
+
+**Meeting setup**: the active layout's camera state, camera piece and what's shared, each with its saved value and any for-this-meeting change. What every screen reads and every change goes through.
 
 **Saved**: a setting's value as kept across launches: in the active layout (camera state, camera piece, what's shared) or for the whole app. Before a meeting, every place that changes it, Home included, changes the saved value, and Home names the layout it changes. _Avoid_: default, global (when it lives in a layout).
 

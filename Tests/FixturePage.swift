@@ -35,7 +35,7 @@ final class FixturePage: ZoomPage {
     }
 
     var apps: [App] = []
-    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads; lockedInfoReads = infoLockedReads; dropUnsaved() } } }
+    var address: ZoomMarketplacePage = .createdApps { didSet { if address != oldValue { blankReads = loadingReads; lateListReads = listLateReads; lockedInfoReads = infoLockedReads; lateContentReads = contentLateReads; dropUnsaved() } } }
     private func dropUnsaved() { for i in apps.indices { apps[i].unsavedScopes = [] } }
     /// Live finding, 2026-11-27: right after a page opens Zoom shows nothing yet (no switch state, no keys)
     /// for a second or two. The next `loadingReads` reads after a page change come back empty.
@@ -48,6 +48,10 @@ final class FixturePage: ZoomPage {
     /// then unlock by themselves. The next `infoLockedReads` reads of Information show them disabled.
     var infoLockedReads = 0
     private var lockedInfoReads = 0
+    /// Live run 7, 2026-11-27: a page draws its menu links first and its own controls up to seconds later.
+    /// The next `contentLateReads` reads after a page change show only the app's menu links.
+    var contentLateReads = 0
+    private var lateContentReads = 0
     private var lateListReads = 0
     var signedIn = true
     /// Every action the page performed, in order (a press, a type, a navigation), for tests that watch for forbidden ones.
@@ -91,6 +95,12 @@ final class FixturePage: ZoomPage {
     func read() async -> ZoomPageSnapshot? {
         guard signedIn else { return ZoomPageSnapshot(address: address, signedIn: false) }
         if blankReads > 0 { blankReads -= 1; return ZoomPageSnapshot(address: address, signedIn: true, dialog: .none) }
+        if lateContentReads > 0, address != .createdApps {
+            lateContentReads -= 1
+            var menu = ZoomPageSnapshot(address: address, signedIn: true, dialog: .none)
+            ZoomNavLink.allCases.forEach { menu.controls.insert(.navLink($0)) }
+            return menu
+        }
         var s = ZoomPageSnapshot(address: address, signedIn: true, dialog: dialog)
         func nav(_ links: [ZoomNavLink]) { links.forEach { s.controls.insert(.navLink($0)) } }
         switch address {

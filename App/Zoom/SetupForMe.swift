@@ -121,10 +121,11 @@ final class SetupForMe {
     /// longer (about 3s live) before Greenroom believes there are no apps.
     private func settledRead() async -> ZoomPageSnapshot? {
         var last: ZoomPageSnapshot?, same = 0
-        let emptyListNeeds = max(6, pacing.polls / 2)
+        let live = pacing.pause > 0
+        let emptyListNeeds = live ? 12 : 6            // about 3s live
         // Information keeps its fields disabled for up to a minute after opening, then unlocks by itself
         // (live run 3). Only fields still disabled after about 90s live are the account's own limit.
-        let lockedInfoNeeds = max(20, pacing.polls * 15)
+        let lockedInfoNeeds = live ? 360 : 20         // about 90s live
         for _ in 0..<(lockedInfoNeeds + 12) {
             guard let s = await page.read() else { return nil }
             if s.isSignedOut { return s }
@@ -134,7 +135,7 @@ final class SetupForMe {
                 return false
             }()
             let needs = locked ? lockedInfoNeeds : (s.address == .createdApps && s.appList.isEmpty) ? emptyListNeeds : 1
-            if !s.controls.isEmpty, same >= needs { return s }
+            if !s.controls.isEmpty, s.isReady, same >= needs { return s }
             last = s
             if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }
         }

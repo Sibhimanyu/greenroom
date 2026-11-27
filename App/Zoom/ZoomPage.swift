@@ -54,6 +54,6 @@ protocol ZoomPage: AnyObject {
 struct ZoomPacing: Equatable {
     var polls: Int
     var pause: UInt64
-    static let live = ZoomPacing(polls: 24, pause: 250_000_000)
-    static let instant = ZoomPacing(polls: 4, pause: 0)
+    static let live = ZoomPacing(polls: 60, pause: 250_000_000)   // 15s: Zoom drew a page's controls 7s late (live run 7)
+    static let instant = ZoomPacing(polls: 8, pause: 0)
 }

@@ -310,4 +310,16 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertTrue(step.status?.contains("Server-to-Server OAuth app: Edit") ?? false)
         XCTAssertEqual(zoom.log.filter { $0 == .press(.addScopes) }.count, 1, "the scopes were tried once, not looped")
     }
+
+    /// Live run 7, 2026-11-27: Information drew its menu links, then its fields seven seconds later; the run took the
+    /// menu for a settled page and tried to type into fields that weren't there. Each page is used once its own
+    /// controls show.
+    func testAPageIsUsedOnceItsOwnControlsShowNotJustItsMenu() async {
+        let zoom = FixturePage.freshAccount()
+        zoom.contentLateReads = 6
+        let (run, _) = start(zoom, keys: MemoryKeys(), answers: person)
+        let end = await run.run()
+        XCTAssertEqual(end, .done)
+        XCTAssertEqual(zoom.apps.last?.info[.contactEmail], person.info.email)
+    }
 }

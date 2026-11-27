@@ -81,6 +81,22 @@ extension ZoomMarketplacePage {
 
 extension ZoomPageSnapshot {
     var isSignedOut: Bool { signedIn == false || address?.isSignIn == true }
+
+    /// Whether the page has drawn its OWN controls, not just the app's menu (live run 7: Information's fields came
+    /// seven seconds after its menu links). Pages with nothing of their own to show count as ready.
+    var isReady: Bool {
+        if dialog != .none { return true }
+        switch address {
+        case .createdApps?: return has(.plus)
+        case .general(_, .embed)?: return meetingSDKOn != nil
+        case .general(_, .information)?, .s2s(_, .credentials)?:
+            return keys.values.contains { if case .absent = $0 { return false }; return true }
+        case .s2s(_, .information)?: return !infoFields.isEmpty
+        case .s2s(_, .scopes)?: return has(.addScopes)
+        case .s2s(_, .activation)?: return activated != nil
+        default: return true
+        }
+    }
 }
 
 enum ZoomPlanStep: Equatable {

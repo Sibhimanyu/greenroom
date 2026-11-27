@@ -448,6 +448,7 @@ enum ZoomPageScript {
         return null;
       }
       function infoState(input) {
+        if (isDisabled(input) && !(input.value || '').length) return 'disabled';
         if ((input.value || '').length) return 'filled';
         var bad = input.getAttribute('aria-invalid') === 'true', q = input;
         if (!bad && input.nextElementSibling && /cannot be empty/i.test(input.nextElementSibling.textContent || '')) bad = true;

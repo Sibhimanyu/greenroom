@@ -433,6 +433,10 @@ targets:
       - path: App/Zoom/ZoomPageSnapshot.swift
       - path: App/Zoom/ZoomPageScript.swift
       - path: App/Zoom/ZoomClipboardRules.swift
+      - path: App/Zoom/ZoomPage.swift
+      - path: App/Zoom/ZoomActor.swift
+      - path: App/Zoom/ZoomSetupFlow.swift
+      - path: App/Zoom/SetupForMe.swift
       - path: App/UI/ZoomMarketplaceWindowPlacement.swift
       - path: App/UI/MeetingViewsMenu.swift
       - path: App/UI/SessionSelection.swift

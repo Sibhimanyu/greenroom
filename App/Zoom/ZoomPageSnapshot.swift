@@ -66,7 +66,8 @@ enum ZoomInfoField: String, Equatable, Hashable, Codable, CaseIterable {
 }
 
 /// What one Information field shows; never its text. `error`: empty with Zoom's red border or "This field cannot be empty".
-enum ZoomInfoState: String, Equatable, Hashable, Codable { case empty, filled, error }
+/// `disabled`: Zoom's input is switched off (the account may lack the Server-to-Server edit permission).
+enum ZoomInfoState: String, Equatable, Hashable, Codable { case empty, filled, error, disabled }
 
 extension ZoomKeyField {
     /// The row's label on Zoom's pages.

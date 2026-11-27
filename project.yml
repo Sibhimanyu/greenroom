@@ -415,6 +415,9 @@ targets:
       - path: App/Zoom/ZoomSetupCheckRules.swift
       - path: App/Zoom/ZoomCheckActionRules.swift
       - path: App/Zoom/ZoomMarketplacePages.swift
+      - path: App/Zoom/ZoomGuideFollowRules.swift
+      - path: App/Zoom/ZoomCoachRules.swift
+      - path: App/Zoom/ZoomCoachScript.swift
       - path: App/UI/MeetingViewsMenu.swift
       - path: App/UI/SessionSelection.swift
       - path: App/UI/MeetingVideo/MeetingViewRules.swift

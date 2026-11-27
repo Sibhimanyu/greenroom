@@ -1,0 +1,73 @@
+//
+//  ZoomGuideFollowRules.swift
+//  Greenroom
+//
+//  The setup guide follows the page the Zoom window is on (spec R3), fills
+//  the keys in from it (R5) and starts the check by itself (R7). Pure:
+//  Foundation only; the window and the guide only apply these decisions.
+//
+import Foundation
+
+enum ZoomGuideFollowRules {
+    /// The current step (1-based) of `part` for the page the window shows; nil when the page is no step of that part.
+    static func step(part: ZoomGuidePart, page: ZoomMarketplacePage?) -> Int? {
+        guard let page else { return nil }
+        switch (part, page) {
+        case (.meetingApp, .createdApps), (.meetingApp, .chooseType): return 1
+        case (.meetingApp, .general(_, .embed)): return 2
+        case (.meetingApp, .general(_, .information)): return 3
+        case (.hostingApp, .createdApps), (.hostingApp, .chooseType): return 1
+        case (.hostingApp, .s2s(_, .scopes)): return 2
+        case (.hostingApp, .s2s(_, .activation)): return 3
+        case (.hostingApp, .s2s(_, .credentials)): return 4
+        default: return nil
+        }
+    }
+
+    /// The part a page opens. A page of the other kind leaves a part with typing in it alone; nil leaves the guide as it is.
+    static func part(for page: ZoomMarketplacePage, open: ZoomGuidePart?, typing: Bool) -> ZoomGuidePart? {
+        let target: ZoomGuidePart
+        switch page.app {
+        case .sdk: target = .meetingApp
+        case .s2s: target = .hostingApp
+        case nil: return nil
+        }
+        if typing, let open, open != target { return nil }
+        return target
+    }
+}
+
+/// What a read of the page's key inputs does to the guide's fields.
+enum ZoomKeyFillDecision: Equatable {
+    case nothing
+    /// Write these now (the fields were empty or already the same).
+    case fill([ZoomKeyField: String])
+    /// Offer these; nothing is written until the person says so.
+    case offer([ZoomKeyField: String])
+}
+
+enum ZoomKeyFillRules {
+    static func decide(current: [ZoomKeyField: String], found: [ZoomKeyField: String]) -> ZoomKeyFillDecision {
+        let keys = found.filter { ZoomMarketplacePages.isKey($0.value) }
+        func have(_ f: ZoomKeyField) -> String { (current[f] ?? "").trimmingCharacters(in: .whitespaces) }
+        let changes = keys.filter { have($0.key) != $0.value }
+        if changes.isEmpty { return .nothing }
+        let clash = changes.contains { !have($0.key).isEmpty }
+        return clash ? .offer(changes) : .fill(changes)
+    }
+
+    /// Check Zoom setup starts by itself once, when the window's fill makes both parts complete and nothing is live.
+    static func shouldAutoCheck(bothFilledBefore: Bool, bothFilledAfter: Bool, inSession: Bool, checkRunning: Bool) -> Bool {
+        bothFilledAfter && !bothFilledBefore && !inSession && !checkRunning
+    }
+}
+
+/// What the guide needs to know about the Zoom window, as plain values (the render feeds samples).
+struct ZoomGuideAssistState: Equatable {
+    var page: ZoomMarketplacePage?
+    var ids = ZoomAppIDs()
+    /// Parts whose fields the window filled ("Filled in from Zoom", with Undo).
+    var filled: Set<ZoomGuidePart> = []
+    /// Parts where the page's keys differ from what is typed ("Use the keys from this page").
+    var offers: Set<ZoomGuidePart> = []
+}

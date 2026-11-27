@@ -12,7 +12,7 @@ final class ZoomMarketplaceGuideTests: XCTestCase {
             XCTAssertFalse(step.isEmpty)
             XCTAssertFalse(step.lowercased().contains("class"))
         }
-        XCTAssertEqual(ZoomMarketplaceGuide.sdkSteps.count, 4)
+        XCTAssertEqual(ZoomMarketplaceGuide.sdkSteps.count, 3)
         XCTAssertEqual(ZoomMarketplaceGuide.s2sSteps.count, 4)
         // The steps sit above the fields in the setup guide.
         XCTAssertFalse((ZoomMarketplaceGuide.sdkSteps + ZoomMarketplaceGuide.s2sSteps).contains { $0.contains("here") })

@@ -210,13 +210,14 @@ final class ZoomMarketplacePagesTests: XCTestCase {
                      "a guided page of its own: stay")
     }
 
-    /// Owner, 2026-11-27: Set up for me signed out goes to Zoom's own sign-in page (zoom.us/signin); after it Zoom
-    /// may land on its main site rather than Marketplace. That landing also sends the window back where setup was heading.
-    func testAfterSignInOnZoomsMainSiteTheWindowGoesBackToo() {
+    /// Live, 2026-11-27: the window jumped away from Zoom's own sign-in finishing page (zoom.us/google/oauth…) before
+    /// Zoom had signed the person in, so they came back signed out every time. Zoom's own pages are never left
+    /// mid-sign-in; only a Marketplace landing sends the window back.
+    func testZoomsOwnSignInPagesAreNeverInterrupted() {
         let created = URL(string: "https://marketplace.zoom.us/user/build")!
-        XCTAssertEqual(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us/profile")!, heading: created), created)
-        XCTAssertEqual(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://us05web.zoom.us/myhome")!, heading: created), created)
-        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us/signin")!, heading: created), "still signing in")
-        XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://zoom.us.evil.example/profile")!, heading: created), "not Zoom")
+        for u in ["https://zoom.us/google/oauth", "https://zoom.us/profile", "https://us05web.zoom.us/myhome", "https://zoom.us/signin"] {
+            XCTAssertNil(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: u)!, heading: created), u)
+        }
+        XCTAssertEqual(ZoomMarketplacePages.resumeAfterSignIn(sawSignIn: true, now: URL(string: "https://marketplace.zoom.us/")!, heading: created), created)
     }
 }

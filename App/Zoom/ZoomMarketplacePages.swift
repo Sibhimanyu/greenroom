@@ -69,12 +69,12 @@ enum ZoomMarketplacePages {
     /// Where the window should go instead: where setup was heading, if this is a Marketplace
     /// page with no guided step of its own. Nil: stay.
     static func resumeAfterSignIn(sawSignIn: Bool, now: URL, heading: URL?) -> URL? {
-        guard sawSignIn, let heading, now != heading, now.scheme == "https", let host = now.host else { return nil }
-        if host == "marketplace.zoom.us" { return page(for: now) == nil ? heading : nil }
-        // Zoom's main site after its own sign-in page (zoom.us/profile, us05web.zoom.us/myhome, …).
-        let zoomSite = host == "zoom.us" || host.hasSuffix(".zoom.us")
-        let stillSigningIn = page(for: now)?.isSignIn == true || now.path.lowercased().hasPrefix("/signin")
-        return zoomSite && !stillSigningIn ? heading : nil
+        // Only a Marketplace landing: Zoom's own pages are left alone, because leaving zoom.us/google/oauth (and
+        // the like) before it finished signed the person in to nothing (live, 2026-11-27). Sign-in starts from
+        // Marketplace's own button, so Zoom comes back to Marketplace by itself.
+        guard sawSignIn, let heading, now != heading, now.scheme == "https", now.host == "marketplace.zoom.us",
+              page(for: now) == nil else { return nil }
+        return heading
     }
 
     static let host = "marketplace.zoom.us"

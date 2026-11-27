@@ -137,9 +137,6 @@ extension CoordinatorController {
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }
         if let value = transfer.cameraShownOnMyScreen { cameraShownOnMyScreen = value }   // import-only (R1.3)
-        // The camera piece and what's shared travel inside each layout. An older file with no library
-        // brings them alone: they go to the active layout, as a change from Home would (meeting-setup R1.3).
-        if transfer.layoutLibrary == nil { importOldCameraPiece(from: transfer) }
         if let value = transfer.cuesUseWhisper { cuesUseWhisper = value }
         if let value = transfer.screenroomAgent {
             Self.setJSONString(value, forKey: ScreenroomAgentSettings.key)
@@ -161,6 +158,7 @@ extension CoordinatorController {
         SettingsDefaultsBridge().apply(transfer)
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
+        var importedOldLayoutIsActive = false
         if let library = transfer.layoutLibrary {
             // Already cleaned of second displays that are not connected here.
             // R1.3: an old file's layouts have no camera state; the file's app-wide one goes to each.
@@ -191,29 +189,33 @@ extension CoordinatorController {
             if var imported = legacy.asTemplate().map({ SettingsImportRules.withLocalDisplays($0, connected: environment.connectedDisplayUUIDs) }) {
                 var library = layoutLibrary
                 if library.templates.contains(where: { $0.name == imported.name }) { imported.name = "Imported layout" }
-                imported.cameraState = savedCameraState
+                // R1.3: the file's own camera state, camera piece and share go into the layout it brings in,
+                // so when that layout becomes active it is complete (no fall back to this Mac's old keys).
+                imported = SettingsImportRules.completingOldFileLayout(
+                    imported, from: transfer, baseCamera: meetingSetup.saved.cameraPiece,
+                    baseShare: meetingSetup.saved.share, cameraFallback: savedCameraState)
                 library.templates.append(imported)
                 if legacy.arrangeWindowsOnStart { library.select(imported.id) }
                 layoutLibrary = library
+                importedOldLayoutIsActive = library.activeID == imported.id
             }
         }
+        // An older file brings the camera piece and share alone when no layout of its own became active:
+        // a saved edit of the active layout (never for this meeting, even during a live session).
+        if transfer.layoutLibrary == nil, !importedOldLayoutIsActive { importOldCameraPiece(from: transfer) }
         log("Imported settings.")
         return SettingsImportReport(notes: notes)
     }
 }
 
 extension CoordinatorController {
-    /// An older settings file's camera shape, spot, size and share (no layouts inside it): onto the
-    /// active layout, in one change each. Keys the file omits keep what the layout has.
+    /// An older settings file's camera shape, spot, size and share (no layouts inside it), when no layout of
+    /// its own took over: a SAVED edit of the active layout, one change each, never for this meeting (an
+    /// import during a live session must not become a for-this-meeting change). Keys the file omits keep
+    /// what the layout has.
     fileprivate func importOldCameraPiece(from transfer: SettingsTransfer) {
-        var piece = meetingSetup.cameraPiece
-        if let value = transfer.webcamShape, let shape = WebcamShape(rawValue: value) { piece.shape = shape }
-        if let value = transfer.bubbleWidthFraction { piece.widthFraction = value }
-        if let value = transfer.bubbleRightInset { piece.rightInset = value }
-        if let value = transfer.bubbleBottomInset { piece.bottomInset = value }
-        if let value = transfer.cutoutHeightFraction { piece.cutoutHeightFraction = value }
-        if let value = transfer.cutoutRightInset { piece.cutoutRightInset = value }
-        if piece != meetingSetup.cameraPiece { currentCameraPiece = piece }
-        if let value = transfer.shareTarget { shareTarget = value }
+        let piece = SettingsImportRules.applyingOldCameraPiece(to: meetingSetup.saved.cameraPiece, from: transfer)
+        if piece != meetingSetup.saved.cameraPiece { savedEditSetup(.cameraPiece(piece)) }
+        if let value = transfer.shareTarget { savedEditSetup(.share(value)) }
     }
 }

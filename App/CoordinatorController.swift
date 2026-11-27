@@ -918,7 +918,7 @@ final class CoordinatorController: ObservableObject {
 
     /// A change from Settings -> Layouts: always saved; a live meeting gets it unless that setting has a
     /// for-this-meeting change (R4.2).
-    private func savedEditSetup(_ change: MeetingSetup.Change) {
+    func savedEditSetup(_ change: MeetingSetup.Change) {
         let before = meetingSetup
         let effect = meetingSetup.savedEdit(change, meetingLive: setupMeetingLive)
         applySetupEffect(effect, before: before)
@@ -954,7 +954,8 @@ final class CoordinatorController: ObservableObject {
     /// Home's one quiet line under a control: where that setting's value lives (R3.2, R4.3).
     func homeSetupLine(_ setting: MeetingSetup.Setting) -> String? {
         MeetingSetupLine.home(layoutName: layoutLibrary.active?.name, sessionUp: phase.isSessionUp,
-                              forThisMeeting: meetingSetup.isForThisMeeting(setting))
+                              forThisMeeting: meetingSetup.isForThisMeeting(setting),
+                              recording: phase.recordOnlyActive)
     }
 
     /// Settings -> Layouts' line under a row: "For this meeting: <value>", nil when that setting has no
@@ -1437,8 +1438,13 @@ final class CoordinatorController: ObservableObject {
         // R5.1, R5.2, R5.4: the Meeting setup is the active layout's, so the layout applied is the
         // active one (a no-op when a card pick already made it so), and its camera state, camera piece
         // and share come into the meeting now. Whatever was set for this meeting goes, except Off.
-        if layoutLibrary.activeID != template.id { layoutLibrary.select(template.id) }
-        applySetupEvent(.layoutSwitched(to: template.setupValues(fallback: setupFallback)))
+        // `select` fires the layout switch itself (`layoutLibrary`'s didSet -> followLibraryChange), so the
+        // event is fired here only when the layout was already active: the switch happens once either way.
+        if layoutLibrary.activeID != template.id {
+            layoutLibrary.select(template.id)
+        } else {
+            applySetupEvent(.layoutSwitched(to: template.setupValues(fallback: setupFallback)))
+        }
         refreshCaptureDisplay()
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
         reapplyLayout(userInitiated: false, openApps: true, trigger: .switchedLayout)

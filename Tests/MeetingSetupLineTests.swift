@@ -22,6 +22,15 @@ final class MeetingSetupLineTests: XCTestCase {
         XCTAssertEqual(MeetingSetupLine.home(layoutName: nil, sessionUp: true, forThisMeeting: true), "For this meeting")
     }
 
+    // Spec: meeting-setup R4.3: a Record session says recording; a meeting keeps its wording.
+    func testARecordSessionSaysForThisRecording() {
+        XCTAssertEqual(MeetingSetupLine.home(layoutName: "A", sessionUp: true, forThisMeeting: true, recording: true),
+                       "For this recording")
+        XCTAssertEqual(MeetingSetupLine.home(layoutName: "A", sessionUp: true, forThisMeeting: false, recording: true), "From A")
+        XCTAssertEqual(MeetingSetupLine.home(layoutName: "A", sessionUp: false, forThisMeeting: true, recording: true), "Saved to A")
+        XCTAssertEqual(MeetingSetupLine.home(layoutName: "A", sessionUp: true, forThisMeeting: true, recording: false), "For this meeting")
+    }
+
     // Spec: meeting-setup R4.3
     func testMeetingWithNoChangeSaysWhereTheValueComesFrom() {
         XCTAssertEqual(MeetingSetupLine.home(layoutName: "A", sessionUp: true, forThisMeeting: false), "From A")

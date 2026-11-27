@@ -9,6 +9,7 @@
 //   - no meeting up:                 "Saved to <layout>"   (a change goes into that layout)
 //   - meeting up, a change in effect: "For this meeting"
 //   - meeting up, nothing changed:   "From <layout>"       (a change would be for this meeting only)
+//   - a Record session, a change in effect: "For this recording" (the same rule, in the session's own word)
 //  The last one is shown rather than nothing so the panel keeps one height when the first pick
 //  arrives, and so the person is told, before they pick, that the pick will not be saved.
 //  Settings -> Layouts (under the saved row, only while a change is in effect): "For this meeting: <value>".
@@ -21,8 +22,8 @@ enum MeetingSetupLine {
     static let resetTitle = "Reset"
 
     /// Home's line. nil only when there is no layout to name and no change to report.
-    static func home(layoutName: String?, sessionUp: Bool, forThisMeeting: Bool) -> String? {
-        if sessionUp, forThisMeeting { return "For this meeting" }
+    static func home(layoutName: String?, sessionUp: Bool, forThisMeeting: Bool, recording: Bool = false) -> String? {
+        if sessionUp, forThisMeeting { return recording ? "For this recording" : "For this meeting" }
         guard let name = layoutName, !name.isEmpty else { return nil }
         return sessionUp ? "From \(name)" : "Saved to \(name)"
     }

@@ -132,6 +132,43 @@ final class LayoutCameraStateTests: XCTestCase {
         XCTAssertEqual(half.templates[0].cameraState, .everyoneAndMe)
     }
 
+    // Spec: meeting-setup R1.3: the layout an old file brings in carries the FILE's camera piece, share
+    // and camera state (not this Mac's), so it is complete when it becomes active.
+    func testTheLayoutAnOldFileBringsInCarriesTheFilesOwnCameraPieceShareAndState() throws {
+        let json = #"{"webcamShape":"cutout","bubbleWidthFraction":0.3,"cutoutHeightFraction":0.45,"cutoutRightInset":0.07,"cameraShownOnMyScreen":false,"cameraDirector":{"noCamera":false}}"#
+        var t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(json.utf8))
+        var wb = ShareTarget(); wb.kind = .whiteboard; t.shareTarget = wb
+        var base = LayoutCamera(); base.bottomInset = 0.11
+        let out = SettingsImportRules.completingOldFileLayout(LayoutTemplate(name: "Your previous layout"), from: t,
+                                                              baseCamera: base, baseShare: ShareTarget(),
+                                                              cameraFallback: .everyoneAndMe)
+        XCTAssertEqual(out.camera?.shape, .cutout)
+        XCTAssertEqual(out.camera?.widthFraction, 0.3)
+        XCTAssertEqual(out.camera?.cutoutHeightFraction, 0.45)
+        XCTAssertEqual(out.camera?.cutoutRightInset, 0.07)
+        XCTAssertEqual(out.camera?.bottomInset, 0.11, "what the file omits keeps the base")
+        XCTAssertEqual(out.share?.kind, .whiteboard)
+        XCTAssertEqual(out.cameraState, .onlyEveryone, "the file's value, not this Mac's")
+    }
+
+    // Spec: meeting-setup R1.3: a file that says nothing keeps this Mac's state, piece and share.
+    func testAnOldFileThatSaysNothingKeepsThisMacsValues() {
+        var base = LayoutCamera(); base.shape = .roundedRectangle
+        var share = ShareTarget(); share.kind = .whiteboard
+        let out = SettingsImportRules.completingOldFileLayout(LayoutTemplate(name: "X"), from: SettingsTransfer(),
+                                                              baseCamera: base, baseShare: share, cameraFallback: .onlyMe)
+        XCTAssertEqual(out.camera, base)
+        XCTAssertEqual(out.share, share)
+        XCTAssertEqual(out.cameraState, .onlyMe)
+    }
+
+    // Spec: meeting-setup R1.1: a new blank layout has a camera state, like every other.
+    func testANewBlankLayoutIsEveryoneAndMe() {
+        var lib = LayoutLibrary(templates: [])
+        let id = lib.addBlank()
+        XCTAssertEqual(lib.template(id: id)?.cameraState, .everyoneAndMe)
+    }
+
     // Spec: meeting-setup R1.3: the old key is import-only in the catalog.
     func testTheOldKeyIsImportOnly() {
         let entry = SettingsCatalog.entries.first { $0.key == "cameraShownOnMyScreen" }

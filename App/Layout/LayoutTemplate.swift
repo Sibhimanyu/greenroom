@@ -606,7 +606,7 @@ struct LayoutLibrary: Codable, Equatable {
         var name = "Layout \(n)"
         var k = n
         while templates.contains(where: { $0.name == name }) { k += 1; name = "Layout \(k)" }
-        let t = LayoutTemplate(name: name, camera: LayoutCamera.rounded, share: ShareTarget())
+        let t = LayoutTemplate(name: name, camera: LayoutCamera.rounded, share: ShareTarget(), cameraState: .everyoneAndMe)
         templates.append(t)
         return t.id
     }

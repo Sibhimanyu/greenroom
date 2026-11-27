@@ -32,9 +32,9 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 ## Requirements
 
 **R1. Camera state is saved per layout.** (D3) built in P2 (stored, migrated and exported), read by the Meeting setup since P3
-- R1.1 `LayoutTemplate` holds a camera state. A layout with no camera piece still has one.
+- R1.1 `LayoutTemplate` holds a camera state. A layout with no camera piece still has one. (review fix 2026-11-27: `addBlank` now ships Everyone & me, so a new blank layout has one too; test `testANewBlankLayoutIsEveryoneAndMe`)
 - R1.2 On first launch with this change, every existing layout gets the camera state that was saved for the whole app. Built-in layouts' originals use *Everyone & me*; Restore original puts that back.
-- R1.3 The settings file carries the camera state inside each layout. The old app-wide key is import-only: an old file's value is applied to every layout it brings in that has none.
+- R1.3 The settings file carries the camera state inside each layout. The old app-wide key is import-only: an old file's value is applied to every layout it brings in that has none. (review fix 2026-11-27: the layout an old file with no library brings in carries the FILE's camera state, camera piece and share, via `SettingsImportRules.completingOldFileLayout`, and so is complete when it becomes active; if no such layout becomes active the file's piece and share are a saved edit of the active layout, never for this meeting)
 
 **R2. One module owns the meeting setup.** (D5) built (P1 module, P3 wiring)
 - R2.1 A pure module (Foundation only, compiled by the test target) holds, for camera state, camera piece and what's shared: the saved value (from the active layout) and an optional for-this-meeting change. (module built in P1)
@@ -51,7 +51,7 @@ The owner saw Home say *Only me* while Layouts said *Everyone & me* (2026-11-27)
 **R4. During a meeting, a change is for this meeting.** (D2) R4.1, R4.2 built (P3); R4.3 to R4.5 built (P4)
 - R4.1 Given a meeting is live, when the camera state, camera piece or share is changed on Home, the bar, the toolbar or the present menu, then the meeting gets it, and the saved layout does not change. (module built in P1, wired in P3; needs a live check)
 - R4.2 Given a meeting is live, when it is changed in Settings → Layouts, then the saved value changes. If there is no for-this-meeting change for that setting, the meeting gets it as well. (module built in P1, wired in P3: a library edit is followed as a saved edit; needs a live check)
-- R4.3 Home's line reads "For this meeting" while a for-this-meeting change is in effect. (built in P4; a meeting up with no change reads "From <layout>", so the panel keeps one height and the person is told before they pick that it will not be saved)
+- R4.3 Home's line reads "For this meeting" while a for-this-meeting change is in effect ("For this recording" during a Record session; review fix 2026-11-27). (built in P4; a meeting up with no change reads "From <layout>", so the panel keeps one height and the person is told before they pick that it will not be saved)
 - R4.4 Settings → Layouts shows the saved value. Where a for-this-meeting change is in effect for the active layout, it shows one line, for example "For this meeting: Only me", with **Keep** (saves the change into the layout and clears it) and **Reset** (clears it, so the meeting gets the saved value). (Keep and Reset: module built in P1; P4: `ForThisMeetingLine` under the camera-state row, the shape row and the shared display's header, buttons call `keepForThisMeeting` / `resetForThisMeeting`, folds with `Collapsible`; only the active layout is ever shown in the editor)
 - R4.5 The Layouts canvas draws the saved camera piece, never a for-this-meeting change, so its drawing and its rows always agree. (built in P4: `LayoutSettingsTab.cameraModel` reads `savedStageLayout` and the saved share; before P4 it drew `stageLayout`, the value in use. A drag in Layouts that leaves a for-this-meeting piece in effect puts the Stage back)
 

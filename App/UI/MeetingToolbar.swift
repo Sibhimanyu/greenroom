@@ -25,6 +25,8 @@ import SwiftUI
 struct MeetingToolbarState {
     var inMeeting = true
     var muted = false
+    /// Muted in Zoom while a take is rolling: the recording still hears the microphone.
+    var recordingHearsYou = false
     /// False when this Mac is not on the meeting's audio at all.
     var hasAudio = true
     var cameraOn = true
@@ -186,7 +188,11 @@ struct MeetingToolbarBar: View {
                 } else {
                     cell(symbol: state.muted ? "mic.slash" : "mic",
                          caption: state.muted ? "Unmute" : "Mute",
-                         tint: state.muted ? MeetingTheme.red : .white, action: actions.toggleMute)
+                         tint: state.muted ? MeetingTheme.red : .white,
+                         recordDot: state.recordingHearsYou,
+                         help: state.recordingHearsYou ? MuteHintRules.hint : nil,
+                         value: MuteHintRules.spokenValue(hearsYou: state.recordingHearsYou),
+                         action: actions.toggleMute)
                         .disabled(!state.inMeeting)
                 }
             }
@@ -317,22 +323,26 @@ struct MeetingToolbarBar: View {
     /// caption, with Zoom's hover wash behind it.
     private func glyph(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                        badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
-                       symbolBadge: String? = nil, width: CGFloat = MeetingToolbarLayout.cell) -> some View {
-        ToolbarGlyph(symbol: symbol, symbolBadge: symbolBadge, caption: caption, tint: tint, on: on, badge: badge,
+                       symbolBadge: String? = nil, recordDot: Bool = false,
+                       width: CGFloat = MeetingToolbarLayout.cell) -> some View {
+        ToolbarGlyph(symbol: symbol, symbolBadge: symbolBadge, recordDot: recordDot, caption: caption, tint: tint, on: on, badge: badge,
                      badgeFilled: badgeFilled, captionPill: captionPill, width: width, height: Self.cellHeight)
     }
 
     private func cell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                       badge: String? = nil, symbolBadge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
-                      help: String? = nil, width: CGFloat = MeetingToolbarLayout.cell,
+                      recordDot: Bool = false, help: String? = nil, value: String? = nil,
+                      width: CGFloat = MeetingToolbarLayout.cell,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge,
-                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge, width: width)
+                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge,
+                  recordDot: recordDot, width: width)
         }
         .buttonStyle(.plain)
         .help(help ?? caption)
         .accessibilityLabel(caption)
+        .accessibilityValue(value ?? "")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
@@ -418,6 +428,7 @@ private struct ToolbarCaret: View {
 private struct ToolbarGlyph: View {
     let symbol: String
     var symbolBadge: String?
+    var recordDot = false
     let caption: String
     let tint: Color
     let on: Bool
@@ -434,6 +445,7 @@ private struct ToolbarGlyph: View {
                 .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(tint)
                 .symbolBadge(symbolBadge, size: 10)
+                .recordDot(recordDot, size: 8)
                 .frame(height: 24)
                 .overlay(alignment: .topTrailing) { badgeView.offset(x: 14, y: -5) }
             Text(caption)

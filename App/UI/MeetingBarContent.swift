@@ -158,8 +158,12 @@ struct BarIconButton: View {
     /// Lit with the brand tint while it is on (Draw).
     var on = false
     var symbolBadge: String? = nil
+    /// A small red record dot on the icon: the recording still hears the microphone (Mute only).
+    var recordDot = false
     var help: String
     var spoken: String? = nil
+    /// Read after the label (VoiceOver), when there is more to say.
+    var value: String? = nil
     var action: () -> Void
 
     var body: some View {
@@ -168,6 +172,7 @@ struct BarIconButton: View {
                 .font(.system(size: 14))
                 .foregroundStyle(tint)
                 .symbolBadge(symbolBadge, size: 8)
+                .recordDot(recordDot, size: 6)
                 .frame(width: width, height: 32)
                 .background(on ? Brand.green.opacity(0.28) : Color.clear, in: Circle())
                 .contentShape(Rectangle())
@@ -175,7 +180,25 @@ struct BarIconButton: View {
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(spoken ?? help)
+        .accessibilityValue(value ?? "")
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+extension View {
+    /// Zoom's red as a small dot at the icon's top corner: the recording is rolling.
+    @ViewBuilder func recordDot(_ on: Bool, size: CGFloat) -> some View {
+        if on {
+            overlay(alignment: .topTrailing) {
+                Circle().fill(MeetingTheme.red)
+                    .frame(width: size, height: size)
+                    .overlay(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5))
+                    .offset(x: size * 0.5, y: -size * 0.3)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            self
+        }
     }
 }
 
@@ -319,10 +342,15 @@ struct MeetingBarContent: View {
 
     private var micButton: some View {
         let name = s.muted ? "Unmute" : "Mute"
+        let hears = MuteHintRules.recordingHearsYou(
+            muted: s.muted, inMeeting: s.inMeeting, recording: s.phase.isRecording,
+            paused: s.phase == .paused, saving: false)
+        let plain = s.muted ? "Unmute: everyone hears you again" : "Mute your microphone"
         return BarIconButton(symbol: s.muted ? "mic.slash.fill" : "mic.fill",
-                             tint: s.muted ? .red : .primary,
-                             help: help(s.muted ? "Unmute: everyone hears you again" : "Mute your microphone", .toggleMic),
-                             spoken: name, action: a.toggleMute)
+                             tint: s.muted ? .red : .primary, recordDot: hears,
+                             help: hears ? MuteHintRules.hint : help(plain, .toggleMic),
+                             spoken: name, value: MuteHintRules.spokenValue(hearsYou: hears),
+                             action: a.toggleMute)
             .disabled(!s.inMeeting)
     }
 

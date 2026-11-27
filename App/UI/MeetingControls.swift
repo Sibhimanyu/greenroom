@@ -522,6 +522,10 @@ struct MeetingToolbarView: View {
         var s = MeetingToolbarState()
         s.inMeeting = model.inMeeting
         s.muted = model.muted
+        s.recordingHearsYou = MuteHintRules.recordingHearsYou(
+            muted: model.muted, inMeeting: model.inMeeting, hasAudio: model.hasAudio,
+            recording: coordinator.isRecording, paused: coordinator.isRecordingPaused,
+            saving: coordinator.isSavingRecording)
         s.hasAudio = model.hasAudio
         s.cameraOn = model.cameraOn
         s.cameraState = coordinator.cameraState

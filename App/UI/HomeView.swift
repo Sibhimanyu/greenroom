@@ -1273,7 +1273,7 @@ struct HomeView: View {
         DispatchQueue.main.async { proxy.scrollTo(newest, anchor: .bottom) }
     }
 
-    // MARK: Scheduled picker
+    // MARK: My Meetings picker
 
     /// The entry the meeting number in the field is (the personal room by its PMI).
     private var chosenScheduledEntry: ScheduledEntry? {
@@ -1327,7 +1327,7 @@ struct HomeView: View {
         .disabled(isLive)
         .opacity(isLive ? 0.6 : 1)
         .help(chosen?.canEdit == false ? ZoomPersonalRoom.help : "Choose one of the meetings scheduled on your Zoom account")
-        .accessibilityLabel("Scheduled meeting")
+        .accessibilityLabel("Meeting")
     }
 
     private func scheduledMenuItem(_ entry: ScheduledEntry, chosen: ScheduledEntry?) -> some View {
@@ -1349,7 +1349,7 @@ struct HomeView: View {
     }
 
     private var scheduledPlaceholder: String {
-        noScheduledYet && coordinator.personalRoom == nil ? "No scheduled meetings yet" : "Choose a scheduled meeting"
+        noScheduledYet && coordinator.personalRoom == nil ? "No scheduled meetings yet" : "Choose a meeting"
     }
 
     /// The row: the picker, then Edit and New as square buttons in the same

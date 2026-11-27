@@ -2,7 +2,7 @@
 //  PersonalRoomTests.swift
 //  GreenroomTests
 //
-//  The Zoom Personal Meeting Room (PMI) on Home's Scheduled list: reading it
+//  The Zoom Personal Meeting Room (PMI) on Home's My Meetings list: reading it
 //  from GET /users/me, its place in the list, what a missing scope does, the
 //  scope itself, and the number as Zoom writes it.
 //

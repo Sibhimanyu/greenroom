@@ -53,9 +53,9 @@ enum SidebarRules {
 enum HomeToolbarRules {
     /// Traffic lights and the leading margin; the leading side holds nothing else.
     static let leading: CGFloat = 78
-    /// "Scheduled" at 13pt semibold is about 66pt; plus 14pt padding each side,
+    /// "My Meetings" at 13pt semibold is about 81pt; plus 14pt padding each side,
     /// three equal segments, plus the track's inset.
-    static let switcher: CGFloat = 3 * (66 + 28) + 8
+    static let switcher: CGFloat = 3 * (81 + 28) + 8
     /// Sessions (glass button with its margins), the fixed spacer, the Setup guide
     /// and Settings group, the share eye's title-bar accessory (24 + 12), margins.
     static let sessions: CGFloat = 48

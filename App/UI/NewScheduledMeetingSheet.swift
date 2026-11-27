@@ -2,7 +2,7 @@
 //  NewScheduledMeetingSheet.swift
 //  Greenroom
 //
-//  "New scheduled meeting…" from Home's Scheduled picker: a name, whether it
+//  "New scheduled meeting…" from Home's My Meetings picker: a name, whether it
 //  repeats weekly, and whether students wait in a waiting room. Create asks
 //  Zoom; a refusal stays on the sheet in plain words. The weekly controls fold
 //  away when "No fixed time" is chosen (DESIGN.md: dependent controls collapse).

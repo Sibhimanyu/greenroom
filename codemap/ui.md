@@ -22,7 +22,7 @@ Everything the person sees outside a live meeting's video windows lives in `App/
 | UI/YouTubeUploadSheet.swift | The upload sheet over the main window (hosted by `ContentView` on `youtubeUploadDraft`): channel or Sign in with Google, title, description, Unlisted/Private, required Made for Kids, the §9.1 Terms line, Upload in YouTube Studio / Cancel / Upload; shared `MadeForKidsChoice`, `YouTubeChannelAvatar`, `YouTubeSettingsWords` | `YouTubeUploadSheet`, `YouTubeUploadSheetContent` (plain values, rendered by `scripts/render/youtube.sh`) |
 
 ### Home (and Record view)
-Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Scheduled(`.join`) / Record), shown by the same `HomeView`.
+Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / My Meetings(`.join`) / Record), shown by the same `HomeView`.
 | path | owns | key types |
 |---|---|---|
 | UI/HomeView.swift (1646 lines) | Picture card left, setup column right: name, dock chips, readiness, Start button, scheduled picker, status log | `HomeView` (`pictureCard` + `previewFooter`: the row under the picture, never over it, with the second-display note left and Show on screen right via `LayoutPageContent.showOnScreen`; `PreviewSecondDisplayRules.row(for:)` decides, nil when the layout places no windows (no pieces, or Leave my windows alone), the height is kept; `setupColumn`, `shareChip`, `cameraChip`, `micChip`, `layoutChip`, `readyRow`, `primaryButton`, `scheduledPicker`) `RoomDisplayNote` (R15.2) fills the same footer with an amber "Connect the room display" / mirrored line (+ Open Displays settings link) when the active layout's Room screen has no extended second display; it replaces the second-display note and never blocks Start. |
@@ -44,7 +44,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/PreviewFrameRules.swift / PreviewOutlineRules.swift | Preview crop, camera rules, outline placement (pure) | `PreviewFrameRules`, `LayoutCameraRules`, `PreviewOutlineRules` |
 | UI/LayoutChoiceMenu.swift | "Layout: name" menu under Start, also in menu bar | `LayoutChoiceItems/Line` |
 | UI/NewScheduledMeetingSheet.swift | New scheduled meeting sheet | `NewScheduledMeetingSheet` |
-| UI/ScheduledPickerField.swift | The closed face of Home's Scheduled picker (symbol, chosen entry or placeholder, the personal room's "Always the same link" note when it fits whole, chevron); HomeView's `scheduledPicker` builds the menu (personal room pinned first with its note and tooltip; Edit disabled for it) | `ScheduledPickerField` |
+| UI/ScheduledPickerField.swift | The closed face of Home's My Meetings picker (symbol, chosen entry or placeholder, the personal room's "Always the same link" note when it fits whole, chevron); HomeView's `scheduledPicker` builds the menu (personal room pinned first with its note and tooltip; Edit disabled for it) | `ScheduledPickerField` |
 | UI/AnalysisSetupPanel.swift | "Feedback settings" sheet (More settings... target, Done only) | `AnalysisSetupPanel` |
 | UI/AnalysisProgressViews.swift | Get feedback popover: Ready (steps, choices, Start) crossfading to progress; ring | `AnalysisRunPopover`, `AnalysisReadyView`, `AnalysisProgressPopover`, `AnalysisRing` |
 
@@ -127,7 +127,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Add a Settings tab -> `MorePanelRules.common` (the one list; `SettingsTabs.order` and `SettingsTabs.order` derive from it), `TabView` item + `.tag`, `height(for:)`; update Cmd-N hint (count) and `.showSettingsTab` users.
 - Add a Settings row -> the tab's `*PageContent` (e.g. `LayoutPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
 - Change Home toolbar items -> `ContentView.body` `.toolbar { }`; then update `HomeToolbarRules` (SidebarRules.swift) widths.
-- Change the Create/Scheduled/Record switcher -> `ContentView.modeSwitcher`, `MeetingMode` in CoordinatorController.swift.
+- Change the Create/My Meetings/Record switcher -> `ContentView.modeSwitcher`, `MeetingMode` in CoordinatorController.swift.
 - Popovers: always below their button, one scroll per popup (never a ScrollView inside the content), scroll when tall; use `greenroomPopover`, never a bare `.popover` (SessionDetailContent share card is the one `.top` exception: anchored to the whole page).
 - Add or change a tile popover (Look, Camera, Screen, Mic, Layout, Auto-rec, More all done) -> build it on `HomeTilePanel` (HomeTilePanels.swift), rules in `HomeTilePanelRules.swift`; once a tile has a panel, drop its `.dockHint(...)` and keep a `.help` (see `lookControl`, `cameraChip`). Hover-card art/text live in `DockHintVisual` (DockHint.swift) and each tile's `DockHintContent` in HomeView.
 - Change Home dock chips (Share/Camera/Mic/Layout) -> `HomeView.shareChip/cameraChip/micChip/layoutChip`; summary wording in `HomeCalmRules.SetupSummary`; readiness pills `HomeView.readyRow`, `ReadinessSummary`.

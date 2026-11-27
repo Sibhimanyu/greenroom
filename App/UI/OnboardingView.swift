@@ -370,7 +370,7 @@ struct OnboardingView: View {
                 summaryRow("Accessibility", detail: ZoomWindowManager.hasAccessibilityPermission ? "Window arrangement allowed" : "Allow window arrangement in System Settings", page: .permissions)
                 Divider()
                 Text("Your first meeting").font(.headline)
-                Text("Choose New or Scheduled on the main screen, then press Start Meeting. To record without a meeting, choose Record.")
+                Text("Choose New or My Meetings on the main screen, then press Start Meeting. To record without a meeting, choose Record.")
                 Label("Greenroom sends its own picture into the meeting, so there is no camera to pick in Zoom.", systemImage: "web.camera")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Need a change later? Use Settings, or reopen this guide with the ? button.")

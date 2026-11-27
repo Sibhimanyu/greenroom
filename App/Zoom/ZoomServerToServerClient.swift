@@ -392,7 +392,7 @@ enum ZoomServerToServerClient {
     /// The account owner's ZAK (host key token) - what startMeetingWithZAK
     /// needs to START an existing meeting as its host. The create flow
     /// gets one embedded in the fresh meeting's start_url; meetings that
-    /// already exist (the Scheduled list) need this endpoint. ZAKs are
+    /// already exist (the My Meetings list) need this endpoint. ZAKs are
     /// short-lived, so fetch fresh per start rather than caching.
     static func fetchZAK(accountID: String, clientID: String, clientSecret: String) async throws -> String {
         let token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)

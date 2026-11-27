@@ -57,8 +57,8 @@ final class SidebarRulesTests: XCTestCase {
     }
 
     func testHomeMinimumHoldsTheToolbar() {
-        XCTAssertEqual(HomeToolbarRules.need, 616)
-        XCTAssertEqual(HomeToolbarRules.minWindowWidth, 664)
+        XCTAssertEqual(HomeToolbarRules.need, 661)
+        XCTAssertEqual(HomeToolbarRules.minWindowWidth, 709)
         XCTAssertGreaterThanOrEqual(HomeToolbarRules.minWindowWidth, HomeToolbarRules.need + HomeToolbarRules.safety)
     }
 }

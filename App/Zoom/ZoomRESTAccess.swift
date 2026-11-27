@@ -39,7 +39,7 @@ enum ZoomRESTAccess {
         }
     }
 
-    /// The personal room (PMI) for the Scheduled list's pinned entry.
+    /// The personal room (PMI) for the My Meetings list's pinned entry.
     func personalRoom() async -> ZoomPersonalRoom.Lookup {
         switch self {
         case .signedIn(let user): return await user.personalRoom()

@@ -3917,7 +3917,7 @@ final class CoordinatorController: ObservableObject {
 
         let name = userDisplayName.isEmpty ? NSFullUserName() : userDisplayName
 
-        // The Scheduled tab only starts the account's OWN meetings, as host.
+        // The My Meetings tab only starts the account's OWN meetings, as host.
         // The SDK authenticates the app, not the Zoom user, so a host start
         // needs a fresh ZAK. There is no guest fallback: Greenroom does not
         // join other people's meetings.
@@ -4957,17 +4957,17 @@ final class CoordinatorController: ObservableObject {
     }
 
     // MARK: Scheduled meetings - pulled from the Zoom account with the
-    // same S2S credentials that create meetings, so the Scheduled tab can
+    // same S2S credentials that create meetings, so the My Meetings tab can
     // offer the account's recurring class meeting instead of making the
     // user paste an ID every morning.
 
     @Published private(set) var scheduledMeetings: [ZoomServerToServerClient.ScheduledMeeting] = []
-    /// The account's personal room (PMI), pinned first on the Scheduled list.
+    /// The account's personal room (PMI), pinned first on the My Meetings list.
     /// nil without the scope or a PMI: the list works without it.
     @Published private(set) var personalRoom: ZoomPersonalRoom?
     @Published private(set) var isLoadingScheduled = false
 
-    /// What the Scheduled picker lists: the personal room first, then the meetings.
+    /// What the My Meetings picker lists: the personal room first, then the meetings.
     var scheduledEntries: [ScheduledEntry] {
         ScheduledListRules.entries(room: personalRoom, meetings: scheduledMeetings)
     }
@@ -5404,13 +5404,13 @@ enum MeetingMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// The raw value "join" is what older versions saved, so it keeps loading
-    /// into the Scheduled tab.
-    static let scheduledHelp = "Meetings scheduled on your Zoom account. To join someone else\u{2019}s meeting, use the Zoom app."
+    /// into the My Meetings tab.
+    static let scheduledHelp = "Your personal room and the meetings scheduled on your Zoom account. To join someone else\u{2019}s meeting, use the Zoom app."
 
     var label: String {
         switch self {
         case .create: return "New Meeting"
-        case .join: return "Scheduled"
+        case .join: return "My Meetings"
         case .record: return "Record"
         }
     }
@@ -5420,7 +5420,7 @@ enum MeetingMode: String, CaseIterable, Identifiable {
     var shortLabel: String {
         switch self {
         case .create: return "New"
-        case .join: return "Scheduled"
+        case .join: return "My Meetings"
         case .record: return "Record"
         }
     }

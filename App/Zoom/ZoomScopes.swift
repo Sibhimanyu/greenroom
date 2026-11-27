@@ -44,7 +44,7 @@ enum ZoomScopes {
         Scope(key: .delete, name: "meeting:delete:meeting:admin", purpose: "Delete scheduled meetings", legacy: "meeting:write:admin"),
         Scope(key: .host, name: "user:read:token:admin", purpose: "Get your hosting token", legacy: "user:read:admin"),
         Scope(key: .end, name: "meeting:update:status:admin", purpose: "End meetings for everyone", legacy: "meeting:write:admin"),
-        // GET /users/me: the personal room (PMI) pinned on Home's Scheduled list.
+        // GET /users/me: the personal room (PMI) pinned on Home's My Meetings list.
         // Zoom's granular-scope table, "Get a user": user:read:user / user:read:user:admin.
         Scope(key: .personalRoom, name: "user:read:user:admin", purpose: "Read your personal room", legacy: "user:read:admin"),
     ]

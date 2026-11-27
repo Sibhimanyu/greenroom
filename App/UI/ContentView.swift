@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  Greenroom
 //
-//  One decision, one button: pick "New Meeting", "Scheduled" or "Record"
+//  One decision, one button: pick "New Meeting", "My Meetings" or "Record"
 //  in the toolbar, hit the button, and the whole session cascades - the picture, Zoom into
 //  the meeting, Chrome tiled to its side of the screen, chat window tiled
 //  to the other. The layout's apps can be opened on their own from the

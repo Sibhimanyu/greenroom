@@ -2,7 +2,7 @@
 //  ScheduledPickerField.swift
 //  Greenroom
 //
-//  The face of Home's Scheduled picker (the closed menu): calendar symbol, the
+//  The face of Home's My Meetings picker (the closed menu): calendar symbol, the
 //  chosen entry or the placeholder, and a chevron, in the field's own look.
 //  When the personal room is chosen a small "Always the same link" note sits
 //  after its number. Split out of HomeView so scripts/render/scheduled.sh can

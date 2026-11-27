@@ -1494,7 +1494,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     func leave() -> Bool {
         // The isHosting flag only knows about explicit host STARTS - but
         // host can also arrive mid-meeting: joining your OWN meeting (the
-        // Scheduled list flow) has Zoom promote you on arrival, with the
+        // My Meetings list flow) has Zoom promote you on arrival, with the
         // flag still false, so Stop used to merely leave and the meeting
         // kept running host-less. Ask the SDK who we are RIGHT NOW; the
         // live answer also covers the hybrid flow's host handoff (host

@@ -100,7 +100,7 @@ personal room"), never "PMI" in UI text. Code: `App/Zoom/ZoomPersonalRoom.swift`
 - It is read from `GET /users/me` (`pmi`, `personal_meeting_url`), because Zoom's
   scheduled-meetings list never includes it. Own apps need `user:read:user:admin`;
   the sign-in's `user:read:user` already covers it.
-- Home's Scheduled list pins it first (**Scheduled entry**: the personal room or
+- Home's My Meetings list pins it first (**Scheduled entry**: the personal room or
   one scheduled meeting, `ScheduledEntry`). It starts like any scheduled meeting:
   its number with a fresh host key. It is never edited or deleted from Greenroom.
 - No scope or no PMI means no entry, never an error on Home.

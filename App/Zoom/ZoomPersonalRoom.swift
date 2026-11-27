@@ -3,7 +3,7 @@
 //  Greenroom
 //
 //  The account's Zoom Personal Meeting Room (PMI) and its place on Home's
-//  Scheduled list (owner, 2026-11-27). Zoom's scheduled-meetings list never
+//  My Meetings list (owner, 2026-11-27). Zoom's scheduled-meetings list never
 //  includes it, so it is read from GET /users/me (`pmi`, `personal_meeting_url`,
 //  `display_name`) and pinned first. Starting it is the same as any scheduled
 //  meeting: the PMI number with a fresh ZAK. The host needs no passcode and
@@ -101,7 +101,7 @@ struct ZoomPersonalRoom: Equatable, Hashable {
     }
 }
 
-/// One line of Home's Scheduled list.
+/// One line of Home's My Meetings list.
 enum ScheduledEntry: Identifiable, Equatable, Hashable {
     case personalRoom(ZoomPersonalRoom)
     case meeting(ZoomServerToServerClient.ScheduledMeeting)

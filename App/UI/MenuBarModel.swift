@@ -214,7 +214,7 @@ enum MenuBarModel {
         }
         out.append(.separator)
         out.append(action(.newMeeting, "New Meeting", "video.badge.plus", key(.startClass)))
-        out.append(action(.joinMeeting, "Scheduled Meeting\u{2026}", "person.crop.rectangle.badge.plus"))
+        out.append(action(.joinMeeting, "My Meetings\u{2026}", "person.crop.rectangle.badge.plus"))
         out.append(action(.record, "Record\u{2026}", "record.circle"))
         out.append(.separator)
         out.append(MenuBarItem(kind: .layoutMenu, title: "Layout: \(state.layoutName)", symbol: "rectangle.3.group"))

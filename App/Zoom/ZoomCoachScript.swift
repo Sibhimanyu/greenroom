@@ -176,8 +176,11 @@ enum ZoomCoachScript {
           ui.ring.style.boxShadow = '0 0 0 2px ' + ring;
           if (r.right + 16 + cw <= vw - 8) { left = r.right + 16 + pad; top = r.top; }
           else if (r.left - 16 - cw >= 8) { left = r.left - 16 - cw - pad; top = r.top; }
-          else if (r.bottom + 16 + ch <= vh - 8) { left = r.left; top = r.bottom + 16 + pad; }
-          else { left = r.left; top = Math.max(8, r.top - 16 - ch - pad); }
+          // No room beside it (a full-width row): sit under or over its RIGHT end, so
+          // the card covers the empty side of the next row, never its label or the
+          // Create button, which Zoom puts on the left.
+          else if (r.bottom + 16 + ch <= vh - 8) { left = r.right - cw; top = r.bottom + 16 + pad; }
+          else { left = r.right - cw; top = Math.max(8, r.top - 16 - ch - pad); }
         } else {
           ui.spot.style.display = 'none';
           left = vw - cw - 16; top = vh - ch - 16;

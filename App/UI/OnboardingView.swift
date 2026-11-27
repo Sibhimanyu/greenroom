@@ -200,7 +200,13 @@ struct OnboardingView: View {
             onUndoRemoved: { coordinator.zoomAssist.undoRemoved($0) },
             onImport: { importSettingsFile() },
             onCheck: { setupChecker.showingIn = .guide; runConnectionTest() },
-            onViewResults: { setupChecker.showingIn = .guide })
+            onViewResults: { setupChecker.showingIn = .guide },
+            setUp: coordinator.zoomAssist.setUpForMe,
+            infoDefaults: InfoValues(name: NSFullUserName()),
+            onSetUpForMe: { coordinator.zoomAssist.beginSetUpForMe() },
+            onStartSetUp: { coordinator.zoomAssist.startSetUpForMe($0, buildNew: $1) },
+            onCancelSetUp: { coordinator.zoomAssist.cancelSetUpForMe() },
+            onStopSetUp: { coordinator.zoomAssist.stopSetUpForMe() })
         .id(SetupPage.zoom)
     }
 

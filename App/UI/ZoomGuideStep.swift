@@ -60,6 +60,13 @@ struct ZoomGuideStep: View {
     var onImport: () -> Bool = { false }
     var onCheck: () -> Void = {}
     var onViewResults: () -> Void = {}
+    /// Set up for me: its state, the button, the form's Start / Cancel, and Stop.
+    var setUp: ZoomSetUpForMeState = .idle
+    var infoDefaults = InfoValues()
+    var onSetUpForMe: () -> Void = {}
+    var onStartSetUp: (InfoValues, Set<ZoomApp>) -> Void = { _, _ in }
+    var onCancelSetUp: () -> Void = {}
+    var onStopSetUp: () -> Void = {}
     /// Starts with the manual route unfolded; for the off-screen render only.
     var manualOpen = false
 
@@ -85,7 +92,7 @@ struct ZoomGuideStep: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header.id(Self.topID)
-                    if let button = ZoomConnectRules.button(facts) { connectButton(button) }
+                    if let button = ZoomConnectRules.button(facts) { setUpArea(button) }
                     statusList
                     if ZoomConnectRules.showsCheckRow(facts) { check.id(Self.checkID) }
                     manualRoute
@@ -127,15 +134,53 @@ struct ZoomGuideStep: View {
         }
     }
 
-    private func connectButton(_ button: ZoomConnectButton) -> some View {
+    /// Set up for me is the main button; the guided steps are "Guide me instead" and what Set up for me hands over to.
+    @ViewBuilder
+    private func setUpArea(_ button: ZoomConnectButton) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            switch setUp {
+            case .preparing:
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Looking at your Zoom apps\u{2026}").foregroundStyle(.secondary) }
+            case .running(let line):
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text(line).foregroundStyle(.secondary)
+                    Button("Stop", action: onStopSetUp)
+                }
+            default:
+                if case .handedOver(let note) = setUp {
+                    Label(note, systemImage: "hand.raised")
+                        .font(.callout).foregroundStyle(Brand.netText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 12) {
+                    Button(action: onSetUpForMe) {
+                        Text("Set up for me").font(.headline).frame(minWidth: 140)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(Brand.buttonFill)
+                    .help("Greenroom builds both apps in your Zoom account and copies the keys. You can stop at any time.")
+                    connectButton(button, title: "Guide me instead", prominent: false)
+                }
+            }
+        }
+        .sheet(isPresented: Binding(get: { if case .asking = setUp { return true } else { return false } },
+                                    set: { if !$0, case .asking = setUp { onCancelSetUp() } })) {
+            if case .asking(let existing) = setUp {
+                ZoomSetUpForMeForm(info: infoDefaults, existing: existing, onStart: onStartSetUp, onCancel: onCancelSetUp)
+            }
+        }
+    }
+
+    private func connectButton(_ button: ZoomConnectButton, title: String? = nil, prominent: Bool = true) -> some View {
         let page = ZoomConnectRules.entryPage(button.part, ids: assist.ids, filled: filledCount(button.part))
         let url = ZoomMarketplacePages.url(for: page) ?? ZoomMarketplaceGuide.builderURL
         return Button { onOpenZoom(url, button.part) } label: {
-            Text(button.title).font(.headline).frame(minWidth: 180)
+            Text(title ?? button.title).font(prominent ? .headline : .body).frame(minWidth: prominent ? 180 : 0)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.bordered)
         .controlSize(.large)
-        .tint(Brand.buttonFill)
         .help("Opens Zoom App Marketplace in its own window, at \(button.part.title)")
     }
 

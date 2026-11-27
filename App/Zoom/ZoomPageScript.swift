@@ -618,4 +618,48 @@ enum ZoomPageScript {
       }
     })();
     """
+
+    /// One action on one named control (the actor's only way to touch Zoom's page). Resolves the ID with the same finder the
+    /// reader uses, checks the deny-list on the element's own text at this moment (it always wins), then acts. Answers
+    /// 'ok', 'none' (not on the page) or 'denied'. Never runs on credential VALUES: it only presses and types what a plan says.
+    static func action(verb: String, id: String, text: String = "") -> String {
+        func q(_ s: String) -> String {
+            let d = try? JSONSerialization.data(withJSONObject: [s]); let j = d.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+            return String(j.dropFirst().dropLast())
+        }
+        return """
+        (function () {
+          \(library)
+          var verb = \(q(verb)), id = \(q(id)), text = \(q(text));
+          var el = resolve(id);
+          if (!el) return 'none';
+          var said = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || ''));
+          // A scope checkbox's row carries the scope's own name ("...delete_..."): that text is ours, not a warning.
+          if (id.indexOf('scopeCheckbox:') === 0) said = said.split(id.slice(14)).join('');
+          if (new RegExp(\(q(ZoomActorRules.denyPattern)), 'i').test(said)) return 'denied';
+          if (verb === 'hover') {
+            var n = el; for (var i = 0; n && i < 4; i++, n = n.parentElement) { ['pointerover','mouseover','mouseenter','pointermove','mousemove'].forEach(function (t) { n.dispatchEvent(new MouseEvent(t, { bubbles: t !== 'mouseenter', cancelable: true, view: window })); }); }
+            return 'ok';
+          }
+          if (verb === 'type') {
+            var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            el.focus(); setter.call(el, text);
+            el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+            return 'ok';
+          }
+          el.scrollIntoView({ block: 'center' });
+          if (verb === 'pressdeep') {
+            var inner = el.querySelector('svg path, svg, i, img') || el;
+            ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function (t) { inner.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); });
+            return 'ok';
+          }
+          // An app row opens through its own link; any other control is clicked itself.
+          var target = el;
+          if (id.indexOf('appRow.') === 0) target = el.querySelector('a[href],[role=link]') || el;
+          target.click();
+          return 'ok';
+        })();
+        """
+    }
 }

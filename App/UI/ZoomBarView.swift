@@ -33,6 +33,9 @@ struct ZoomBarView: View {
     var onPrimary: () -> Void = {}
     var onOpenInSafari: () -> Void = {}
     var onSignOut: () -> Void = {}
+    /// "Step n of 8 \u{00B7} title\u{2026}" while Set up for me runs; the bar then shows it with Stop instead of the page's own buttons.
+    var autopilot: String? = nil
+    var onStop: () -> Void = {}
 
     static let height: CGFloat = 44
 
@@ -48,8 +51,22 @@ struct ZoomBarView: View {
                 Text("Couldn\u{2019}t load this page.")
                     .font(.caption).foregroundStyle(Brand.netText).lineLimit(1).fixedSize()
             }
-            context
-            primary
+            if let autopilot {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(autopilot).font(.callout).lineLimit(1)
+                }
+                .fixedSize()
+                Button("Stop", action: onStop)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Brand.buttonFill)
+                    .controlSize(.regular)
+                    .fixedSize()
+                    .help("Ends Set up for me after the current action and hands over to the guided steps")
+            } else {
+                context
+                primary
+            }
             HStack(spacing: 2) {
                 iconButton("chevron.left", "Back", enabled: canGoBack, onBack)
                 iconButton("chevron.right", "Forward", enabled: canGoForward, onForward)

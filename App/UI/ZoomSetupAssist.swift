@@ -35,6 +35,13 @@ final class ZoomSetupAssist: ObservableObject {
     /// What "Use a different app" took away, until Undo or the next change (in memory only).
     private var removedBackup: [ZoomGuidePart: (values: [ZoomKeyField: String], id: String?)] = [:]
 
+    // MARK: Set up for me
+
+    @Published private(set) var setUpForMe = ZoomSetUpForMeState.idle {
+        didSet { if setUpForMe != oldValue { coordinator?.objectWillChange.send() } }
+    }
+    private var runner: SetupForMe?
+
     init(coordinator: CoordinatorController) {
         self.coordinator = coordinator
         state = ZoomGuideAssistState(ids: ZoomAppIDs(meeting: defaults.string(forKey: Self.meetingKey),
@@ -55,6 +62,7 @@ final class ZoomSetupAssist: ObservableObject {
             DispatchQueue.main.async { ZoomMarketplaceWindow.shared.updateBar() }
         }]
         window.onBackToGreenroom = { [weak self] in self?.backToGreenroom() }
+        window.onStop = { [weak self] in self?.stopSetUpForMe() }
         window.missingKeys = { [weak self] page in self?.missingKeys(on: page) }
         window.onCopied = { [weak self] page, text in self?.copied(on: page, text: text) }
         window.needsApp = { [weak self] part in self?.needsApp(part) ?? false }
@@ -120,14 +128,14 @@ final class ZoomSetupAssist: ObservableObject {
 
     // MARK: The keys
 
-    private func fields(_ app: ZoomOwnApp, _ c: CoordinatorController) -> [ZoomKeyField: String] {
+    func fields(_ app: ZoomOwnApp, _ c: CoordinatorController) -> [ZoomKeyField: String] {
         switch app {
         case .sdk: return [.clientID: c.sdkClientID, .clientSecret: c.sdkClientSecret]
         case .s2s: return [.accountID: c.s2sAccountID, .clientID: c.s2sClientID, .clientSecret: c.s2sClientSecret]
         }
     }
 
-    private func write(_ app: ZoomOwnApp, _ values: [ZoomKeyField: String], _ c: CoordinatorController) {
+    func write(_ app: ZoomOwnApp, _ values: [ZoomKeyField: String], _ c: CoordinatorController) {
         for (field, value) in values {
             switch (app, field) {
             case (.sdk, .clientID): c.sdkClientID = value
@@ -317,5 +325,104 @@ final class ZoomSetupAssist: ObservableObject {
         state = next
         defaults.set(next.ids.meeting, forKey: Self.meetingKey)
         defaults.set(next.ids.hosting, forKey: Self.hostingKey)
+    }
+
+    // MARK: Set up for me (docs/specs/zoom-setup-flow.md)
+
+    /// The main button: open the Zoom window at Created apps, look at what is there, then ask the one small form.
+    func beginSetUpForMe() {
+        guard runner == nil, setUpForMe != .preparing else { return }
+        setUpForMe = .preparing
+        open(ZoomMarketplaceGuide.builderURL, part: .meetingApp)
+        Task { @MainActor in
+            var existing: Set<ZoomApp> = []
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard let s = await ZoomMarketplaceWindow.shared.read(), s.address == .createdApps, s.has(.plus) else { continue }
+                existing = Set(s.appList).intersection([.meeting, .hosting])
+                break
+            }
+            guard setUpForMe == .preparing else { return }
+            setUpForMe = .asking(existing: existing)
+        }
+    }
+
+    func cancelSetUpForMe() { if runner == nil { setUpForMe = .idle } }
+
+    func startSetUpForMe(_ info: InfoValues, buildNew: Set<ZoomApp>) {
+        guard let coordinator, runner == nil else { return }
+        coordinator.loadSecretsIfNeeded()
+        var answers = SetupAnswers()
+        answers.info = info
+        answers.buildNew = buildNew
+        let window = ZoomMarketplaceWindow.shared
+        let run = SetupForMe(page: window, keys: CoordinatorZoomKeys(assist: self, coordinator: coordinator),
+                             checker: CoordinatorZoomChecker(coordinator: coordinator), answers: answers)
+        runner = run
+        run.onStep = { [weak self] step in
+            let line = (step.number.map { "Step \($0) of \(SetupStep.total) \u{00B7} " } ?? "") + step.title + "\u{2026}"
+            window.setAutopilot(line)
+            self?.setUpForMe = .running(line)
+        }
+        window.setAutopilot("Setting up\u{2026}")
+        setUpForMe = .running("Setting up\u{2026}")
+        Task { @MainActor in
+            let end = await run.run()
+            runner = nil
+            window.setAutopilot(nil)
+            switch end {
+            case .done:
+                setUpForMe = .done
+                window.close()
+                coordinator.openZoomSetupGuide(at: .zoomStep)
+            case .stopped:
+                setUpForMe = .handedOver("You stopped Set up for me. The guided steps carry on from here.")
+            case .handedOver(let step, let why):
+                let at = (step.number.map { "Step \($0) of \(SetupStep.total) \u{00B7} " } ?? "") + step.title
+                setUpForMe = .handedOver("Greenroom stopped at \(at). \(why) The guided steps carry on from here.")
+            }
+            ZoomMarketplaceWindow.shared.refresh()
+        }
+    }
+
+    func stopSetUpForMe() { runner?.stop() }
+}
+
+/// Where Set up for me keeps the keys it copies: the same fields (and Keychain) typing uses.
+@MainActor
+final class CoordinatorZoomKeys: ZoomKeyStore {
+    private unowned let assist: ZoomSetupAssist
+    private unowned let coordinator: CoordinatorController
+    init(assist: ZoomSetupAssist, coordinator: CoordinatorController) { self.assist = assist; self.coordinator = coordinator }
+
+    private func own(_ app: ZoomApp) -> ZoomOwnApp { app == .meeting ? .sdk : .s2s }
+
+    func keys(for app: ZoomApp) -> [ZoomKeyField: String] {
+        coordinator.loadSecretsIfNeeded()
+        return assist.fields(own(app), coordinator).filter { !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    func save(_ keys: [ZoomKeyField: String], for app: ZoomApp) {
+        coordinator.loadSecretsIfNeeded()
+        assist.write(own(app), keys, coordinator)
+        coordinator.zoomSetupChecker.credentialsChanged()
+    }
+}
+
+/// Runs the shared Check Zoom setup and waits for its lines.
+@MainActor
+final class CoordinatorZoomChecker: ZoomChecker {
+    private unowned let coordinator: CoordinatorController
+    init(coordinator: CoordinatorController) { self.coordinator = coordinator }
+
+    func run() async -> [ZoomCheckLine] {
+        let checker = coordinator.zoomSetupChecker
+        if !checker.isRunning { coordinator.checkZoomSetup() }
+        guard checker.isRunning else { return [] }   // in a meeting: no check
+        for _ in 0..<300 {
+            if !checker.isRunning { break }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+        return checker.isRunning ? [] : checker.lines
     }
 }

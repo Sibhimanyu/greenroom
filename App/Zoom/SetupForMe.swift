@@ -21,6 +21,19 @@ enum SetupForMeEnd: Equatable {
 }
 
 /// Where Greenroom keeps the keys it has copied (Keychain and settings in the app; memory in tests).
+/// What the Connect Zoom step shows about Set up for me.
+enum ZoomSetUpForMeState: Equatable {
+    case idle
+    /// The Zoom window is opening and Created apps is being read.
+    case preparing
+    /// The one small form; `existing` are the app types Created apps already lists.
+    case asking(existing: Set<ZoomApp>)
+    case running(String)
+    /// Greenroom stopped (or the person did); the guided steps carry on from there.
+    case handedOver(String)
+    case done
+}
+
 @MainActor
 protocol ZoomKeyStore: AnyObject {
     func keys(for app: ZoomApp) -> [ZoomKeyField: String]
@@ -46,7 +59,7 @@ final class SetupForMe {
     private var pendingCheck = false
     private var nilReads = 0
     private var checks: [ZoomApp: AppCheck] = [:]
-    private var attempts: [String: Int] = [:]
+    private var attempts: [Int: Int] = [:]
 
     /// Told each time the flow picks a step (the bar shows "Step n of 8 · title…").
     var onStep: (SetupStep) -> Void = { _ in }
@@ -64,9 +77,12 @@ final class SetupForMe {
     func stop() { stopRequested = true }
 
     /// Check Zoom setup runs by itself after an app's keys are copied (and when the table asks for it).
-    private func runCheck() async {
+    private func runCheck() async -> Bool {
+        pendingCheck = false
         let at = evidence.tick
-        checks = ZoomSetupFlow.checks(from: await checker.run(), at: at)
+        let lines = await checker.run()
+        checks = ZoomSetupFlow.checks(from: lines, at: at)
+        return !lines.isEmpty
     }
 
     private func facts(_ snapshot: ZoomPageSnapshot?) -> SetupFacts {
@@ -102,11 +118,16 @@ final class SetupForMe {
             if stopRequested { return .stopped }
             switch step.cta {
             case .doThisStep(let plan):
+                // Greenroom did this step and Zoom (the check) still says it is not right: stop, don't go round again.
+                attempts[step.number ?? 0, default: 0] += 1
+                if attempts[step.number ?? 0, default: 0] > 3 {
+                    return .handedOver(step, why: "Greenroom did this step, but Zoom still says it isn\u{2019}t right.")
+                }
                 switch await actor.run(plan) {
                 case .done(let captured):
                     apply(plan, captured)
-                    if pendingCheck { pendingCheck = false; await runCheck() }
-                case .stopped(let reason): return .handedOver(step, why: "\(reason)")
+                    if pendingCheck, !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
+                case .stopped(let reason): return .handedOver(step, why: reason.words)
                 }
             case .goTo(let place, _):
                 _ = await page.perform(.navigate(place))
@@ -114,9 +135,9 @@ final class SetupForMe {
                 // Using an app that is already there: the plan is one press and a wait to land on its page.
                 guard let app = step.app else { return .handedOver(step, why: "That one is yours to do.") }
                 let plan = ActionPlan(app: app, effect: .nothing, steps: [.press(.appRow(row)), .waitFor(.onApp(app))])
-                if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: "\(reason)") }
+                if case .stopped(let reason) = await actor.run(plan) { return .handedOver(step, why: reason.words) }
             case .checkAgain:
-                await runCheck()
+                if !(await runCheck()) { return .handedOver(step, why: "Greenroom could not run the check.") }
             case .backToGreenroom:
                 return .done
             default:

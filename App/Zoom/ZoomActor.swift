@@ -135,3 +135,38 @@ struct ZoomActor {
         if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }
     }
 }
+
+extension ZoomActor.Reason {
+    /// Why a run stopped, in plain words for the card.
+    var words: String {
+        switch self {
+        case .refused: return "Greenroom isn\u{2019}t allowed to do that part by itself."
+        case .notFound(let c): return "Greenroom couldn\u{2019}t find \(c.words) on Zoom\u{2019}s page."
+        case .denied: return "Zoom\u{2019}s button looked risky, so Greenroom left it alone."
+        case .timedOut: return "Zoom didn\u{2019}t answer the way Greenroom expected."
+        case .signedOut: return "You\u{2019}re signed out of Zoom."
+        case .noKey(let f): return "Greenroom couldn\u{2019}t copy the \(f.label)."
+        }
+    }
+}
+
+extension ZoomControl {
+    /// A short plain name for a control, for sentences.
+    var words: String {
+        switch self {
+        case .plus: return "the + button"
+        case .buildApp: return "Build app"
+        case .typeRadio(let k): return k == .hosting ? "the Server-to-Server choice" : "the General app choice"
+        case .create: return "Create"
+        case .nameField: return "the name field"
+        case .addScopes, .scopesDone, .scopeSearch, .scopeCheckbox: return "the scopes window"
+        case .activate: return "Activate"
+        case .continue: return "Continue"
+        case .copy(let f): return "the Copy button for the \(f.label)"
+        case .meetingSDKSwitch: return "the Meeting SDK switch"
+        case .infoField(let f): return "the \(f.label) field"
+        case .appRow: return "the app in the list"
+        default: return "a button"
+        }
+    }
+}

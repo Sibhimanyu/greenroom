@@ -41,6 +41,16 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     @Published private(set) var working = false
     private var actorNote: String?
     @Published private(set) var loadFailed = false
+    /// "Set up for me" is driving the page: the older coach and key reader stay quiet, and the bar shows this line and Stop.
+    @Published private(set) var autopilotLine: String?
+    var onStop: () -> Void = {}
+    func setAutopilot(_ line: String?) {
+        let was = autopilotLine != nil
+        autopilotLine = line
+        if (line != nil) != was { if line == nil { refresh() } else { drawCoachNothing() } }
+    }
+    private var autopilotOn: Bool { autopilotLine != nil }
+    private var loadWaiter: CheckedContinuation<Void, Never>?
     /// The coach on or off for this setup; "Hide tips" and the toolbar's Tips both set it.
     @Published var tipsOn = true { didSet { if tipsOn != oldValue { refresh() } } }
 
@@ -80,6 +90,13 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     private var lastRecorded: ZoomPageSnapshot?
     #endif
 
+    /// Clears whatever the older coach drew on the page.
+    private func drawCoachNothing() {
+        webView?.evaluateJavaScript(ZoomCoachScript.source, in: nil, in: .defaultClient) { [weak self] _ in
+            self?.webView?.evaluateJavaScript(ZoomCoachScript.call(nil, ring: "", mark: nil, fill: ""), in: nil, in: .defaultClient) { _ in }
+        }
+    }
+
     // MARK: Clipboard pickup (R17)
 
     private var credentialsPage: ZoomMarketplacePage?
@@ -110,6 +127,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
         #if DEBUG
         if ZoomRecorder.coachOff { pasteboardCount = count; return }
         #endif
+        if autopilotOn { pasteboardCount = count; return }
         guard ZoomClipboardRules.isWatching(onCredentialsPage: onPage, secondsSinceLeaving: since), let page = credentialsPage else {
             pasteboardCount = count   // not watching: a copy made elsewhere never counts
             return
@@ -120,6 +138,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     }
 
     var isOpen: Bool { window != nil }
+    func close() { window?.close() }
     var currentURL: URL? { webView?.url }
 
     /// Opens the window (beside the guide) or brings it forward, and goes to `url` when given.
@@ -185,6 +204,9 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     func windowWillClose(_ notification: Notification) {
         cancelTimers()
+        resumeLoadWaiter()
+        if autopilotOn { onStop() }
+        autopilotLine = nil
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "route")
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "coach", contentWorld: .defaultClient)
         #if DEBUG
@@ -301,6 +323,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// Draws the coach for this page and, on a credential page, reads the keys.
     func refresh() {
         updateBar()
+        if autopilotOn { return }
         #if DEBUG
         recorderNudge()
         #endif
@@ -633,12 +656,13 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
 
     // MARK: WKNavigationDelegate / WKUIDelegate / WKScriptMessageHandler
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loadFailed = false; scheduleRefresh() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loadFailed = false; scheduleRefresh(); resumeLoadWaiter() }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { noteFailure(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { noteFailure(error) }
     private func noteFailure(_ error: Error) {
-        if (error as NSError).code != NSURLErrorCancelled { loadFailed = true }
+        if (error as NSError).code != NSURLErrorCancelled { loadFailed = true; resumeLoadWaiter() }
     }
+    private func resumeLoadWaiter() { loadWaiter?.resume(); loadWaiter = nil }
 
     /// Only web addresses load; Zoom's app-launch links (zoommtg:) and the like do not.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -684,7 +708,7 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     /// What Zoom's own Copy tried to put on the clipboard (live run, 2026-11-27: WebKit refuses a
     /// page's clipboard write without a real click, so a pressed Copy copied nothing). Kept only on a
     /// credentials page and only when key-shaped; in memory, never logged.
-    private(set) var lastCopiedKey: (text: String, at: Date)?
+    fileprivate(set) var lastCopiedKey: (text: String, at: Date)?
     var onCopiedKey: ((String) -> Void)?
     private func copied(_ text: String?) {
         guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), let url = webView?.url,
@@ -731,6 +755,55 @@ final class ZoomMarketplaceWindow: NSObject, ObservableObject, WKNavigationDeleg
     """
 }
 
+// MARK: - The ZoomPage seam, real adapter
+
+extension ZoomMarketplaceWindow: ZoomPage {
+    func read() async -> ZoomPageSnapshot? {
+        await withCheckedContinuation { continuation in readSnapshot { continuation.resume(returning: $0) } }
+    }
+
+    func perform(_ action: ZoomPageAction) async -> ZoomActionResult {
+        guard let webView else { return .notFound }
+        let js: String
+        switch action {
+        case .navigate(let place):
+            guard let url = ZoomMarketplacePages.url(for: place) else { return .notFound }
+            webView.load(URLRequest(url: url))
+            // Loading an address is navigation: wait for the page (at most 12 s), then the reader takes over.
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                resumeLoadWaiter()
+                loadWaiter = c
+                DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in self?.resumeLoadWaiter() }
+            }
+            return .done
+        case .press(let c): js = ZoomPageScript.action(verb: "press", id: c.id)
+        case .pressDeep(let c): js = ZoomPageScript.action(verb: "pressdeep", id: c.id)
+        case .hover(let c): js = ZoomPageScript.action(verb: "hover", id: c.id)
+        case .type(let c, let text): js = ZoomPageScript.action(verb: "type", id: c.id, text: text)
+        }
+        guard ZoomMarketplacePages.isMarketplace(webView.url ?? URL(fileURLWithPath: "/")) else { return .notFound }
+        let answer: String = await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript(js, in: nil, in: .defaultClient) { result in
+                if case .success(let v) = result, let s = v as? String { continuation.resume(returning: s) }
+                else { continuation.resume(returning: "none") }
+            }
+        }
+        switch answer {
+        case "ok": return .done
+        case "denied": return .denied
+        default: return .notFound
+        }
+    }
+
+    func takeCopiedKey() -> String? {
+        guard let k = lastCopiedKey, Date().timeIntervalSince(k.at) < 15 else { return nil }
+        lastCopiedKey = nil
+        return k.text
+    }
+
+    func draw(_ coach: CoachDrawing?) {}
+}
+
 private struct ZoomWebView: NSViewRepresentable {
     let web: WKWebView
     func makeNSView(context: Context) -> WKWebView { web }
@@ -748,7 +821,8 @@ private struct ZoomWindowView: View {
                         onBack: { window.goBack() }, onForward: { window.goForward() }, onReload: { window.reload() },
                         onCopyScopes: { window.copyScopes() }, onSignIn: { window.goToSignIn() },
                         onPrimary: { window.pressPrimary() }, onOpenInSafari: { window.openInSafari() },
-                        onSignOut: { window.signOut() })
+                        onSignOut: { window.signOut() },
+                        autopilot: window.autopilotLine, onStop: { window.onStop() })
             Divider()
             ZoomWebView(web: web)
         }

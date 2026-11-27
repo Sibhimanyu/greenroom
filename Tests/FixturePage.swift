@@ -109,6 +109,12 @@ final class FixturePage: ZoomPage {
         if blankReads > 0 { blankReads -= 1; return ZoomPageSnapshot(address: address, signedIn: true, dialog: .none) }
         // Live, 2026-11-27: the person deleted an app in Zoom; its page now says "The application is not found".
         if let id = address.appID, app(id) == nil {
+            // A deleted Server-to-Server app: Zoom redirects to a generic "Something went wrong" page (live, 2026-11-27).
+            if address.zoomApp == .hosting {
+                var error = ZoomPageSnapshot(address: nil, signedIn: true, dialog: .none)
+                error.pageError = true
+                return error
+            }
             var gone = ZoomPageSnapshot(address: address, signedIn: true, dialog: .none)
             gone.appMissing = true
             gone.controls.insert(.navLink(.basicInformation))

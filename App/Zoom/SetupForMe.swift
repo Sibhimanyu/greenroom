@@ -113,6 +113,11 @@ final class SetupForMe {
         nilReads = 0
         // An app deleted in Zoom: forget it whole, its passed check included, so its steps run again.
         if snapshot.appMissing, let kind = snapshot.address?.zoomApp { forget(kind); onForgotApp(kind) }
+        // Zoom's error page right after Greenroom went to a remembered app: that app is gone too.
+        else if snapshot.pageError, snapshot.address?.zoomApp == nil, let kind = lastWentTo {
+            lastWentTo = nil
+            forget(kind); onForgotApp(kind)
+        }
         evidence = ZoomSetupFlow.absorb(snapshot, into: evidence)
         let step = ZoomSetupFlow.step(for: facts(snapshot))
         onStep(step)
@@ -141,7 +146,7 @@ final class SetupForMe {
                 return false
             }()
             let needs = locked ? lockedInfoNeeds : (s.address == .createdApps && s.appList.isEmpty) ? emptyListNeeds : 1
-            if !s.controls.isEmpty, s.isReady, same >= needs { return s }
+            if !s.controls.isEmpty || s.pageError || s.appMissing, s.isReady, same >= needs { return s }
             last = s
             if pacing.pause > 0 { try? await Task.sleep(nanoseconds: pacing.pause) } else { await Task.yield() }
         }
@@ -149,6 +154,8 @@ final class SetupForMe {
     }
 
     private var signInWaits = 0, waitedForPerson = false
+    /// The app whose page Greenroom last went to (to tell a deleted app's error page).
+    private var lastWentTo: ZoomApp?
 
     /// The whole one-button loop.
     func run() async -> SetupForMeEnd {
@@ -191,6 +198,7 @@ final class SetupForMe {
             case .stopped(let reason): return .handedOver(step, why: reason.words)
             }
         case .goTo(let place, _):
+            lastWentTo = place.zoomApp
             _ = await page.perform(.navigate(place))
         case .press(.appRow(let row), _):
             // Using an app that is already there: the plan is one press and a wait to land on its page.

@@ -363,6 +363,9 @@ struct ZoomPageSnapshot: Equatable {
     /// The app this page belongs to is gone (the person deleted it in Zoom): Zoom shows "The application is not
     /// found" / "An Error Occurred" instead of the app (live, 2026-11-27).
     var appMissing = false
+    /// Zoom's generic error page ("Something went wrong" / "An Error Occurred"), where a deleted Server-to-Server
+    /// app's address redirects (live, 2026-11-27).
+    var pageError = false
     var keys: [ZoomKeyField: KeyReading]
     var controls: Set<ZoomControl>
 
@@ -398,7 +401,7 @@ struct ZoomPageSnapshot: Equatable {
 
 extension ZoomPageSnapshot: Codable {
     private enum K: String, CodingKey {
-        case address, signedIn, dialog, menuItems, appList, meetingSDKOn, scopesOnPage, activated, infoEmptyRequired, infoFields, scopeSearchMatches, activationMissing, saveRefused, appMissing, keys, controls
+        case address, signedIn, dialog, menuItems, appList, meetingSDKOn, scopesOnPage, activated, infoEmptyRequired, infoFields, scopeSearchMatches, activationMissing, saveRefused, appMissing, pageError, keys, controls
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -416,6 +419,7 @@ extension ZoomPageSnapshot: Codable {
         activationMissing = try c.decodeIfPresent([String].self, forKey: .activationMissing) ?? []
         saveRefused = try c.decodeIfPresent(Bool.self, forKey: .saveRefused) ?? false
         appMissing = try c.decodeIfPresent(Bool.self, forKey: .appMissing) ?? false
+        pageError = try c.decodeIfPresent(Bool.self, forKey: .pageError) ?? false
         keys = ZoomDialog.keyed(try c.decodeIfPresent([String: KeyReading].self, forKey: .keys) ?? [:])
         // Unknown control IDs (a newer reader) are skipped, never fatal.
         let ids = try c.decodeIfPresent([String].self, forKey: .controls) ?? []
@@ -437,6 +441,7 @@ extension ZoomPageSnapshot: Codable {
         try c.encode(activationMissing, forKey: .activationMissing)
         if saveRefused { try c.encode(true, forKey: .saveRefused) }
         if appMissing { try c.encode(true, forKey: .appMissing) }
+        if pageError { try c.encode(true, forKey: .pageError) }
         try c.encode(ZoomDialog.named(keys), forKey: .keys)
         try c.encode(controls.map(\.id).sorted(), forKey: .controls)
     }

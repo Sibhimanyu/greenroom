@@ -85,7 +85,7 @@ extension ZoomPageSnapshot {
     /// Whether the page has drawn its OWN controls, not just the app's menu (live run 7: Information's fields came
     /// seven seconds after its menu links). Pages with nothing of their own to show count as ready.
     var isReady: Bool {
-        if dialog != .none || appMissing { return true }
+        if dialog != .none || appMissing || pageError { return true }
         switch address {
         case .createdApps?: return has(.plus)
         case .general(_, .embed)?: return meetingSDKOn != nil

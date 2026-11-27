@@ -369,4 +369,22 @@ final class SetupForMeTests: XCTestCase {
         XCTAssertEqual(end, .stopped)
         XCTAssertLessThan(reads - readsAtStop, 5, "it stopped at once, not after the wait")
     }
+
+    /// Live, 2026-11-27: a deleted hosting app's page redirects to Zoom's generic "Something went wrong" page (not
+    /// "application not found"). Landing there after going to a remembered app means that app is gone too.
+    func testADeletedHostingAppsErrorPageMeansItIsGone() async {
+        let zoom = FixturePage.freshAccount()
+        let keys = MemoryKeys()
+        let (run, _) = start(zoom, keys: keys, answers: person)
+        let first = await run.run()
+        XCTAssertEqual(first, .done)
+        let oldHostingID = zoom.apps.first { $0.kind == .hosting }?.id
+        zoom.apps.removeAll { $0.kind == .hosting }
+        let again = await run.run()
+        XCTAssertEqual(again, .done)
+        let newHosting = zoom.apps.first { $0.kind == .hosting }
+        XCTAssertNotNil(newHosting, "a new hosting app was built")
+        XCTAssertNotEqual(newHosting?.id, oldHostingID)
+        XCTAssertEqual(keys.keys(for: .hosting)[.clientID], newHosting?.clientID)
+    }
 }

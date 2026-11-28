@@ -181,7 +181,7 @@ final class SavedSettingsTests: XCTestCase {
     func testABoolWithDefaultOffReadsLikeBoolForKeyDid() {
         let d = store()
         d.set("YES", forKey: "autoRecordOnStart")      // bool(forKey:) reads this as true
-        d.set(1, forKey: "cuesEnabled")                // and this
+        d.set(1, forKey: "prompterEnabled")               // and this
         XCTAssertEqual(SavedSettings.autoRecordOnStart.load(from: d), d.bool(forKey: "autoRecordOnStart"))
         XCTAssertEqual(SavedSettings.cuesEnabled.load(from: d), true)
     }
@@ -199,9 +199,10 @@ final class SavedSettingsTests: XCTestCase {
     func testStoredIsNilUntilTheKeyIsSaved() {
         let d = store()
         XCTAssertNil(SavedSettings.cameraShownOnMyScreen.stored(in: d))
-        XCTAssertNil(SavedSettings.youtubeUsesOwnApp.stored(in: d))
-        XCTAssertNil(SavedSettings.youtubeMadeForKids.stored(in: d))
-        XCTAssertNil(SavedSettings.youtubeChannel.stored(in: d))
+        XCTAssertNil(SavedSettings.youtubeUsesOwnApp.load(from: d))
+        XCTAssertNil(SavedSettings.youtubeMadeForKids.load(from: d))
+        XCTAssertNil(SavedSettings.youtubeChannel.load(from: d))
+        XCTAssertNil(SavedSettings.analyticsEnabled.stored(in: d))
         d.set(false, forKey: "cameraShownOnMyScreen")
         XCTAssertEqual(SavedSettings.cameraShownOnMyScreen.stored(in: d), false)
     }
@@ -308,7 +309,11 @@ final class SavedSettingsTests: XCTestCase {
     }
 
     // Spec: saved-settings R6.1
-    func testTheViewsKeyConstantsAreTheDeclaredKeys() {
+    func testTheKeysSpelledOutsideTheModuleAreTheDeclaredKeys() {
+        // LayoutTemplate.swift is compiled alone by scripts/render, so it keeps its own spelling; this pins it.
         XCTAssertEqual(MeetingViewPieces.defaultsKey, SavedSettings.meetingViewsEnabled.key)
+        let d = store()
+        SavedSettings.speakerTileShortcutEnabled.save(false, to: d)
+        XCTAssertFalse(LegacyLayoutSettings.read(from: d, defaultSiteURL: "https://example.com").quickHide)
     }
 }

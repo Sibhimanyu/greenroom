@@ -369,6 +369,8 @@ targets:
       - path: App/Settings/MeetingPreset.swift
       - path: App/Settings/SettingsDefaultsBridge.swift
       - path: App/Settings/SettingsCatalog.swift
+      - path: App/Settings/SavedSettings.swift
+      - path: App/Settings/MeetingMode.swift
       - path: App/Zoom/SecretStore.swift
       - path: App/Settings/SettingsImportRules.swift
       - path: App/Stage/CameraDirectorSettings.swift

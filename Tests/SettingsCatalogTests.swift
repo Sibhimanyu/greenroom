@@ -20,6 +20,8 @@ final class SettingsCatalogTests: XCTestCase {
         let constant = try NSRegularExpression(pattern: #"static\s+let\s+\w*[kK]ey\s*(?::\s*String)?\s*=\s*"([^"\\]+)""#)
         let readOrWrite = try NSRegularExpression(
             pattern: #"\.(?:string|bool|data|object|integer|double|float|array|dictionary|removeObject)\(forKey:\s*"([^"\\]+)"|\.set\([^\n]*forKey:\s*"([^"\\]+)""#)
+        // SavedSettings declares its keys as `key: "..."` (docs/specs/saved-settings.md).
+        let declared = try NSRegularExpression(pattern: #"\bkey:\s*"([^"\\]+)""#)
         var found: [String: String] = [:]
         for case let url as URL in walker where url.pathExtension == "swift" {
             let text = try String(contentsOf: url, encoding: .utf8)
@@ -28,7 +30,7 @@ final class SettingsCatalogTests: XCTestCase {
                 let s = String(line)
                 if s.trimmingCharacters(in: .whitespaces).hasPrefix("//") { continue }
                 let range = NSRange(s.startIndex..., in: s)
-                for regex in [appStorage, constant, readOrWrite] {
+                for regex in (name == "SavedSettings.swift" ? [appStorage, constant, readOrWrite, declared] : [appStorage, constant, readOrWrite]) {
                     for match in regex.matches(in: s, range: range) {
                         for group in 1..<match.numberOfRanges {
                             if let r = Range(match.range(at: group), in: s) { found[String(s[r])] = name }

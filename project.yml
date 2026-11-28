@@ -390,6 +390,7 @@ targets:
       - path: App/Layout/MeetingSetup.swift
       - path: App/Layout/MeetingSetupLibrary.swift
       - path: App/Layout/MeetingSetupLine.swift
+      - path: App/Stage/ShapePreviewRules.swift
       - path: App/Stage/ShareTargetModel.swift
       - path: App/Stage/WebcamShape.swift
       - path: App/LiveExitRules.swift

@@ -29,7 +29,7 @@ final class CoordinatorController: ObservableObject {
         // A deliberate quit: the main window is not shown again on the way out.
         applyMainWindow(mainWindowVisibility.handle(.quitting))
         stopCues()
-        for viewer in previewViewers { stopShapePreview(for: viewer) }
+        for viewer in preview.viewers { stopShapePreview(for: viewer) }
         ChatWindowController.close()
         PeoplePopOutController.close()
         customUIGridTask?.cancel()
@@ -393,7 +393,7 @@ final class CoordinatorController: ObservableObject {
         if isSavingRecording != phase.isSavingRecording { isSavingRecording = phase.isSavingRecording }
         if isRecording != phase.isRecording { isRecording = phase.isRecording }
         // The preview drops to its meeting rate while the meeting encodes.
-        previewSink.meetingLive = phase.isInMeeting
+        preview.meetingLive = phase.isInMeeting
     }
 
     /// The cameras the scene should hold for these settings: the director's
@@ -1694,6 +1694,7 @@ final class CoordinatorController: ObservableObject {
 
     init() {
         defer {
+            preview.connect(self)
             Self.shared = self
             installStopVideoHooks()
             observeDisplays()
@@ -2112,7 +2113,7 @@ final class CoordinatorController: ObservableObject {
         cameraDirector.stop()
         RoomScreen.setCompositor(nil)
         guard let stage else { return }
-        if previewAttached { stage.removeSink(previewSink); previewAttached = false }
+        preview.stageStopped()
         stage.stop()
         self.stage = nil
         applySetupEvent(.meetingEnded)
@@ -3317,7 +3318,10 @@ final class CoordinatorController: ObservableObject {
     /// A Record start wants the live picture, whether or not Settings does.
     /// Held apart from `shapePreviewOn` so closing Settings -> Layouts does not
     /// blank the Record view, and the other way round.
-    private var studioPreviewOn = false
+    private var studioPreviewOn: Bool {
+        get { preview.studioWants }
+        set { preview.studioWants = newValue }
+    }
 
     /// Which page the main window is on.
     ///
@@ -3754,17 +3758,13 @@ final class CoordinatorController: ObservableObject {
 
     /// The chosen main-pane app's user-facing name, for buttons and logs.
     // MARK: Live shape preview (Home, Settings -> Layouts)
-    // The shape picker shows the REAL picture - actual screen, actual camera,
-    // the look as chosen - from the same compositor a class uses. Idle, the
-    // preview runs the compositor with no meeting for as long as the page is
-    // open, and lets the camera go the moment it closes.
+    // The picture, its viewers and the idle compositor are owned by
+    // `ShapePreviewController` (spec: docs/specs/shape-preview.md). The
+    // coordinator reports events and keeps the names the views read.
 
-    /// The frames, on an object of their own. As a @Published property of this
-    /// controller each one invalidated every view that observes it - the whole
-    /// Settings window, rebuilt several times a second. Only the picture
-    /// observes `shapePreview`; the rest of the tab watches
-    /// `shapePreviewAspect`, which changes only when the picture's shape does.
-    let shapePreview = ShapePreviewFeed()
+    let preview = ShapePreviewController()
+    /// The frames, on an object of their own (see `ShapePreviewController.feed`).
+    var shapePreview: ShapePreviewFeed { preview.feed }
     /// The live picture's size, or nil while the schematic is showing.
     @Published private(set) var shapePreviewAspect: CGSize?
     /// Where the shared content sits on the canvas (canvas px), or nil. Published
@@ -3774,87 +3774,25 @@ final class CoordinatorController: ObservableObject {
     /// The last real picture shape Home sized its card from. Plain, not
     /// published: it only seeds a recreated window at the right width.
     var lastPictureAspect: CGFloat?
-    /// Who is looking at the preview. Home's card and Settings → Layouts share
-    /// one picture; it stops only when the last of them leaves, so closing
-    /// Settings no longer blanks Home's card (and the other way round).
-    /// Each Home carries its own id: SwiftUI can bring a new Home up before
-    /// the old one goes, and with one shared `.home` the old one's leaving
-    /// turned off the new one's camera.
-    enum PreviewViewer: Hashable, CustomStringConvertible {
-        case home(UUID)
-        /// Settings -> Layouts, while the camera piece is selected or Preview: Everyone is on (R11.3).
-        case layoutsCamera
-        var description: String {
-            switch self {
-            case .home: return "home"
-            case .layoutsCamera: return "layouts camera"
-            }
-        }
-    }
-    private var previewViewers: Set<PreviewViewer> = []
-    private var shapePreviewOn: Bool { !previewViewers.isEmpty }
-    private var shapePreviewApply: Task<Void, Never>?
-    private let previewSink = StagePreviewSink()
-    private var previewAttached = false
+    typealias PreviewViewer = ShapePreviewViewer
+    private var shapePreviewOn: Bool { preview.hasViewers }
+    private var previewAttached: Bool { preview.isAttached }
 
-    /// Starts showing the picture. Outside a session the compositor is started
-    /// for it, with the chosen look, so the preview shows what the NEXT
-    /// session will send; during a live session it simply mirrors that one.
-    /// Never asks for a permission: with Screen Recording off the picture is
-    /// the camera alone.
     /// Whether this viewer's claim on the preview is held, for Home's check.
-    func isShowingPreview(for viewer: PreviewViewer) -> Bool { previewViewers.contains(viewer) }
+    func isShowingPreview(for viewer: PreviewViewer) -> Bool { preview.isShowing(for: viewer) }
 
     /// The Layouts tab's claim on the picture: held only while someone looks at the camera.
     func setLayoutsCameraPreview(_ on: Bool) {
         if on { startShapePreview(for: .layoutsCamera) } else { stopShapePreview(for: .layoutsCamera) }
     }
 
-    func startShapePreview(for viewer: PreviewViewer) {
-        let wasOn = shapePreviewOn
-        previewViewers.insert(viewer)
-        guard !wasOn else { return }
-        StageScreenSource.log("Preview opened (\(viewer)).")
-        attachPreview()
-    }
+    func startShapePreview(for viewer: PreviewViewer) { preview.start(for: viewer) }
+    func stopShapePreview(for viewer: PreviewViewer) { preview.stop(for: viewer) }
+    private func attachPreview() { preview.attach() }
+    private func resumePreviewIfWanted() { preview.sessionEnded() }
+    func revivePreviewIfStalled(evenIfRunning: Bool = false) { preview.reviveIfStalled(evenIfRunning: evenIfRunning) }
+    private func publishPreviewFrame(_ frame: NSImage?, mask: NSImage? = nil) { preview.publish(frame, mask: mask) }
 
-    private func attachPreview() {
-        guard shapePreviewOn || studioPreviewOn, !previewAttached else { return }
-        if !phase.isCameraBusy {
-            guard let stage = ensureStage() else { return }
-            stage.start(makeStageConfiguration())
-        }
-        guard let stage else { return }
-        previewSink.onPicture = { [weak self] image, mask in self?.publishPreviewFrame(image, mask: mask) }
-        previewSink.coverage = { [weak stage] in stage?.lastCameraCoverage }
-        stage.addSink(previewSink)
-        previewAttached = true
-        syncIdleDirector(restart: true)
-    }
-
-    /// After a session ends, a Settings window still open gets its preview back.
-    private func resumePreviewIfWanted() {
-        previewAttached = false
-        if shapePreviewOn { attachPreview() }
-    }
-
-    /// Someone is waiting on the preview but no picture is coming: the stage
-    /// was stopped under it (a Record take ending while `recordOnlyActive`
-    /// still read true), or it never started. Starts it again. Safe to call
-    /// any time; it does nothing while a session owns the picture or frames
-    /// are flowing.
-    /// `evenIfRunning`: Home has waited seconds with no frame from a stage
-    /// that says it is running, so restart it anyway.
-    func revivePreviewIfStalled(evenIfRunning: Bool = false) {
-        guard shapePreviewOn || studioPreviewOn, !phase.isCameraBusy else { return }
-        if let stage, stage.status.isRunning, previewAttached,
-           shapePreviewAspect != nil || !evenIfRunning { return }
-        StageScreenSource.log("Preview had no picture; starting it again.")
-        if let stage, previewAttached { stage.removeSink(previewSink) }
-        previewAttached = false
-        if let stage, stage.status.isRunning { stopStage() }
-        attachPreview()
-    }
 
     /// Looks through one camera so Settings can show the angle it reads you
     /// at while it is being aimed.
@@ -3875,60 +3813,22 @@ final class CoordinatorController: ObservableObject {
 
     func stopAiming() { cameraProbe.stop() }
 
-    func stopShapePreview(for viewer: PreviewViewer) {
-        guard previewViewers.remove(viewer) != nil else { return }
-        guard previewViewers.isEmpty else {
-            StageScreenSource.log("Preview closed (\(viewer)); still shown elsewhere.")
-            return
-        }
-        StageScreenSource.log("Preview closed (\(viewer))\(!phase.isCameraBusy ? "; the picture stops with it" : "").")
-        shapePreviewApply?.cancel()
-        // The Record view is still watching the same picture: one compositor
-        // serves both, and the last to leave turns the light off.
-        if studioPreviewOn { return }
-        if let stage, previewAttached { stage.removeSink(previewSink) }
-        previewAttached = false
-        // The preview opened the camera; a session that is not running has
-        // no use for it, and the camera light should go off.
-        if !phase.isCameraBusy { stopStage() }
-        publishPreviewFrame(nil)
-    }
-
-    private func publishPreviewFrame(_ frame: NSImage?, mask: NSImage? = nil) {
-        let content = frame == nil ? nil : stage?.lastContentRect
-        if shapePreview.contentRect != content { shapePreview.contentRect = content }
-        if shapePreviewContent != content { shapePreviewContent = content }
-        shapePreview.frame = frame
-        shapePreview.openMask = mask
-        let aspect = frame?.size
-        if aspect != shapePreviewAspect { shapePreviewAspect = aspect }
-    }
-
     /// Applies the current shape, placement, share and cameras to the picture,
-    /// latest wins. Every camera control (Layouts, Home, the bubble) calls this; a burst of
-    /// changes (a slider, several clicks) cancels what it supersedes instead
-    /// of queuing. Works the same live in a class as in the idle preview.
+    /// latest wins. Every camera control (Layouts, Home, the bubble) calls this.
     /// `rebuild` is kept for the callers that changed what is shared; the
     /// compositor swaps the share without blanking the picture either way.
     func requestShapeApply(rebuild: Bool = false) {
         // Choosing a screen-based tile is asking for the screen: if macOS has
         // not allowed it, say where, once.
-        if rebuild, shareTarget.kind.capturesScreen, !StageCompositor.screenRecordingGranted {
+        if ShapePreviewState.opensScreenPermission(rebuild: rebuild, capturesScreen: shareTarget.kind.capturesScreen,
+                                                   granted: StageCompositor.screenRecordingGranted) {
             StageScreenSource.openPermissionPaneOnce()
         }
-        shapePreviewApply?.cancel()
-        shapePreviewApply = Task {
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            guard !Task.isCancelled else { return }
-            applyShapeForPreview()
-        }
+        preview.requestApply()
     }
 
     /// Hands the compositor the settings as they are now.
-    func applyShapeForPreview() {
-        guard let stage, stage.status.isRunning || phase.isCameraBusy || shapePreviewOn else { return }
-        stage.update(makeStageConfiguration())
-    }
+    func applyShapeForPreview() { preview.applyNow() }
 
     /// The app a Cues card opens in: the first App piece of the layout this class
     /// runs (or of the one chosen in Settings, before a class). nil when there is
@@ -5547,4 +5447,17 @@ private final class OnceFlag: @unchecked Sendable {
         taken = true
         return true
     }
+}
+
+// MARK: Shape preview host
+// What `ShapePreviewController` asks of the coordinator (spec: docs/specs/shape-preview.md).
+extension CoordinatorController: ShapePreviewHost {
+    var previewStage: StageCompositor? { stage }
+    var previewCameraBusy: Bool { phase.isCameraBusy }
+    func previewEnsureStage() -> StageCompositor? { ensureStage() }
+    func previewConfiguration() -> StageConfiguration { makeStageConfiguration() }
+    func previewSyncIdleDirector() { syncIdleDirector(restart: true) }
+    func previewStopStage() { stopStage() }
+    func previewAspectChanged(_ aspect: CGSize?) { shapePreviewAspect = aspect }
+    func previewContentChanged(_ content: CGRect?) { shapePreviewContent = content }
 }

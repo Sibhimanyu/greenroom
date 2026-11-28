@@ -83,43 +83,44 @@ Nothing makes the four agree. `autoRecordOnStart` shows the cost: a comment in `
 
 ## Requirements
 
-**R1. Every saved setting is declared once.** (D1, D2) planned
+**R1. Every saved setting is declared once.** (D1, D2) built
 - R1.1 `SavedSettings.all` lists 34 settings, one per row of the table above. A test reads `SavedSettings.swift` and fails when a `SavedSetting` is declared there and missing from `all`.
 - R1.2 No two settings share a key. No setting shares a key with `CameraLook`.
 - R1.3 A setting is declared with its key, its type and its default only here. Nothing else under `App/` spells these keys as a string literal for reading or writing (the guard in `SettingsCatalogTests` still finds every key in the sources).
 
-**R2. They load under the old keys with the old defaults.** (D4) planned
+**R2. They load under the old keys with the old defaults.** (D4) built
 - R2.1 Given an empty store, each setting loads the default in the table. A table of the old `init` defaults is written out in the test, apart from the module.
 - R2.2 Given a store written the old way (the same key, the same stored type), each setting loads that value.
 - R2.3 Given a key holding a value of another type, or a string that is not one of an enum's cases, or JSON that does not decode, the setting loads its default and nothing is written.
 - R2.4 `autoRecordOnStart`, `cuesEnabled`, `cuesUseModel`, `cuesUseWhisper`, `recordSystemAudio` (default `false`) read like `bool(forKey:)` did. The ones with default `true` read like `(object(forKey:) as? Bool) ?? true` did.
 - R2.5 The three optional settings (`youtubeUsesOwnApp`, `youtubeMadeForKids`, `youtubeChannel`) give nil when the key is absent, through `stored(in:)`. `cameraShownOnMyScreen` gives nil the same way for the layout fallbacks that need "never saved".
 
-**R3. They save under the same keys.** (D4) planned
+**R3. They save under the same keys.** (D4) built
 - R3.1 `save` writes the same key with the same stored type as the old `didSet`. A saved value loads back equal, for every setting.
 - R3.2 Saving nil to an optional setting removes the key.
 - R3.3 A value that cannot be encoded writes nothing for `meetingPresets`, and removes the key for `youtubeChannel`, as before.
 
-**R4. The coordinator goes through it.** (D5) planned
+**R4. The coordinator goes through it.** (D5) built
 - R4.1 Each property in the table (the ones that have one) saves with `SavedSettings.x.save(...)` and loads with `SavedSettings.x.load(from:)`. `CoordinatorController.swift` has no `forKey:` string literal left for them.
 - R4.2 Every `didSet` side effect is as it was, in the same order, after the save.
 - R4.3 `init` loads each setting exactly once, with the same default, and `autoRecordOnStart` still loads `false` when never saved.
 
-**R5. The settings file reads the same declaration.** (D8) planned
+**R5. The settings file reads the same declaration.** (D8) built
 - R5.1 `SettingsKeys` is built from `SavedSettings` keys (and `CameraLook` keys), so a key changed in one place changes everywhere.
 - R5.2 `SettingsDefaultsBridge` reads its three toggles through `SavedSettings` (`copyInviteOnStart`, `sessionNotesEnabled`, `meetingViewsEnabled`) and writes them the same way. Export and import give what they gave before.
 - R5.3 Where `SettingsCatalog` states a plain default (bool, int, string) for a key, it equals the `SavedSettings` default.
 - R5.4 The settings-transfer requirements ([settings-transfer.md](settings-transfer.md) R1 to R9) still hold; its tests pass unchanged.
 
-**R6. The other readers agree.** (D2) planned
-- R6.1 `CoordinatorController.copyInviteOnStartKey`, `SessionNotesBar.enabledKey`, `MeetingViewPieces.defaultsKey` take their key from `SavedSettings`; the app-start analytics consent check and the legacy layout read of `speakerTileShortcutEnabled` read through it.
+**R6. The other readers agree.** (D2) built
+- R6.1 `CoordinatorController.copyInviteOnStartKey`, `SessionNotesBar.enabledKey` take their key from `SavedSettings`, and the app-start analytics consent check reads through it.
+- R6.2 `MeetingViewPieces.defaultsKey` and the legacy layout read of `speakerTileShortcutEnabled` (both in `LayoutTemplate.swift`) keep their own spelling, because `scripts/render` compiles that file alone. A test pins each to the declared key.
 
 ## Phases
 
 | Phase | Delivers | Status | Commit |
 | --- | --- | --- | --- |
-| P1 | This spec, the glossary entry and the index | planned | |
-| P2 | Failing tests: R1 to R3, R5.3 | planned | |
+| P1 | This spec, the glossary entry and the index | built | fcb637b |
+| P2 | Failing tests: R1 to R3, R5.3 | built | 9653672 |
 | P3 | `SavedSetting`, `SavedSettings`, `MeetingMode` moved: R1 to R3 pass | planned | |
 | P4 | Wire the coordinator (batch by batch), the bridge, the key constants: R4, R5, R6 | planned | |
 | P5 | Codemaps, statuses, `scripts/check.sh` green | planned | |

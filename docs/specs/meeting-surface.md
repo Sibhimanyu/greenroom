@@ -98,6 +98,45 @@ As their own labelled commit: (a) a real minimise when the window cannot shrink 
 Acceptance: neither case leaves zero surfaces while live; checked by the model's `screenMatches` in DEBUG.
 Status: built (not verified live).
 
+### R15. The size on screen
+`MeetingCollapse.sizeOnScreen` answers "which size is the meeting at now", from what is on screen, first match wins:
+1. A morph is heading somewhere: heading for the window (1) is the Window, heading for anything else is the Bar.
+2. No Meeting window is open: the Bar (also when not live).
+3. Live: the model's reopen target. A Window target is the Window, any other is the Bar, so a window that is only covered is still the Window.
+4. Not live, a window is open: hidden is the Bar, otherwise the Window.
+Acceptance: each of the four rows has a test, and a morph heading beats an open window that says the opposite.
+Status: built.
+
+### R16. What a move does
+`MeetingCollapse.plan(from:wanted:barInstalled:)` says what the coordinator carries out. When the wanted size is the Bar and no Bar is installed, the wanted size becomes `from`. Same size (after that): `.stay`. Window to Bar: `.collapse` (send `collapse`, then the neighbour room rule R20, then morph toward 0). Bar to Window: `.expand` (send `expand`, then show the window from the Bar: by the morph toward 1 when the window is open, else open it).
+Acceptance: Window to Bar with a Bar is `.collapse`; the same without a Bar is `.stay`; Bar to Window is `.expand` with or without a Bar; same to same is `.stay`.
+Status: built.
+
+### R17. Which step a move is
+Moving to a given size is step down when the size is the Bar, otherwise step up. Collapse and shrink-to-Bar are step down, expand from the Bar is step up. A collapse or a shrink from the Bar does nothing (the Bar is the bottom); both mark the shrink tip done before the move, even when the move turns out to be `.stay` for want of a Bar.
+Acceptance: `MeetingCollapse.step(toward:)` is down for Bar and up for Window.
+Status: built.
+
+### R18. Expand from the Bar
+`MeetingCollapse.expandPlan(morphing:size:)`: while a morph is under way, send `expand` and turn it round (`.turnRound`: with the window open, give the room back and morph toward 1, else open the window). Not morphing and the size is not the Bar (the Bar shows only because the window is covered): `.openWindow`. Otherwise `.step`, a plain move up from the Bar (R16).
+Acceptance: a morph in either direction gives `.turnRound`; no morph and Window gives `.openWindow`; no morph and Bar gives `.step`.
+Status: built.
+
+### R19. Toggle
+`MeetingCollapse.togglePlan(morphHeading:size:)`: during a morph heading for the Window (1) the toggle shrinks to the Bar; heading for the Bar (0) it expands from the Bar. Quirk kept: the test is "heading is 0", so any other heading shrinks. With no morph: Window collapses, Bar expands.
+Acceptance: heading 0 gives expand, heading 1 gives shrink, no morph follows the size.
+Status: built.
+
+### R20. The neighbour takes the room
+When the Meeting leaves for the Bar, its neighbour takes the room only if the session arranges windows and has a layout, besides `MeetingCollapse.neighbourTakesRoom` (placed full, not a slot, going to the Bar). The neighbour is then told the Meeting is hidden and the speaker tile counts as hidden. Coming back (`giveRoomBack`), the neighbour gives the room up only when the speaker tile was hidden, only when the session arranges with a layout; the view windows return in either case. The close button by the person (not by code) does the same hide when the session arranges, is in a meeting, the layout places a Meeting piece and no view window is open.
+Acceptance: `MeetingCollapse.neighbourMoves(going:context:arranged:)` is true only for going to the Bar, placed full, not a slot and arranged. `MeetingCollapse.closeHandsRoomToNeighbour(arranged:inMeeting:placesMeeting:viewWindowsOpen:)` is true only when the first three are true and the fourth false.
+Status: built.
+
+### R21. Reopen reads a different "shrunk" than R15
+`MeetingCollapse.shrunkForReopen(live:reopenIsBar:windowHidden:)`: live, it is whether the model's reopen target is the Bar; not live, whether the window is hidden. It ignores morphs and whether a window is open (R15 does not).
+Acceptance: live follows `reopenIsBar` whatever `windowHidden` says; not live follows `windowHidden`.
+Status: built.
+
 ## Wiring (done)
 
 Calls into the model (each is one `apply`, then draw `visible`):

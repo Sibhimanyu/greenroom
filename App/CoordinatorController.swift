@@ -907,6 +907,10 @@ final class CoordinatorController: ObservableObject {
     /// Not a camera state. Written only from Zoom's video-status callback (`noteOwnVideoStatus`) and at
     /// Start and the end (`applySetupEvent`): CoordinatorController+StopVideo.swift.
     @Published var videoStopped = false
+    /// R49.13: the owner pressed Stop video in this meeting / Greenroom already asked Zoom to start the
+    /// video once at join. Both clear at Start and at the end (`noteSetupMoment`).
+    var ownerStoppedVideoThisMeeting = false
+    var autoStartedVideoThisMeeting = false
 
     /// A change from Home, the bar, the toolbar, the present menu or a shortcut: saved before a meeting,
     /// for this meeting during one (R3.1, R4.1). The Stage hears of it (R2.5).
@@ -944,6 +948,10 @@ final class CoordinatorController: ObservableObject {
     private func noteSetupMoment(_ moment: CameraStateSession.Moment) {
         let stopped = StopVideoRules.videoStopped(after: moment, was: videoStopped)
         if stopped != videoStopped { videoStopped = stopped }
+        if moment == .start || moment == .end {
+            ownerStoppedVideoThisMeeting = false
+            autoStartedVideoThisMeeting = false
+        }
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
     }
 
@@ -3499,18 +3507,26 @@ final class CoordinatorController: ObservableObject {
         stopRecordingSession()
     }
 
-    /// The Record bar's Stop, the shortcut and the menu. The first press arms
-    /// Stop (the button itself turns into Confirm); the second, while armed,
-    /// stops. Esc or 15 seconds disarm it.
+    /// The Record bar's End recording, the shortcut and the menu: the same two-step as ending a
+    /// meeting (`EndConfirm`, 6 s, the draining fill). The first press arms; the second, anywhere,
+    /// ends and saves. Esc, "Keep recording", a click elsewhere or the timeout put it back.
     func confirmStopTake() {
         guard recordOnlyActive, isRecording, !takeBusy else { return }
-        if exitAsk == .stopTake {
+        if pressEnd(.stopTake, words: EndConfirm.words(.endRecording)) { stopTake() }
+    }
+
+    /// The one two-step for End and End recording. True when this press is the second: the
+    /// caller ends. Otherwise it armed (and every surface shows it armed).
+    private func pressEnd(_ ask: ExitAsk, words: EndConfirm.Words) -> Bool {
+        if exitAsk == ask, endConfirm.press(now: Date()) == .end {
+            // One click on the confirm button ends it, whatever else is on screen.
             disarmExit()
-            stopTake()
-            return
+            endConfirm.reset()
+            return true
         }
-        armExit(.stopTake, title: "Stop the recording?",
-                detail: "Press Confirm to save it. Esc keeps recording.")
+        armExit(ask, words: words)
+        _ = endConfirm.press(now: exitAskStartedAt ?? Date())
+        return false
     }
 
     /// The bar's REC pill during a class: one press arms it (it reads
@@ -3525,8 +3541,9 @@ final class CoordinatorController: ObservableObject {
             toggleRecording()
             return
         }
-        armExit(.stopRecording, title: "Stop the recording?",
-                detail: "Press Confirm to save it. Esc keeps recording.")
+        armExit(.stopRecording, words: .init(title: "Stop the recording?",
+                                             detail: "Press Confirm to save it. Esc keeps recording.",
+                                             keep: "Keep recording", confirm: "Confirm"))
     }
 
     // MARK: After a session
@@ -3569,6 +3586,9 @@ final class CoordinatorController: ObservableObject {
     /// What the armed button's callout says, right above it.
     @Published private(set) var exitAskTitle = ""
     @Published private(set) var exitAskDetail = ""
+    /// The armed buttons' words: cancel and confirm.
+    @Published private(set) var exitAskKeep = ""
+    @Published private(set) var exitAskConfirm = ""
     /// When the armed End started waiting (drives the button's countdown fill),
     /// and the same wait's length. Nil when nothing is armed.
     @Published private(set) var exitAskStartedAt: Date?
@@ -3580,11 +3600,13 @@ final class CoordinatorController: ObservableObject {
     /// Which arming a click belongs to, so a late check never disarms a newer one.
     private var exitArmSerial = 0
 
-    private func armExit(_ ask: ExitAsk, title: String, detail: String) {
+    private func armExit(_ ask: ExitAsk, words: EndConfirm.Words) {
         disarmExit()
-        exitAskTitle = title
-        exitAskDetail = detail
-        exitAskTimeout = ask == .end ? EndConfirm.timeout : IslandRules.confirmTimeout
+        exitAskTitle = words.title
+        exitAskDetail = words.detail
+        exitAskKeep = words.keep
+        exitAskConfirm = words.confirm
+        exitAskTimeout = ask == .stopRecording ? IslandRules.confirmTimeout : EndConfirm.timeout
         exitAskStartedAt = Date()
         exitAsk = ask
         let wait = exitAskTimeout
@@ -4722,25 +4744,17 @@ final class CoordinatorController: ObservableObject {
         // End (the button turns into Confirm), the second ends. No alert (it
         // went to the main window's desktop, which may be empty) and no
         // buttons in the island, which only says what Confirm will do.
-        if exitAsk == .end, endConfirm.press(now: Date()) == .end {
-            // One click on Confirm ends it, whatever else is on screen.
-            disarmExit()
-            stop()
-            endConfirm.reset()
-            return
-        }
         let ask = LiveExit.endPrompt(liveExitState)
         let action = ask?.choices.first ?? .endMeetingForAll
-        let title = action == .leaveMeeting ? "Leave the meeting?" : "End the meeting for everyone?"
-        let again = action == .leaveMeeting ? "Press Confirm to leave." : "Press Confirm to end it."
-        armExit(.end, title: title, detail: "\(again) Esc keeps it going.")
-        _ = endConfirm.press(now: exitAskStartedAt ?? Date())
+        let words = EndConfirm.words(action == .leaveMeeting ? .leave : .endForAll)
+        if pressEnd(.end, words: words) { stop() }
     }
 
     /// What the armed End does, for the buttons' Confirm help.
     var exitConfirmHelp: String {
         switch exitAsk {
-        case .stopTake, .stopRecording: return "Stop and save the recording"
+        case .stopTake: return EndConfirm.words(.endRecording).confirm
+        case .stopRecording: return "Stop and save the recording"
         case .end: return (LiveExit.endPrompt(liveExitState)?.choices.first ?? .endMeetingForAll).title
         case nil: return ""
         }

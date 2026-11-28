@@ -195,6 +195,7 @@ struct OnboardingView: View {
             onOpenZoom: { url, part in coordinator.zoomAssist.open(url, part: part) },
             onStartOver: { coordinator.zoomAssist.startOver() },
             onUseDifferentApp: { coordinator.zoomAssist.useDifferentApp($0) },
+            onRemove: { coordinator.zoomAssist.removeFromGreenroom($0) },
             onUndoRemoved: { coordinator.zoomAssist.undoRemoved($0) },
             onImport: { importSettingsFile() },
             onCheck: { setupChecker.showingIn = .guide; runConnectionTest() },

@@ -25,6 +25,8 @@ import SwiftUI
 struct MeetingToolbarState {
     var inMeeting = true
     var muted = false
+    /// Muted in Zoom while a take is rolling: the recording still hears the microphone.
+    var recordingHearsYou = false
     /// False when this Mac is not on the meeting's audio at all.
     var hasAudio = true
     var cameraOn = true
@@ -56,6 +58,14 @@ struct MeetingToolbarState {
     var endName = LiveExitChoice.endMeetingForAll.title
     /// Whether End closes the meeting for everyone, not only for this Mac.
     var endsForAll = true
+    /// End was pressed once (the coordinator's EndConfirm): Keep going and the confirm button
+    /// show, with the draining fill, on this surface and every other.
+    var endArmed = false
+    var endKeepLabel = "Keep going"
+    var endConfirmLabel = "End for everyone"
+    var endAskDetail = ""
+    var endAskStartedAt: Date?
+    var endAskTimeout: TimeInterval = EndConfirm.timeout
 }
 
 struct MeetingToolbarMenus {
@@ -82,16 +92,19 @@ struct MeetingToolbarActions {
     var toggleNotes: () -> Void = {}
     var toggleDraw: () -> Void = {}
     var stopSharing: () -> Void = {}
+    /// End: the first press arms, the second ends (CoordinatorController.confirmAndStop).
     var end: () -> Void = {}
+    /// Keep going: puts End back everywhere.
+    var keepGoing: () -> Void = {}
 }
 
 struct MeetingToolbarBar: View {
     let state: MeetingToolbarState
     let menus: MeetingToolbarMenus
     let actions: MeetingToolbarActions
-    /// End asks again in place. A modal alert would activate the app, which
-    /// brings the main window forward over whatever is being taught from.
-    @State private var confirmingEnd = false
+    /// End asks again in place (`state.endArmed`, the coordinator's one EndConfirm). A modal alert
+    /// would activate the app, which brings the main window forward over whatever is being taught from.
+    private var endWidth: CGFloat { state.endArmed ? MeetingToolbarLayout.endArmed : MeetingToolbarLayout.end }
 
     static let height: CGFloat = 64
     fileprivate static let cellHeight: CGFloat = 52
@@ -111,12 +124,12 @@ struct MeetingToolbarBar: View {
         GeometryReader { geo in
             let fit = MeetingToolbarLayout.fit(
                 specs: MeetingToolbarLayout.specs(showsSecurity: state.isHost, recording: state.recording),
-                // "End for everyone" is wider than End; make room while it shows.
-                width: geo.size.width - (confirmingEnd ? 112 : 0))
+                // Armed End is wider than End; the fit makes room while it shows.
+                width: geo.size.width, endWidth: endWidth)
             // Zoom centres the tools on the window: one pad, as wide as what
             // sits to the right of them, goes on the left.
             let rightWidth = (fit.showsClock ? MeetingToolbarLayout.clock + MeetingToolbarLayout.gap : 0)
-                + (confirmingEnd ? 190 : MeetingToolbarLayout.end)
+                + endWidth
             HStack(spacing: MeetingToolbarLayout.gap) {
                 // The pad yields first (layoutPriority) and never counts in
                 // MeetingToolbarLayout.required, so a tight row loses its
@@ -186,7 +199,11 @@ struct MeetingToolbarBar: View {
                 } else {
                     cell(symbol: state.muted ? "mic.slash" : "mic",
                          caption: state.muted ? "Unmute" : "Mute",
-                         tint: state.muted ? MeetingTheme.red : .white, action: actions.toggleMute)
+                         tint: state.muted ? MeetingTheme.red : .white,
+                         recordDot: state.recordingHearsYou,
+                         help: state.recordingHearsYou ? MuteHintRules.hint : nil,
+                         value: MuteHintRules.spokenValue(hearsYou: state.recordingHearsYou),
+                         action: actions.toggleMute)
                         .disabled(!state.inMeeting)
                 }
             }
@@ -317,22 +334,26 @@ struct MeetingToolbarBar: View {
     /// caption, with Zoom's hover wash behind it.
     private func glyph(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                        badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
-                       symbolBadge: String? = nil, width: CGFloat = MeetingToolbarLayout.cell) -> some View {
-        ToolbarGlyph(symbol: symbol, symbolBadge: symbolBadge, caption: caption, tint: tint, on: on, badge: badge,
+                       symbolBadge: String? = nil, recordDot: Bool = false,
+                       width: CGFloat = MeetingToolbarLayout.cell) -> some View {
+        ToolbarGlyph(symbol: symbol, symbolBadge: symbolBadge, recordDot: recordDot, caption: caption, tint: tint, on: on, badge: badge,
                      badgeFilled: badgeFilled, captionPill: captionPill, width: width, height: Self.cellHeight)
     }
 
     private func cell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                       badge: String? = nil, symbolBadge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
-                      help: String? = nil, width: CGFloat = MeetingToolbarLayout.cell,
+                      recordDot: Bool = false, help: String? = nil, value: String? = nil,
+                      width: CGFloat = MeetingToolbarLayout.cell,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge,
-                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge, width: width)
+                  badgeFilled: badgeFilled, captionPill: captionPill, symbolBadge: symbolBadge,
+                  recordDot: recordDot, width: width)
         }
         .buttonStyle(.plain)
         .help(help ?? caption)
         .accessibilityLabel(caption)
+        .accessibilityValue(value ?? "")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
@@ -349,35 +370,13 @@ struct MeetingToolbarBar: View {
     // MARK: End
 
     @ViewBuilder private var endControl: some View {
-        if confirmingEnd {
-            HStack(spacing: 6) {
-                Button("Keep going") { confirmingEnd = false }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(MeetingTheme.secondaryText)
-                Button {
-                    confirmingEnd = false
-                    actions.end()
-                } label: {
-                    Text(state.endName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background(MeetingTheme.end, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius + 2))
-                }
-                .buttonStyle(.plain)
-                .help(state.endsForAll
-                    ? "Ends the meeting for everyone, saves any recording and turns the camera off"
-                    : "Leaves the meeting, saves any recording and turns the camera off")
-            }
-            // Never silently armed: back to End after the same wait as the bar.
-            .task {
-                try? await Task.sleep(nanoseconds: UInt64(EndConfirm.timeout * 1_000_000_000))
-                if !Task.isCancelled { confirmingEnd = false }
-            }
+        if state.endArmed {
+            EndConfirmButtons(keep: state.endKeepLabel, confirm: state.endConfirmLabel, detail: state.endAskDetail,
+                              startedAt: state.endAskStartedAt, timeout: state.endAskTimeout, height: 32,
+                              onKeep: actions.keepGoing, onConfirm: actions.end)
+                .frame(width: MeetingToolbarLayout.endArmed, alignment: .trailing)
         } else {
-            Button { confirmingEnd = true } label: {
+            Button(action: actions.end) {
                 Text("End")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
@@ -418,6 +417,7 @@ private struct ToolbarCaret: View {
 private struct ToolbarGlyph: View {
     let symbol: String
     var symbolBadge: String?
+    var recordDot = false
     let caption: String
     let tint: Color
     let on: Bool
@@ -434,6 +434,7 @@ private struct ToolbarGlyph: View {
                 .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(tint)
                 .symbolBadge(symbolBadge, size: 10)
+                .recordDot(recordDot, size: 8)
                 .frame(height: 24)
                 .overlay(alignment: .topTrailing) { badgeView.offset(x: 14, y: -5) }
             Text(caption)

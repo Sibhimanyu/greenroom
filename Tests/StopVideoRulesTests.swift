@@ -152,4 +152,30 @@ final class StopVideoRulesTests: XCTestCase {
         XCTAssertEqual(R.refusalLine(.stop, accepted: false), "Stop video: Zoom refused. Nothing changed.")
         XCTAssertEqual(R.refusalLine(.start, accepted: false), "Start video: Zoom refused. Nothing changed.")
     }
+
+    // MARK: R49.13 Zoom starts the meeting with the owner's video off
+
+    func testAutoStartWhenZoomJoinsWithVideoOff() {
+        XCTAssertTrue(R.shouldAutoStart(atJoin: .off, ownerStoppedThisMeeting: false, alreadyTried: false))
+    }
+
+    func testNoAutoStartWhenVideoIsOnUnknownOrHostStopped() {
+        XCTAssertFalse(R.shouldAutoStart(atJoin: .on, ownerStoppedThisMeeting: false, alreadyTried: false))
+        XCTAssertFalse(R.shouldAutoStart(atJoin: .unknown, ownerStoppedThisMeeting: false, alreadyTried: false))
+        XCTAssertFalse(R.shouldAutoStart(atJoin: .stoppedByHost, ownerStoppedThisMeeting: false, alreadyTried: false))
+    }
+
+    func testNeverUndoesTheOwnersStopAndNeverTriesTwice() {
+        XCTAssertFalse(R.shouldAutoStart(atJoin: .off, ownerStoppedThisMeeting: true, alreadyTried: false))
+        XCTAssertFalse(R.shouldAutoStart(atJoin: .off, ownerStoppedThisMeeting: false, alreadyTried: true))
+    }
+
+    func testStatusFromZoomsIsVideoOn() {
+        XCTAssertEqual(R.status(isVideoOn: true), .on)
+        XCTAssertEqual(R.status(isVideoOn: false), .off)
+    }
+
+    func testRefusedAutoStartLogsOnePlainLine() {
+        XCTAssertEqual(R.autoStartRefusedLine, "Zoom started the meeting with your video off and refused to start it. Video stopped; use Start video.")
+    }
 }

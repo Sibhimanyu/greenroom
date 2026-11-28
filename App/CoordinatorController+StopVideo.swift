@@ -21,6 +21,21 @@ extension CoordinatorController {
         zoomChatClient.onMyVideoStatus = { [weak self] status in
             self?.noteOwnVideoStatus(status)
         }
+        zoomChatClient.onMyVideoAtJoin = { [weak self] status in
+            self?.noteOwnVideoAtJoin(status)
+        }
+    }
+
+    /// Zoom's read of the owner's video, once per meeting, just after join (R49.13). Shows Zoom's truth,
+    /// then, if Zoom started the meeting with video off and the owner has not stopped it, asks Zoom to
+    /// start it, once. A refusal leaves "Video stopped" with the usual Start video path.
+    func noteOwnVideoAtJoin(_ status: OwnVideoStatus) {
+        noteOwnVideoStatus(status)
+        guard StopVideoRules.shouldAutoStart(atJoin: status, ownerStoppedThisMeeting: ownerStoppedVideoThisMeeting,
+                                             alreadyTried: autoStartedVideoThisMeeting) else { return }
+        autoStartedVideoThisMeeting = true
+        log("Zoom started the meeting with your video off. Starting it.")
+        if !sendMyVideoRequest(on: true) { log(StopVideoRules.autoStartRefusedLine) }
     }
 
     /// Zoom's video-status callback for the owner: the truth for "video stopped".
@@ -33,13 +48,17 @@ extension CoordinatorController {
                  : "Video started. Everyone sees your picture again (\(cameraState.name)).")
     }
 
+    /// The one place that asks Zoom to change the owner's video (SourceScanTests allows this one call).
+    private func sendMyVideoRequest(on: Bool) -> Bool { zoomChatClient.setMyVideo(on: on) }
+
     /// The camera menu's last row, the menu-bar item and the shortcut: Stop video, or Start video while
     /// stopped. In a meeting only. The answer is what the request met, for the shortcut's toast.
     @discardableResult
     func toggleStopVideo() -> StopVideoRules.ShortcutOutcome {
         guard zoomChatClient.myUserID != nil else { return .notInMeeting }
         let request = StopVideoRules.request(videoStopped: videoStopped)
-        let accepted = zoomChatClient.setMyVideo(on: request == .start)
+        let accepted = sendMyVideoRequest(on: request == .start)
+        if request == .stop, accepted { ownerStoppedVideoThisMeeting = true }
         Analytics.track(.controlAction, [.action: request == .stop ? "stop_video" : "start_video",
                                          .refused: accepted ? "no" : "yes"])
         if let line = StopVideoRules.refusalLine(request, accepted: accepted) { log(line) }

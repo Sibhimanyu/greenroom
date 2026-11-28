@@ -17,6 +17,9 @@ enum ZoomStartOverRules {
     static let idleHelp = "Forgets both apps\u{2019} keys on this Mac and signs out of Zoom here."
 
     static let useDifferentAppTitle = "Use a different app"
+    /// The "..." menu's last row: the same removal, without opening Zoom's Created apps page.
+    static let removeTitle = "Remove from Greenroom"
+    static let removeHelp = "Removes this app\u{2019}s keys from Greenroom. The app stays in your Zoom account."
     static let removedNotice = "Keys removed"
 
     /// Quiet button in the Zoom step whenever any key is filled.
@@ -34,4 +37,5 @@ enum ZoomStartOverRules {
     }
 
     static func showsUseDifferentApp(_ state: ZoomGuidePartState) -> Bool { state == .done }
+    static func showsRemove(_ state: ZoomGuidePartState) -> Bool { state == .done }
 }

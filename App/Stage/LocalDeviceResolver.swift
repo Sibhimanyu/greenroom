@@ -105,6 +105,7 @@ enum LocalDeviceResolver {
                                                 mediaType: .video,
                                                 position: .unspecified)
             .devices
+            .filter { CameraDeviceFilterRules.isListable(uniqueID: $0.uniqueID, modelID: $0.modelID, name: $0.localizedName) }
             .map { Camera(id: $0.uniqueID,
                           name: $0.localizedName,
                           isBuiltIn: $0.deviceType == .builtInWideAngleCamera) }

@@ -48,5 +48,14 @@ final class ZoomStartOverRulesTests: XCTestCase {
         XCTAssertEqual(ZoomStartOverRules.removedNotice, "Keys removed")
     }
 
+    func testRemoveFromGreenroomIsOnTheDonePartsMenuOnly() {
+        XCTAssertEqual(ZoomStartOverRules.removeTitle, "Remove from Greenroom")
+        XCTAssertEqual(ZoomStartOverRules.removeHelp,
+                       "Removes this app\u{2019}s keys from Greenroom. The app stays in your Zoom account.")
+        XCTAssertTrue(ZoomStartOverRules.showsRemove(.done))
+        XCTAssertFalse(ZoomStartOverRules.showsRemove(.inProgress))
+        XCTAssertFalse(ZoomStartOverRules.showsRemove(.notStarted))
+    }
+
     // MARK: R12
 }

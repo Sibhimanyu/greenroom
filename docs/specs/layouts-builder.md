@@ -455,6 +455,16 @@ control bar is what should be the default, unless the Zoom-like UI was set in th
 - R49.11 The menu-bar menu has "Stop Video" / "Start Video" first among the live tools, only while a Zoom meeting is
   live (not a record-only session); the label follows Zoom's status and shows ⌃⌥⌘V (`MenuBarModel.items`). It has
   no camera items, so this is the nearest place.
+- R49.12 (owner, 2026-11-27) Zoom's own virtual camera (`zoom_virtual_device`), anything Zoom installs and Greenroom's
+  own outputs are never offered as the camera device: one pure rule (`CameraDeviceFilterRules.isListable`) applied in
+  `LocalDeviceResolver.availableCameras()` (Home, the Devices tab, the bar's camera menu) and in the stage's stand-in pick.
+- R49.13 (owner, 2026-11-27) When Zoom starts a meeting with the owner's video off (a room set to "Host video: off"),
+  Greenroom starts it, once, whatever the camera state (Off still sends the screen). The SDK's status callback only
+  fires on a change, so `ZoomMeetingSDKClient.scheduleJoinVideoRead` reads `isVideoOn()` 1.5 s after InMeeting and
+  reports it once (`onMyVideoAtJoin`); `videoStopped` takes Zoom's word, then `StopVideoRules.shouldAutoStart` decides
+  (status off, not stopped by the owner this meeting, not tried yet; a host stop is never undone). A refusal leaves
+  Video stopped with Start video and logs one line. Later stops (owner, co-host, Zoom) are never undone.
+  Tests: `StopVideoRulesTests`, `CameraDeviceFilterRulesTests`. Needs a live check.
 - R49.9 `SourceScanTests` allows exactly one `.setMyVideo(` call, in `CoordinatorController+StopVideo.swift`, with its
   reason. Every other control still goes through the camera state (R6.8).
 - Tests: `Tests/StopVideoRulesTests.swift` (state x stopped table), `Tests/CameraMatrixTests.swift` (videoStopped

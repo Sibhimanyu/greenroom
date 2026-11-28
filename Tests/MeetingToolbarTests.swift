@@ -114,6 +114,35 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         }
     }
 
+    // The armed End (Keep going + End for everyone) is wider than End. `endArmed` is measured
+    // against the real words at the buttons' 12pt, so a longer word fails here, not on screen.
+    func testArmedEndWidthCoversBothButtons() {
+        let medium = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let semibold = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        let keep = ceil(("Keep going" as NSString).size(withAttributes: [.font: medium]).width) + 24
+        let confirm = ceil(("End for everyone" as NSString).size(withAttributes: [.font: semibold]).width) + 24
+        XCTAssertLessThanOrEqual(keep + L.endArmedGap + confirm, L.endArmed)
+    }
+
+    func testArmedEndKeepsTheEssentialsAtTheMinimumWidth() {
+        // At 760pt the armed pair (224pt against End's 60) costs People and Chat for the 6 s ask,
+        // as the old in-place confirm did: they move into More, never off the window.
+        let f = L.fit(specs: specs(host: true), width: 760, endWidth: L.endArmed)
+        XCTAssertTrue(f.visible.starts(with: [.mute, .video]))
+        XCTAssertTrue(f.visible.contains(.share))
+        XCTAssertEqual(Set(f.visible + f.overflow), Set(specs(host: true).map(\.id)))
+        let kept = specs(host: true).filter { f.visible.contains($0.id) }
+        XCTAssertLessThanOrEqual(L.required(items: kept, showsClock: f.showsClock, endWidth: L.endArmed), 760)
+    }
+
+    func testArmedEndNeverOverflowsAtAnyWidth() {
+        for width in stride(from: CGFloat(760), through: 1600, by: 4) {
+            let f = L.fit(specs: specs(host: true), width: width, endWidth: L.endArmed)
+            let kept = specs(host: true).filter { f.visible.contains($0.id) }
+            XCTAssertLessThanOrEqual(L.required(items: kept, showsClock: f.showsClock, endWidth: L.endArmed), width)
+        }
+    }
+
     func testTheWindowsMinimumWidthStillHasTheEssentials() {
         // The meeting window's minimum is 760pt.
         let f = fit(760)

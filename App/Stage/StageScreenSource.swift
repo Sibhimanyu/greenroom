@@ -330,8 +330,10 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         configuration.showsCursor = true
         configuration.capturesAudio = captureAudio
         if captureAudio {
-            // Greenroom's and the meeting's own sound is already in the mix
-            // from the meeting side; leave it out here so it is not doubled.
+            // The meeting's sound is not recorded today: nothing else adds it to the
+            // mix. Greenroom's own process audio is left out because the Zoom SDK
+            // plays the meeting in this process; letting it in would mean dropping
+            // `excludesCurrentProcessAudio` and taking on the doubling and echo.
             configuration.excludesCurrentProcessAudio = true
             configuration.sampleRate = 48_000
             configuration.channelCount = 2

@@ -158,8 +158,12 @@ struct BarIconButton: View {
     /// Lit with the brand tint while it is on (Draw).
     var on = false
     var symbolBadge: String? = nil
+    /// A small red record dot on the icon: the recording still hears the microphone (Mute only).
+    var recordDot = false
     var help: String
     var spoken: String? = nil
+    /// Read after the label (VoiceOver), when there is more to say.
+    var value: String? = nil
     var action: () -> Void
 
     var body: some View {
@@ -168,6 +172,7 @@ struct BarIconButton: View {
                 .font(.system(size: 14))
                 .foregroundStyle(tint)
                 .symbolBadge(symbolBadge, size: 8)
+                .recordDot(recordDot, size: 6)
                 .frame(width: width, height: 32)
                 .background(on ? Brand.green.opacity(0.28) : Color.clear, in: Circle())
                 .contentShape(Rectangle())
@@ -175,7 +180,25 @@ struct BarIconButton: View {
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(spoken ?? help)
+        .accessibilityValue(value ?? "")
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+extension View {
+    /// Zoom's red as a small dot at the icon's top corner: the recording is rolling.
+    @ViewBuilder func recordDot(_ on: Bool, size: CGFloat) -> some View {
+        if on {
+            overlay(alignment: .topTrailing) {
+                Circle().fill(MeetingTheme.red)
+                    .frame(width: size, height: size)
+                    .overlay(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5))
+                    .offset(x: size * 0.5, y: -size * 0.3)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            self
+        }
     }
 }
 
@@ -232,44 +255,9 @@ struct MeetingBarContent: View {
     /// answers, drawn in the bar's own view (no popover, no second window), so
     /// one click on "End for everyone" is the click.
     private var endConfirmStrip: some View {
-        HStack(spacing: 8) {
-            Text(s.endAskTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .padding(.leading, 12)
-            Spacer(minLength: 8)
-            Button(action: a.keepGoing) {
-                Text("Keep going")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.primary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .help("Keep the meeting going. Esc does the same.")
-            Button(action: a.end) {
-                Text(s.endName == LiveExitChoice.leaveMeeting.title ? "Leave" : "End for everyone")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background {
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.45))
-                            EndCountdownFill(startedAt: s.endAskStartedAt, timeout: s.endAskTimeout)
-                        }
-                    }
-                    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5) }
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .help(s.endAskDetail)
-            .accessibilityLabel("Confirm: \(s.endName)")
-        }
-        .padding(.trailing, L.trailingPad)
+        EndConfirmStrip(title: s.endAskTitle, keep: s.endKeepLabel, confirm: s.endConfirmLabel,
+                        detail: s.endAskDetail, startedAt: s.endAskStartedAt, timeout: s.endAskTimeout,
+                        onKeep: a.keepGoing, onConfirm: a.end)
     }
 
     private var row: some View {
@@ -319,10 +307,15 @@ struct MeetingBarContent: View {
 
     private var micButton: some View {
         let name = s.muted ? "Unmute" : "Mute"
+        let hears = MuteHintRules.recordingHearsYou(
+            muted: s.muted, inMeeting: s.inMeeting, recording: s.phase.isRecording,
+            paused: s.phase == .paused, saving: false)
+        let plain = s.muted ? "Unmute: everyone hears you again" : "Mute your microphone"
         return BarIconButton(symbol: s.muted ? "mic.slash.fill" : "mic.fill",
-                             tint: s.muted ? .red : .primary,
-                             help: help(s.muted ? "Unmute: everyone hears you again" : "Mute your microphone", .toggleMic),
-                             spoken: name, action: a.toggleMute)
+                             tint: s.muted ? .red : .primary, recordDot: hears,
+                             help: hears ? MuteHintRules.hint : help(plain, .toggleMic),
+                             spoken: name, value: MuteHintRules.spokenValue(hearsYou: hears),
+                             action: a.toggleMute)
             .disabled(!s.inMeeting)
     }
 
@@ -532,6 +525,7 @@ struct MeetingBarContent: View {
 struct EndCountdownFill: View {
     var startedAt: Date?
     var timeout: TimeInterval
+    var cornerRadius: CGFloat = 10
     @State private var drained = false
 
     var body: some View {
@@ -542,6 +536,83 @@ struct EndCountdownFill: View {
                 .frame(width: geo.size.width * (drained ? 0 : full))
                 .onAppear { withAnimation(.linear(duration: left)) { drained = true } }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
+
+/// The whole bar while End is armed: the question, then the two answers. Shared by the meeting bar
+/// and Record's bar, so both read and behave the same.
+struct EndConfirmStrip: View {
+    var title: String
+    var keep: String
+    var confirm: String
+    var detail: String
+    var startedAt: Date?
+    var timeout: TimeInterval
+    var onKeep: () -> Void
+    var onConfirm: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.leading, 12)
+            Spacer(minLength: 8)
+            EndConfirmButtons(keep: keep, confirm: confirm, detail: detail,
+                              startedAt: startedAt, timeout: timeout, onKeep: onKeep, onConfirm: onConfirm)
+        }
+        .padding(.trailing, MeetingBarLayout.trailingPad)
+    }
+}
+
+/// The armed End on every surface (floating bar, Meeting window toolbar, Record's bar): the
+/// cancel button and the red confirm button with the draining fill. The one visual definition.
+struct EndConfirmButtons: View {
+    var keep: String
+    var confirm: String
+    var detail: String
+    var startedAt: Date?
+    var timeout: TimeInterval
+    var height: CGFloat = 28
+    var onKeep: () -> Void
+    var onConfirm: () -> Void
+
+    var body: some View {
+        HStack(spacing: MeetingToolbarLayout.endArmedGap) {
+            Button(action: onKeep) {
+                Text(keep)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .foregroundStyle(Color.primary)
+                    .padding(.horizontal, 12)
+                    .frame(height: height)
+                    .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help("\(keep). Esc does the same.")
+            Button(action: onConfirm) {
+                Text(confirm)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: height)
+                    .background {
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.45))
+                            EndCountdownFill(startedAt: startedAt, timeout: timeout)
+                        }
+                    }
+                    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5) }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help(detail)
+            .accessibilityLabel("Confirm: \(confirm)")
+        }
+    }
+}
+

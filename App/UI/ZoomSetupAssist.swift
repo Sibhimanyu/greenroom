@@ -211,9 +211,17 @@ final class ZoomSetupAssist: ObservableObject {
         coordinator.openZoomSetupGuide(at: .sdkCredentials)
     }
 
-    /// "Use a different app": clears this part's keys and app ID, remembers them for Undo, opens Created apps.
+    /// "Use a different app": removes the part from Greenroom (below), then opens Created apps.
     func useDifferentApp(_ part: ZoomGuidePart) {
-        guard let coordinator, let app: ZoomOwnApp = part == .meetingApp ? .sdk : part == .hostingApp ? .s2s : nil else { return }
+        guard removeFromGreenroom(part) else { return }
+        open(ZoomMarketplaceGuide.builderURL, part: part)
+    }
+
+    /// "Remove from Greenroom" (the part's "..." menu) and the first half of "Use a different app": clears
+    /// this part's keys and app ID and remembers them for Undo ("Keys removed"). Opens nothing.
+    @discardableResult
+    func removeFromGreenroom(_ part: ZoomGuidePart) -> Bool {
+        guard let coordinator, let app: ZoomOwnApp = part == .meetingApp ? .sdk : part == .hostingApp ? .s2s : nil else { return false }
         coordinator.loadSecretsIfNeeded()
         removedBackup[part] = (fields(app, coordinator), state.ids.id(for: app))
         write(app, Dictionary(uniqueKeysWithValues: fields(app, coordinator).keys.map { ($0, "") }), coordinator)
@@ -226,7 +234,7 @@ final class ZoomSetupAssist: ObservableObject {
         state = next
         defaults.set(next.ids.meeting, forKey: Self.meetingKey)
         defaults.set(next.ids.hosting, forKey: Self.hostingKey)
-        open(ZoomMarketplaceGuide.builderURL, part: part)
+        return true
     }
 
     /// "Keys removed \u{00B7} Undo".

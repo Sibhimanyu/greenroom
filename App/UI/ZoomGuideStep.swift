@@ -52,6 +52,8 @@ struct ZoomGuideStep: View {
     /// "Start over" (confirmed), "Use a different app" and its Undo.
     var onStartOver: () -> Void = {}
     var onUseDifferentApp: (ZoomGuidePart) -> Void = { _ in }
+    /// "Remove from Greenroom" in a Done part's "..." menu: the same removal, no Zoom page opened.
+    var onRemove: (ZoomGuidePart) -> Void = { _ in }
     var onUndoRemoved: (ZoomGuidePart) -> Void = { _ in }
     /// Returns true when the import filled things in.
     var onImport: () -> Bool = { false }
@@ -213,18 +215,25 @@ struct ZoomGuideStep: View {
                         .foregroundStyle(.secondary)
                         .help("Clears this app\u{2019}s keys and opens Zoom\u{2019}s list of your apps")
                 }
-                if !shortcuts.isEmpty {
+                let canRemove = ZoomStartOverRules.showsRemove(state)
+                if !shortcuts.isEmpty || canRemove {
                     Menu {
                         ForEach(shortcuts, id: \.title) { link in
                             Button(link.title) {
                                 if let url = ZoomMarketplacePages.url(for: link.page) { onOpenZoom(url, part) }
                             }
                         }
+                        if canRemove {
+                            if !shortcuts.isEmpty { Divider() }
+                            Button(ZoomStartOverRules.removeTitle) { onRemove(part) }
+                                .help(ZoomStartOverRules.removeHelp)
+                        }
                     } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .help("Open this app\u{2019}s pages in the Zoom window")
+                    .help(canRemove ? "Open this app\u{2019}s pages in the Zoom window, or remove it from Greenroom"
+                                    : "Open this app\u{2019}s pages in the Zoom window")
                     .accessibilityLabel("\(part.title) pages")
                 }
             }

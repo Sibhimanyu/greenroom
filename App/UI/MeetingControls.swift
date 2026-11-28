@@ -522,6 +522,10 @@ struct MeetingToolbarView: View {
         var s = MeetingToolbarState()
         s.inMeeting = model.inMeeting
         s.muted = model.muted
+        s.recordingHearsYou = MuteHintRules.recordingHearsYou(
+            muted: model.muted, inMeeting: model.inMeeting, hasAudio: model.hasAudio,
+            recording: coordinator.isRecording, paused: coordinator.isRecordingPaused,
+            saving: coordinator.isSavingRecording)
         s.hasAudio = model.hasAudio
         s.cameraOn = model.cameraOn
         s.cameraState = coordinator.cameraState
@@ -546,6 +550,12 @@ struct MeetingToolbarView: View {
         let host = coordinator.liveExitState.kind == .host
         s.endsForAll = host
         s.endName = host ? LiveExitChoice.endMeetingForAll.title : LiveExitChoice.leaveMeeting.title
+        s.endArmed = coordinator.exitAsk == .end
+        s.endKeepLabel = coordinator.exitAskKeep
+        s.endConfirmLabel = coordinator.exitAskConfirm
+        s.endAskDetail = coordinator.exitAskDetail
+        s.endAskStartedAt = coordinator.exitAskStartedAt
+        s.endAskTimeout = coordinator.exitAskTimeout
         s.clock = MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.sessionStartedAt }())
         return s
     }
@@ -562,7 +572,9 @@ struct MeetingToolbarView: View {
         a.toggleNotes = notes.toggle
         a.toggleDraw = { coordinator.toggleDrawing() }
         a.stopSharing = model.stopShare
-        a.end = { coordinator.stop() }
+        // Asks first, through the same two-step as the bar's End.
+        a.end = { coordinator.confirmAndStop() }
+        a.keepGoing = { coordinator.disarmExit() }
         return a
     }
 
@@ -943,6 +955,8 @@ private struct MeetingControlBarView: View {
         s.endAskDetail = coordinator.exitAskDetail
         s.endAskStartedAt = coordinator.exitAskStartedAt
         s.endAskTimeout = coordinator.exitAskTimeout
+        s.endKeepLabel = coordinator.exitAskKeep
+        s.endConfirmLabel = coordinator.exitAskConfirm
         return s
     }
 

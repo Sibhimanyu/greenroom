@@ -146,6 +146,30 @@ final class EndConfirmTests: XCTestCase {
     }
 }
 
+final class EndConfirmWordsTests: XCTestCase {
+    func testMeetingWordsKeepTheirOldText() {
+        let all = EndConfirm.words(.endForAll)
+        XCTAssertEqual(all.title, "End the meeting for everyone?")
+        XCTAssertEqual(all.keep, "Keep going")
+        XCTAssertEqual(all.confirm, "End for everyone")
+        let leave = EndConfirm.words(.leave)
+        XCTAssertEqual(leave.title, "Leave the meeting?")
+        XCTAssertEqual(leave.confirm, "Leave")
+    }
+
+    func testRecordWordsSayRecording() {
+        let w = EndConfirm.words(.endRecording)
+        XCTAssertEqual(w.keep, "Keep recording")
+        XCTAssertEqual(w.confirm, "End recording")
+        XCTAssertTrue(w.title.contains("recording"))
+        XCTAssertTrue(w.detail.contains("Esc keeps recording"))
+    }
+
+    func testEveryKindWaitsTheSameSixSeconds() {
+        XCTAssertEqual(EndConfirm.timeout, 6)
+    }
+}
+
 /// Owner, 2026-11-27: a personal room started as host said "Leave" while End actually ended it for
 /// everyone. The words follow what End will do: the SDK's own answer (started as host, or host now).
 final class LiveExitKindTests: XCTestCase {

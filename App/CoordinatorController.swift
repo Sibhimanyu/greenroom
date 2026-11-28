@@ -2430,7 +2430,9 @@ final class CoordinatorController: ObservableObject {
                 // read the live arrangement, so this is a no-op for those.
                 if displayChangedDuringStart {
                     displayChangedDuringStart = false
-                    if sessionArranges { snapWindowsBack(userInitiated: false, trigger: .displaysConnectedOrDisconnected) }
+                    if DisplayChange.snapAfterStart(changedDuringStart: true, arranges: sessionArranges) {
+                        snapWindowsBack(userInitiated: false, trigger: .displaysConnectedOrDisconnected)
+                    }
                 }
             } catch is CancellationError {
                 // Stop abandoned the start on purpose. It closes the panel
@@ -4265,12 +4267,14 @@ final class CoordinatorController: ObservableObject {
     /// heading for the window counts as the window; one heading for the bar,
     /// as the bar.
     var meetingSize: MeetingSize {
-        if let heading = MeetingControlBarController.morphTarget { return heading == 1 ? .window : .bar }
-        guard ParticipantGridWindowController.meetingWindowIsOpen else { return .bar }
-        // A live meeting: the model's answer, where a window that is only covered is
+        // R15. A live meeting reads the model, where a window that is only covered is
         // still the window (it is the person's size that counts, not what is in front).
-        if MeetingSurfaceOwner.isLive { return MeetingSurfaceOwner.model.reopenTarget == .window ? .window : .bar }
-        return ParticipantGridWindowController.meetingWindowIsHidden ? .bar : .window
+        MeetingCollapse.sizeOnScreen(
+            morphHeading: MeetingControlBarController.morphTarget,
+            windowOpen: ParticipantGridWindowController.meetingWindowIsOpen,
+            live: MeetingSurfaceOwner.isLive,
+            reopenIsWindow: MeetingSurfaceOwner.model.reopenTarget == .window,
+            windowHidden: ParticipantGridWindowController.meetingWindowIsHidden)
     }
 
     /// What the layout already shows, which changes where a collapse goes.
@@ -4304,15 +4308,17 @@ final class CoordinatorController: ObservableObject {
     /// during a morph turns it round.
     func expandMeetingFromBar() {
         guard zoomChatClient.didInit else { return }
-        if MeetingControlBarController.morphTarget != nil {
+        switch MeetingCollapse.expandPlan(morphing: MeetingControlBarController.morphTarget != nil, size: meetingSize) {
+        case .turnRound:
             MeetingSurfaceOwner.send(.expand)
             if meetingWindowOpen { giveRoomBackToMeeting(); MeetingControlBarController.morph(toward: 1) }
             else { openMeetingWindow() }
-            return
+        case .openWindow:
+            // The bar shows while the window is merely covered: bring the window up.
+            openMeetingWindow()
+        case .step:
+            move(from: .bar, to: MeetingCollapse.next(from: .bar, step: .up), step: .up, context: collapseContext)
         }
-        // The bar shows while the window is merely covered: bring the window up.
-        guard meetingSize == .bar else { openMeetingWindow(); return }
-        move(from: .bar, to: MeetingCollapse.next(from: .bar, step: .up), step: .up, context: collapseContext)
     }
 
     /// The active layout places a Meeting window piece (on a display that is
@@ -4335,20 +4341,17 @@ final class CoordinatorController: ObservableObject {
         guard zoomChatClient.didInit else { return }
         let from = meetingSize
         guard from != size else { return }
-        move(from: from, to: size, step: size == .bar ? .down : .up, context: collapseContext)
+        move(from: from, to: size, step: MeetingCollapse.step(toward: size), context: collapseContext)
     }
 
     /// The shortcut and the one click: one step the other way from where it is.
     /// Window goes down; the bar comes up. A click during a morph turns it round.
     func toggleMeetingShrunk() {
         guard zoomChatClient.didInit else { return }
-        if let heading = MeetingControlBarController.morphTarget {
-            heading == 0 ? expandMeetingFromBar() : shrinkMeetingToBar()
-            return
-        }
-        switch meetingSize {
-        case .window: collapseMeeting()
-        case .bar: expandMeetingFromBar()
+        switch MeetingCollapse.togglePlan(morphHeading: MeetingControlBarController.morphTarget, size: meetingSize) {
+        case .expandFromBar: expandMeetingFromBar()
+        case .shrinkToBar: shrinkMeetingToBar()
+        case .collapse: collapseMeeting()
         }
     }
 
@@ -4356,20 +4359,16 @@ final class CoordinatorController: ObservableObject {
     /// bar's visibility.
     private func move(from: MeetingSize, to wanted: MeetingSize, step: MeetingCollapse.Step,
                       context: MeetingCollapseContext) {
-        var target = wanted
-        // Where the bar cannot be built, the meeting stays as it is.
-        if target == .bar, !MeetingControlBarController.isInstalled { target = from }
-        guard target != from else { return }
-
-        switch (from, target) {
-        case (.window, .bar):
+        // R16. Where the bar cannot be built, the meeting stays as it is.
+        switch MeetingCollapse.plan(from: from, wanted: wanted, barInstalled: MeetingControlBarController.isInstalled) {
+        case .collapse:
             MeetingSurfaceOwner.send(.collapse)
             giveRoomToNeighbourIfPlaced(going: .bar, context: context)
             MeetingControlBarController.morph(toward: 0)
-        case (.bar, .window):
+        case .expand:
             MeetingSurfaceOwner.send(.expand)
             showWindowFromBar()
-        default:
+        case .stay:
             break
         }
     }
@@ -4387,8 +4386,8 @@ final class CoordinatorController: ObservableObject {
     /// A full-size placed Meeting leaves its slot: the neighbour takes the room,
     /// the same as hiding the speaker tile.
     private func giveRoomToNeighbourIfPlaced(going size: MeetingSize, context: MeetingCollapseContext) {
-        guard MeetingCollapse.neighbourTakesRoom(going: size, context: context),
-              sessionArranges, let template = sessionTemplate else { return }
+        guard MeetingCollapse.neighbourMoves(going: size, context: context, arranged: sessionArranges),
+              let template = sessionTemplate else { return }
         speakerTileQuickHidden = true
         layoutEngine.moveNeighbour(template, meetingHidden: true)
     }
@@ -4425,8 +4424,10 @@ final class CoordinatorController: ObservableObject {
     /// joins it grows into the room (\u{2325}\u{2318}Z, or the pill, brings it back).
     private func meetingWindowClosedByUser() {
         closeMeetingWindow()
-        if sessionArranges, phase.isInMeeting, let template = sessionTemplate,
-           layoutEngine.placedMeeting(template) != nil, !MeetingViewWindows.anyOpen {
+        if let template = sessionTemplate,
+           MeetingCollapse.closeHandsRoomToNeighbour(arranged: sessionArranges, inMeeting: phase.isInMeeting,
+                                                     placesMeeting: layoutEngine.placedMeeting(template) != nil,
+                                                     viewWindowsOpen: MeetingViewWindows.anyOpen) {
             speakerTileQuickHidden = true
             layoutEngine.moveNeighbour(template, meetingHidden: true)
         }
@@ -4586,9 +4587,10 @@ final class CoordinatorController: ObservableObject {
         var s = LiveExit.ReopenState()
         s.isLive = hasLiveSession
         s.hasMeetingSurfaces = zoomChatClient.didInit && !recordOnlyActive
-        s.meetingShrunk = MeetingSurfaceOwner.isLive
-            ? MeetingSurfaceOwner.model.reopenTarget == .bar
-            : ParticipantGridWindowController.meetingWindowIsHidden
+        s.meetingShrunk = MeetingCollapse.shrunkForReopen(
+            live: MeetingSurfaceOwner.isLive,
+            reopenIsBar: MeetingSurfaceOwner.model.reopenTarget == .bar,
+            windowHidden: ParticipantGridWindowController.meetingWindowIsHidden)
         return s
     }
 
@@ -4685,17 +4687,16 @@ final class CoordinatorController: ObservableObject {
         guard LayoutPlacementRules.isExplicit(trigger) else { return }
         guard let template = sessionTemplate ?? layoutLibrary.active, template.movesWindows else { return }
         liveEditWaitingForSnap = false
+        // Snap Back: back to the layout's own starting state (hidden if the Meeting
+        // starts hidden). A display change can turn a placed Meeting into a
+        // whole-display one (or take it away): nothing is hidden then.
+        speakerTileQuickHidden = DisplayChange.hiddenAfterRetile(
+            userInitiated: userInitiated, layoutStartsHidden: layoutEngine.startsHidden(template),
+            hasPlacedSurface: layoutEngine.hasPlacedSurface(template), wasHidden: speakerTileQuickHidden)
         if userInitiated {
             Analytics.feature("snap_back")
-            // Back to the layout's own starting state: hidden if the Meeting
-            // starts hidden, shown otherwise.
-            speakerTileQuickHidden = layoutEngine.startsHidden(template)
             // R5.1: Snap Back drops every for-this-meeting change; the layout's own values return.
             applySetupEvent(.snapBack)
-        } else if !layoutEngine.hasPlacedSurface(template) {
-            // A display change can turn a placed Meeting into a whole-display one
-            // (or take it away): nothing is hidden then.
-            speakerTileQuickHidden = false
         }
         let hidden = speakerTileQuickHidden
         Task {
@@ -4760,14 +4761,8 @@ final class CoordinatorController: ObservableObject {
     /// Zoom through the same sender.
     private func displaysChanged(_ change: DisplayMonitor.Change) {
         let now = DisplayMonitor.describe(change.after)
-        if change.displaySetChanged {
-            var parts: [String] = []
-            if !change.removed.isEmpty { parts.append("\(change.removed.count) unplugged") }
-            if !change.added.isEmpty { parts.append("\(change.added.count) connected") }
-            log("Displays changed (\(parts.joined(separator: ", "))). Now: \(now).")
-        } else {
-            log("Display settings changed (resolution or arrangement). Now: \(now).")
-        }
+        log(DisplayChange.logLine(removed: change.removed.count, added: change.added.count,
+                                  setChanged: change.displaySetChanged, now: now))
 
         stage?.displaysDidChange(connected: DisplayMonitor.connectedForCapture(),
                                  main: LocalDeviceResolver.mainDisplayUUID,
@@ -4777,18 +4772,15 @@ final class CoordinatorController: ObservableObject {
         DisplayMonitor.shared.scheduleRescue { [weak self] line in self?.log(line) }
         syncReadinessHUD()
 
-        if isRunning {
-            displayChangedDuringStart = true
-            return
-        }
-        guard stageLive, zoomChatClient.isJoined, sessionArranges else { return }
         // R45: a display plugged in or pulled out places everything again, as
         // before. The same displays with a new resolution, arrangement or Dock
         // move nothing (stranded windows were rescued above); Snap Back does.
-        let trigger: PlacementTrigger = change.displaySetChanged ? .displaysConnectedOrDisconnected : .displaySettingsChanged
-        if LayoutPlacementRules.isExplicit(trigger) {
-            snapWindowsBack(userInitiated: false, trigger: trigger)
-        } else {
+        switch DisplayChange.followUp(isRunning: isRunning, stageLive: stageLive, joined: zoomChatClient.isJoined,
+                                      arranges: sessionArranges, setChanged: change.displaySetChanged) {
+        case .deferToStart: displayChangedDuringStart = true
+        case .nothing: break
+        case .snapBack(let trigger): snapWindowsBack(userInitiated: false, trigger: trigger)
+        case .leaveWindows:
             log("Your windows stay where they are. \(ShortcutStore.phrase(.snapBack)) or Snap Windows Back places the layout again.")
         }
     }

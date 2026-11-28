@@ -18,7 +18,7 @@ extension CoordinatorController {
             s2sClientID: s2sClientID,
             s2sClientSecret: s2sClientSecret,
             webcamShape: webcamShape.rawValue,
-            backgroundRemoval: backgroundRemoval.rawValue,
+            backgroundRemoval: look.exportedRemoval,
             browserRestoresTabs: browserRestoresTabs,
             browserSearchSuggestions: browserSearchSuggestions,
             prompterEnabled: cuesEnabled,
@@ -51,8 +51,8 @@ extension CoordinatorController {
             screenroomAgent: Self.jsonString(forKey: ScreenroomAgentSettings.key),
             screenroomRubric: Self.jsonString(forKey: "screenroomDefaultRubric"),
             screenroomLanguage: ScreenroomTranscriberSettings.load().language,
-            cameraBackground: cameraBackground.rawValue,
-            cameraBackgroundImage: cameraBackgroundImage,
+            cameraBackground: look.exportedBackground,
+            cameraBackgroundImage: look.exportedBackgroundImage,
             className: className,
             meetingMode: meetingMode.rawValue,
             micDeviceUID: micDeviceUID
@@ -113,7 +113,6 @@ extension CoordinatorController {
         if let value = transfer.s2sAccountID { s2sAccountID = value }
         if let value = transfer.s2sClientID { s2sClientID = value }
         if let value = transfer.s2sClientSecret { s2sClientSecret = value }
-        if let value = transfer.backgroundRemoval, let mode = BackgroundRemoval(rawValue: value) { backgroundRemoval = mode }
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
         if let value = transfer.prompterEnabled { cuesEnabled = value }
@@ -153,13 +152,14 @@ extension CoordinatorController {
             settings.language = value
             settings.save()
         }
-        // The camera background: the picture first, so the mode never shows an empty one.
-        if let value = transfer.cameraBackgroundImage { cameraBackgroundImage = value }
-        if let value = transfer.cameraBackground, let mode = CameraBackground(rawValue: value) { cameraBackground = mode }
+        // The camera look (camera-look R4): the module applies what is present and known, the picture with the mode.
+        look = look.importing(removal: transfer.backgroundRemoval, background: transfer.cameraBackground,
+                              picture: transfer.cameraBackgroundImage)
         if let value = transfer.className { className = value }
         if let value = transfer.meetingMode, let mode = MeetingMode(rawValue: value) { meetingMode = mode }
         if let value = transfer.micDeviceUID { micDeviceUID = value }
         SettingsDefaultsBridge().apply(transfer)
+        look.mirror = CameraLook.load(from: .standard).mirror // the bridge wrote the key; keep the one copy in step (R4.4)
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
         var importedOldLayoutIsActive = false

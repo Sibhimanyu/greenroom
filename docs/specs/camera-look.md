@@ -74,8 +74,8 @@ Not part of the Look (they stay where they are):
 
 | Phase | Delivers | Status | Commit |
 | --- | --- | --- | --- |
-| P1 | The spec, the glossary and the index | built | this commit |
-| P2 | `CameraLook` and its tests: R1, R2, R3.1, R4.1 to R4.3 | built | see git log |
+| P1 | The spec, the glossary and the index | built | bf5ccf4 |
+| P2 | `CameraLook` and its tests: R1, R2, R3.1, R4.1 to R4.3 | built | 3b9c331 |
 | P3 | Wire the coordinator, the import, export and the two mirror views: R3.2 to R3.4, R4.4, R5 | built | see git log |
 
 ## Needs a live check

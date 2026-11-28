@@ -1225,34 +1225,43 @@ final class CoordinatorController: ObservableObject {
     /// mirrors that session's picture instead of starting one of its own.
     var sceneInUse: Bool { phase.sceneInUse }
 
+    /// The camera look, the one stored copy (docs/specs/camera-look.md R5.1). Removal, background,
+    /// picture and mirror are computed reads of it below, so views and `$coordinator.x` bindings
+    /// keep working. Every change is persisted under the old keys; one that reaches the Stage
+    /// (`CameraLook.reachesStage`) asks for a shape apply, as the three loose properties did.
+    @Published var look: CameraLook {
+        didSet {
+            guard look != oldValue else { return }
+            look.save(to: defaults)
+            if CameraLook.reachesStage(from: oldValue, to: look) { requestShapeApply() }
+        }
+    }
+
     /// Automatic (no green screen) or a real green screen, for Cutout and
     /// Presenter. Takes effect when the cameras are next opened: at Start, or
     /// straight away in the Settings preview.
-    @Published var backgroundRemoval: BackgroundRemoval {
-        didSet {
-            defaults.set(backgroundRemoval.rawValue, forKey: "backgroundRemoval")
-            guard backgroundRemoval != oldValue else { return }
-            requestShapeApply()
-        }
+    var backgroundRemoval: BackgroundRemoval {
+        get { look.removal }
+        set { look.removal = newValue }
     }
 
     /// Blur or a picture behind you, for the bubble shapes (Settings ->
     /// Webcam). Applies live, like the shape.
-    @Published var cameraBackground: CameraBackground {
-        didSet {
-            defaults.set(cameraBackground.rawValue, forKey: "cameraBackground")
-            guard cameraBackground != oldValue else { return }
-            requestShapeApply()
-        }
+    var cameraBackground: CameraBackground {
+        get { look.background }
+        set { look.background = newValue }
     }
 
     /// The picture for `.image`: a preset's name, or `custom-<stamp>`.
-    @Published var cameraBackgroundImage: String {
-        didSet {
-            defaults.set(cameraBackgroundImage, forKey: "cameraBackgroundImage")
-            guard cameraBackgroundImage != oldValue else { return }
-            requestShapeApply()
-        }
+    var cameraBackgroundImage: String {
+        get { look.backgroundImage }
+        set { look.backgroundImage = newValue }
+    }
+
+    /// Mirror my camera: flips only the owner's bubble on their screen (`CameraLookRules.mirrorsBubble`).
+    var cameraMirror: Bool {
+        get { look.mirror }
+        set { look.mirror = newValue }
     }
 
     /// Asks for a picture of the user's own and keeps a copy of it.
@@ -1699,9 +1708,7 @@ final class CoordinatorController: ObservableObject {
             observeDisplays()
             startPresenceBubble()
         }
-        backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
-        cameraBackground = CameraBackground(rawValue: defaults.string(forKey: "cameraBackground") ?? "") ?? .normal
-        cameraBackgroundImage = defaults.string(forKey: "cameraBackgroundImage") ?? CameraBackgroundPreset.defaultChoice
+        look = CameraLook.load(from: defaults)
         micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
         // First launch with this key migrates today's settings into "Your previous
         // layout" (see LayoutLibrary.loadOrMigrate); the old keys stay as they were.

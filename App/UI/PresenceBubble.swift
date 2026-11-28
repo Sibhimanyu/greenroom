@@ -40,7 +40,7 @@ final class PresenceFeed: @unchecked Sendable {
     /// video"). Flips only this bubble on the owner's screen; the meeting, the recordings and the
     /// Room screen get the true picture (`CameraLookRules.mirrorsBubble`). Read per frame, so
     /// flipping it shows at once.
-    static let mirrorKey = "camera.mirrorSelfView"
+    static let mirrorKey = CameraLook.mirrorKey
     static var mirrorsSelfView: Bool {
         CameraLookRules.mirrorsBubble(mirror: (UserDefaults.standard.object(forKey: mirrorKey) as? Bool) ?? true)
     }

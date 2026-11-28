@@ -10,7 +10,6 @@
 import SwiftUI
 
 struct HomeCameraPanel: View {
-    @AppStorage(PresenceFeed.mirrorKey) private var mirrorSelfView = true
     @ObservedObject var coordinator: CoordinatorController
     let cameras: [LocalDeviceResolver.Camera]
     let more: () -> Void
@@ -112,7 +111,7 @@ struct HomeCameraPanel: View {
             }
 
             // The same setting as the Camera look in Settings > Layouts, one click from Start.
-            HomeTileToggleRow(title: CameraLookRules.mirrorTitle, isOn: $mirrorSelfView,
+            HomeTileToggleRow(title: CameraLookRules.mirrorTitle, isOn: $coordinator.cameraMirror,
                               help: CameraLookRules.mirrorHelp)
 
             // Stop video (R49), last and after a divider, as in the bar's and the toolbar's camera menus.

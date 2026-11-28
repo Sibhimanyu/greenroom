@@ -52,6 +52,7 @@ requirement is never "verified live" because a test passed: tests prove
 | [layouts-builder.md](layouts-builder.md) | The merged Layouts tab: layouts own the camera piece and what's shared, one rule for who sees what | R1 to R24 |
 | [meeting-setup.md](meeting-setup.md) | One owner for the layout's camera state, camera piece and share: saved before a meeting, for this meeting during one | R1 to R6 |
 | [camera-look.md](camera-look.md) | One owner for the camera look (background, picture, removal, mirror): same keys, one value, one rule for what reaches the Stage | R1 to R5 |
+| [shape-preview.md](shape-preview.md) | One owner for the live shape preview: who looks, when the picture runs and stops, what is published | R1 to R9 |
 | [shelved.md](shelved.md) | Features the owner has parked (code kept, not shipped): Record the Mac's own sound, with how to test it | S1 to S4 |
 
 ## Related

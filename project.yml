@@ -325,6 +325,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests
+      - path: App/Recording/AudioLevelMath.swift
       - path: App/Layout/LayoutTemplate.swift
       - path: App/Layout/LayoutBuiltIns.swift
       - path: App/Layout/LayoutGeometry.swift

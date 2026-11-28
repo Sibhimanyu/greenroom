@@ -1358,6 +1358,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             joinParam.displayName = displayName
             joinParam.isNoVideo = !enableMedia
             joinParam.isNoAudio = !enableMedia
+            #if DEBUG
+            joinParam.isAudioRawDataStereo = true
+            joinParam.audioRawdataSamplingRate = ZoomSDKAudioRawdataSamplingRate_48K
+            #endif
             joinParam.onBehalfToken = onBehalfToken
 
             let result = meetingService.joinMeeting(joinParam)
@@ -1463,6 +1467,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             startParam.userType = SDKUserType_APIUser
             startParam.isNoVideo = !enableMedia
             startParam.isNoAudio = !enableMedia
+            #if DEBUG
+            startParam.isAudioRawDataStereo = true   // audio probe: ask for 48 kHz stereo raw audio
+            startParam.audioRawdataSamplingRate = ZoomSDKAudioRawdataSamplingRate_48K
+            #endif
 
             let result = meetingService.startMeeting(withZAK: startParam)
             if result != ZoomSDKError_Success {
@@ -1769,7 +1777,15 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
         // so a "no" after sign-in may be wrong. Log it again here, once.
         if state == ZoomSDKMeetingStatus_InMeeting {
             checkRawVideoLicence(when: "in meeting")
+            #if DEBUG
+            MeetingAudioProbe.shared.start()   // diagnostic only; compiled out of Release
+            #endif
         }
+        #if DEBUG
+        if state == ZoomSDKMeetingStatus_Disconnecting || state == ZoomSDKMeetingStatus_Ended || state == ZoomSDKMeetingStatus_Failed {
+            MeetingAudioProbe.shared.stop()
+        }
+        #endif
         // Claim the video container as early as the SDK will give it to us.
         //
         // Zoom's own custom-UI guidance is explicit: build the custom UI on

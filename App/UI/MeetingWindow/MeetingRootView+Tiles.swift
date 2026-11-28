@@ -24,33 +24,26 @@ extension MeetingRootView {
     /// resize would reshuffle faces while a teacher was looking at them.
     var perPage: Int {
         // Speaker view's filmstrip is one row, as many as fit; Multi-speaker adds its large tiles.
-        if isSpeakerMode { return stripCapacity }
-        if isMultiMode { return max(1, plan.large.count) + stripCapacity }
         let area = gridHost.bounds
-        guard area.width > 0, area.height > 0 else { return 9 }
-        // ~260x150 is the smallest tile a face and a name label stay legible in.
-        let fits = Int(area.width / 260) * Int(area.height / 150)
-        switch fits {
-        case ..<2: return 1
-        case ..<4: return 2
-        case ..<6: return 4
-        case ..<9: return 6
-        case ..<12: return 9
-        default: return 12
-        }
+        return MeetingWindowLayout.pageSize(mode: layoutMode, galleryWidth: area.width, galleryHeight: area.height,
+                                            stripCapacity: stripCapacity, largeCount: plan.large.count)
+    }
+
+    /// The view as the layout rules name it.
+    var layoutMode: MeetingWindowLayout.Mode {
+        isSpeakerMode ? .speaker : (isMultiMode ? .multiSpeaker : .gallery)
     }
 
     /// How many 16:9 filmstrip tiles fit along the strip, capped so the strip
     /// stays a strip. Quantised by whole tiles, so it moves only when a tile does.
     private var stripCapacity: Int {
-        MeetingVideoLayout.stripCapacity(width: max(0, gridHost.bounds.width - stripReservedRight),
-                                         tileHeight: Self.stripHeight - 8)
+        MeetingWindowLayout.stripCapacity(gridWidth: gridHost.bounds.width, stripHeight: Self.stripHeight,
+                                          reservedRight: stripReservedRight)
     }
 
     /// Multi-speaker's strip leaves its right end to your preview.
     private var stripReservedRight: CGFloat {
-        guard isMultiMode, !hideSelfView else { return 0 }
-        return ((Self.stripHeight - 8) * 16 / 9).rounded() + 8
+        MeetingWindowLayout.reservedRight(mode: layoutMode, stripHeight: Self.stripHeight, hidesSelf: hideSelfView)
     }
 
     /// Who the gallery or the filmstrip lists: everyone, or everyone but the
@@ -170,9 +163,7 @@ extension MeetingRootView {
     /// so a class of forty does not mean forty live video streams.
     var pageRoster: [ZoomMeetingSDKClient.RosterEntry] {
         let list = listed
-        let start = page * perPage
-        guard start < list.count else { return [] }
-        return Array(list[start..<min(start + perPage, list.count)])
+        return Array(list[MeetingWindowLayout.pageRange(page: page, perPage: perPage, listed: list.count)])
     }
 
     /// Puts your own picture at `rect` (in the grid host's space): in Gallery and
@@ -187,7 +178,7 @@ extension MeetingRootView {
         if isMultiMode { layoutMultiSpeaker(); return }
         if isSpeakerMode { layoutFilmstrip(); return }
         let visible = pageRoster
-        let lastPage = (page + 1) * perPage >= listed.count
+        let lastPage = MeetingWindowLayout.isLastPage(page: page, perPage: perPage, listed: listed.count)
         let withSelf = !hideSelfView && lastPage
         placeSelf(MeetingVideoLayout.galleryWithSelf(count: visible.count, includeSelf: withSelf,
                                                      in: gridHost.bounds.size).me)
@@ -276,8 +267,7 @@ extension MeetingRootView {
         }
         do {
             // Zoom pages with a pair of arrows at the sides of the gallery.
-            let area = gridHost.frame
-            let size = NSSize(width: 30, height: 56)
+            let arrows = MeetingWindowLayout.pagerArrows(in: gridHost.frame)
             for button in [pagePrev, pageNext] {
                 button?.isBordered = false
                 button?.wantsLayer = true
@@ -292,16 +282,15 @@ extension MeetingRootView {
             pageNext?.isEnabled = page < pages - 1
             // An arrow with nowhere to go loses its capsule and fades.
             for button in [pagePrev, pageNext] { button?.alphaValue = button?.isEnabled == true ? 1 : 0.35 }
-            pagePrev?.frame = NSRect(x: area.minX + 6, y: area.midY - size.height / 2, width: size.width, height: size.height)
-            pageNext?.frame = NSRect(x: area.maxX - 6 - size.width, y: area.midY - size.height / 2,
-                                     width: size.width, height: size.height)
+            pagePrev?.frame = arrows.previous
+            pageNext?.frame = arrows.next
             pagePrev?.toolTip = "Previous page"
             pageNext?.toolTip = "Next page"
         }
     }
 
     private var pageCount: Int? {
-        listed.isEmpty ? nil : max(1, Int(ceil(Double(listed.count) / Double(perPage))))
+        listed.isEmpty ? nil : MeetingWindowLayout.pageCount(listed: listed.count, perPage: perPage)
     }
 
     /// A page change swaps which students are on screen, so tiles, video

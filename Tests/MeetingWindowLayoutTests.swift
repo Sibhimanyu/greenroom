@@ -162,7 +162,7 @@ final class MeetingWindowLayoutTests: XCTestCase {
         let stage = rect(0, 64, 680, 600)
         XCTAssertEqual(L.shareChipFrame(in: stage, textWidth: 200), rect(228, 626, 224, 26))
         XCTAssertEqual(L.shareChipFrame(in: stage, textWidth: 900).width, 656)
-        XCTAssertEqual(L.shareChipFrame(in: rect(0, 0, 20, 100), textWidth: 50).width, -4, "quirk: not clamped")
+        XCTAssertEqual(L.shareChipFrame(in: rect(0, 0, 20, 100), textWidth: 50).size.width, -4, "quirk: not clamped")
         XCTAssertEqual(L.shareArea(stage: rect(0, 64, 1000, 600), clearRight: 680), rect(0, 64, 680, 600))
         XCTAssertEqual(L.shareArea(stage: rect(0, 64, 1000, 600), clearRight: 1200), rect(0, 64, 1000, 600))
     }
@@ -172,7 +172,7 @@ final class MeetingWindowLayoutTests: XCTestCase {
         let stage = rect(0, 64, 680, 600)
         XCTAssertEqual(L.inspectorFrame(stage: stage, clearRight: 680, width: 300, wantedHeight: 400), rect(364, 248, 300, 400))
         XCTAssertEqual(L.inspectorFrame(stage: stage, clearRight: 680, width: 300, wantedHeight: 900), rect(364, 80, 300, 568))
-        XCTAssertEqual(L.inspectorFrame(stage: rect(0, 0, 680, 20), clearRight: 680, width: 300, wantedHeight: 400).height, -12,
+        XCTAssertEqual(L.inspectorFrame(stage: rect(0, 0, 680, 20), clearRight: 680, width: 300, wantedHeight: 400).size.height, -12,
                        "quirk: not clamped")
     }
 

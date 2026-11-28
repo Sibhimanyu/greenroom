@@ -46,9 +46,7 @@ final class MeetingRootView: NSView {
     /// itself a strip, so they overlay the grid's right edge instead of taking
     /// a column off it. 900pt is where 320 + 300 + a usable canvas stops
     /// fitting side by side.
-    static let narrowWidth: CGFloat = 900
-
-    var isNarrow: Bool { bounds.width < Self.narrowWidth }
+    var isNarrow: Bool { MeetingWindowLayout.isNarrow(width: bounds.width) }
 
     let gridHost = NSView()
 
@@ -236,10 +234,6 @@ final class MeetingRootView: NSView {
 
     var controls: MeetingControlsModel? { ParticipantGridWindowController.controls }
 
-    /// DESIGN.md's drawer range is 280-320pt; the side panel takes the top.
-    static let sidePanelWidth: CGFloat = 320
-
-    static let selfPreviewSize = NSSize(width: 192, height: 108)
 
     static let stripHeight: CGFloat = MeetingTheme.stripHeight
 
@@ -375,7 +369,7 @@ final class MeetingRootView: NSView {
         // Clamp rather than reset. If someone leaves while the teacher is on the
         // last page, dropping them to page one would lose their place; this only
         // moves them when the page they are on no longer exists.
-        let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
+        let pages = MeetingWindowLayout.pageCount(listed: listed.count, perPage: perPage)
         page = min(page, pages - 1)
 
         syncTiles()

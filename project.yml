@@ -405,6 +405,7 @@ targets:
       - path: App/SessionPhase.swift
       - path: App/Meeting/MeetingSurface.swift
       - path: App/UI/MeetingToolbarLayout.swift
+      - path: App/UI/MeetingWindow/MeetingWindowLayout.swift
       - path: App/UI/MeetingTopBarLayout.swift
       - path: App/UI/ParticipantClickRules.swift
       - path: App/UI/MeetingMenuSpec.swift

@@ -264,7 +264,7 @@ extension MeetingRootView {
     /// video, in that order and without waiting for the poll.
     private func applyViewChange() {
         rebuildPlan()
-        let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
+        let pages = MeetingWindowLayout.pageCount(listed: listed.count, perPage: perPage)
         page = min(page, pages - 1)
         syncTiles()
         updateChromeText()

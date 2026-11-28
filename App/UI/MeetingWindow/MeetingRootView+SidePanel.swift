@@ -63,10 +63,8 @@ extension MeetingRootView {
     }
 
     func layoutSidePanel(_ panel: MeetingSidePanel) {
-        let width = sidePanelHost.bounds.width, height = sidePanelHost.bounds.height
-        let head: CGFloat = 44
+        let width = sidePanelHost.bounds.width
         sidePanelBacking.frame = sidePanelHost.bounds
-        sidePanelDivider.frame = NSRect(x: 0, y: 0, width: 1, height: height)
         // On top of the panel's contents: the people list and the chat are
         // opaque and covered it, so the line stopped under the queue (owner,
         // 2026-11-16: "a proper line should be drawn in between").
@@ -76,15 +74,15 @@ extension MeetingRootView {
         // Zoom's panel headers: "Participants (N)" and "Chat".
         sidePanelTitle.stringValue = panel == .chat ? "Chat" : "Participants (\(roster.count + 1))"
         sidePanelTitle.sizeToFit()
-        sidePanelTitle.frame = NSRect(x: 16, y: height - head + (head - sidePanelTitle.frame.height) / 2,
-                                      width: min(sidePanelTitle.frame.width, max(0, width - 64)),
-                                      height: sidePanelTitle.frame.height)
-        sidePanelClose.frame = NSRect(x: width - 36, y: height - head + 10, width: 24, height: 24)
+        let parts = MeetingWindowLayout.sidePanelParts(size: sidePanelHost.bounds.size, titleSize: sidePanelTitle.frame.size)
+        sidePanelDivider.frame = parts.divider
+        sidePanelTitle.frame = parts.title
+        sidePanelClose.frame = parts.close
         // The count and Invite moved into the Participants panel itself (its
         // footer), as Zoom has them.
         sidePanelCount.isHidden = true
         inviteButton.isHidden = true
-        let body = NSRect(x: 0, y: 0, width: width, height: max(0, height - head))
+        let body = parts.body
 
         switch panel {
         case .chat:
@@ -105,11 +103,12 @@ extension MeetingRootView {
             // the rest.
             let state = peoplePanelQueueState
             let wanted = liveQueue.height(for: state, width: width)
-            let queueHeight = wanted == 0 ? 0 : min(wanted, (body.height * 0.45).rounded())
+            let queueHeight = MeetingWindowLayout.queueHeight(wanted: wanted, bodyHeight: body.height)
+            let split = MeetingWindowLayout.peopleSplit(bodyHeight: body.height, width: width, queueHeight: queueHeight)
             queueScroll.isHidden = queueHeight <= 0
-            queueScroll.frame = NSRect(x: 0, y: body.height - queueHeight, width: width, height: queueHeight)
+            queueScroll.frame = split.queue
             if queueHeight > 0 { placeQueue(height: queueHeight, width: width, state: state) }
-            peopleView.frame = NSRect(x: 0, y: 0, width: width, height: max(0, body.height - queueHeight))
+            peopleView.frame = split.roster
             updatePeopleRows()
         }
     }

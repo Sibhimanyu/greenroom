@@ -179,7 +179,6 @@ extension MeetingRootView {
         shareChip.toolTip = help
         shareChip.setAccessibilityLabel(text)
         shareChip.sizeToFit()
-        let width = min(stage.width - 24, shareChip.frame.width + 24)
-        shareChip.frame = NSRect(x: stage.midX - width / 2, y: stage.maxY - 12 - 26, width: width, height: 26)
+        shareChip.frame = MeetingWindowLayout.shareChipFrame(in: stage, textWidth: shareChip.frame.width)
     }
 }

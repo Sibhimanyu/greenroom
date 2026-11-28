@@ -55,6 +55,7 @@ requirement is never "verified live" because a test passed: tests prove
 | [saved-settings.md](saved-settings.md) | One owner for the 34 settings the app keeps in UserDefaults: one declaration of key, type and default, loaded and saved through one tested module | R1 to R6 |
 | [shape-preview.md](shape-preview.md) | One owner for the live shape preview: who looks, when the picture runs and stops, what is published | R1 to R9 |
 | [display-changes.md](display-changes.md) | What happens when a display is plugged in or pulled out: the log line, defer or act, re-tile or leave windows | R1 to R4 |
+| [meeting-window-layout.md](meeting-window-layout.md) | The Meeting window's own arithmetic (page sizes, regions, side panel, your preview, drawers, arrows) as pure rules, quirks kept | R1 to R17 |
 | [shelved.md](shelved.md) | Features the owner has parked (code kept, not shipped): Record the Mac's own sound, with how to test it | S1 to S4 |
 
 ## Related

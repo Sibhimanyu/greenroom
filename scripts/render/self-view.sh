@@ -6,7 +6,7 @@
 NAME=self-view; source "$(dirname "$0")/lib.sh"
 # The tile's button reads MeetingBarModel, which pulls in the layout model: reuse the Layouts set.
 stage_layouts
-# LevelMeterView lives in ParticipantGridWindow.swift (SDK-bound); a stand-in keeps the tile's layout.
+# LevelMeterView lives in App/UI/MeetingWindow/MeetingMeters.swift (it sits beside the SDK-bound readiness pill); a stand-in keeps the tile's layout.
 printf 'import AppKit\nfinal class LevelMeterView: NSView { var level: Double = 0 }\n' > "$STAGE/MeterStub.swift"
 # The view-window tile's right-click opens a MeetingMenuPanel, which logs through the coordinator.
 printf 'enum CoordinatorController { static func sessionLog(_ s: String) {} }\n' > "$STAGE/LogStub.swift"

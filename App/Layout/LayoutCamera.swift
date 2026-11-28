@@ -78,26 +78,26 @@ struct LayoutCamera: Codable, Equatable {
     /// The defaults keys the app's working copy of the camera piece lives under, in one place:
     /// `global(from:)` reads them and the coordinator's adoption keeps them out of its way.
     enum Key {
-        static let shape = "webcamShape"
-        static let width = "bubbleWidthFraction"
-        static let rightInset = "bubbleRightInset"
-        static let bottomInset = "bubbleBottomInset"
-        static let cutoutHeight = "cutoutHeightFraction"
-        static let cutoutRightInset = "cutoutRightInset"
+        static let shapeKey = "webcamShape"
+        static let widthKey = "bubbleWidthFraction"
+        static let rightInsetKey = "bubbleRightInset"
+        static let bottomInsetKey = "bubbleBottomInset"
+        static let cutoutHeightKey = "cutoutHeightFraction"
+        static let cutoutRightInsetKey = "cutoutRightInset"
     }
-    static let defaultsKeys = [Key.shape, Key.width, Key.rightInset, Key.bottomInset, Key.cutoutHeight, Key.cutoutRightInset]
+    static let defaultsKeys = [Key.shapeKey, Key.widthKey, Key.rightInsetKey, Key.bottomInsetKey, Key.cutoutHeightKey, Key.cutoutRightInsetKey]
     static let shareDefaultsKey = "shareTarget"
 
     /// Today's global camera settings, straight from the defaults the app has always written.
     static func global(from defaults: UserDefaults) -> LayoutCamera {
         var c = LayoutCamera()
-        c.shape = WebcamShape(rawValue: defaults.string(forKey: Key.shape) ?? "") ?? c.shape
+        c.shape = WebcamShape(rawValue: defaults.string(forKey: Key.shapeKey) ?? "") ?? c.shape
         func number(_ key: String, _ fallback: Double) -> Double { (defaults.object(forKey: key) as? Double) ?? fallback }
-        c.widthFraction = number(Key.width, c.widthFraction)
-        c.rightInset = number(Key.rightInset, c.rightInset)
-        c.bottomInset = number(Key.bottomInset, c.bottomInset)
-        c.cutoutHeightFraction = number(Key.cutoutHeight, c.cutoutHeightFraction)
-        c.cutoutRightInset = number(Key.cutoutRightInset, c.cutoutRightInset)
+        c.widthFraction = number(Key.widthKey, c.widthFraction)
+        c.rightInset = number(Key.rightInsetKey, c.rightInset)
+        c.bottomInset = number(Key.bottomInsetKey, c.bottomInset)
+        c.cutoutHeightFraction = number(Key.cutoutHeightKey, c.cutoutHeightFraction)
+        c.cutoutRightInset = number(Key.cutoutRightInsetKey, c.cutoutRightInset)
         return c
     }
 
@@ -133,6 +133,23 @@ extension LayoutLibrary {
         guard !keys.isEmpty else { return false }
         guard save(self) else { return false }
         for key in keys { defaults.set(true, forKey: key) }
+        return true
+    }
+}
+
+extension LayoutLibrary {
+    static let cameraStateMigratedKey = "layoutCameraStateMigrated"
+
+    /// meeting-setup R1.2, one time: every layout with no camera state gets the one saved for the
+    /// whole app (`saved`, from the two old keys; the keys stay readable). A built-in that ships with
+    /// one (Everyone & me) keeps it, like `migrateCameraAndShare`. The key is set only after `save`
+    /// worked, so a failed save runs again next launch. Returns whether it ran and saved.
+    @discardableResult
+    mutating func migrateCameraState(saved: CameraState, defaults: UserDefaults, save: (LayoutLibrary) -> Bool) -> Bool {
+        guard !defaults.bool(forKey: Self.cameraStateMigratedKey) else { return false }
+        for i in templates.indices where templates[i].cameraState == nil { templates[i].cameraState = saved }
+        guard save(self) else { return false }
+        defaults.set(true, forKey: Self.cameraStateMigratedKey)
         return true
     }
 }
@@ -257,29 +274,14 @@ enum CameraPlacementRules {
     }
 }
 
-/// Who is committing a camera drag. Only Settings -> Layouts writes the saved layout; Home's
-/// preview (like the bar and the meeting, which never commit through here) changes the running meeting.
+/// Who is committing a camera drag. Settings -> Layouts is a saved edit of the dragged piece
+/// (`MeetingSetup.savedEdit`); Home's preview is a change from Home (`MeetingSetup.change`).
 enum LayoutEditSource: Equatable, CaseIterable {
     case settingsLayouts, home
 
     var writesSavedLayout: Bool { self == .settingsLayouts }
 }
 
-extension LayoutLibrary {
-    /// Writes the camera piece and/or share into the active layout only. False with no active layout.
-    @discardableResult
-    mutating func updateActive(camera: LayoutCamera?, share: ShareTarget?) -> Bool {
-        guard var t = active else { return false }
-        if let camera { t.camera = camera }
-        if let share { t.share = share }
-        update(t)
-        return true
-    }
-}
-
-/// When the layout's camera and share are put into the live settings. The live settings
-/// (Home, the bar, a drag in the meeting) are a working copy: they change the running meeting
-/// and are never written back to the layout. They are replaced only at these moments.
 extension LayoutTemplate {
     /// R32.2: the layout a running meeting becomes when its saved layout is edited.
     /// The pieces, camera and share follow the edit; the shared display stays as the meeting started it until
@@ -288,53 +290,5 @@ extension LayoutTemplate {
         var adopted = edited
         if adopted.twoDisplays != nil { adopted.twoDisplays?.sharedSlot = twoDisplays?.sharedSlot ?? .main }
         return adopted
-    }
-}
-
-enum LayoutPieceAdoption {
-    struct Plan: Equatable {
-        var camera: LayoutCamera?
-        var share: ShareTarget?
-
-        /// Adopting a camera or a share changes the working copy only; the compositor behind Home's
-        /// live preview and the bubble must be told too, or they keep the old picture until Start.
-        var refreshesPicture: Bool { camera != nil || share != nil }
-    }
-
-    /// The library changed (an edit in Settings -> Layouts, a pick). With no meeting running, the
-    /// active layout's changed pieces flow into the working copy at once; an edit to another layout
-    /// touches nothing. In a meeting only the running layout's camera moves; its share waits for
-    /// Start, Snap Back or Apply now.
-    static func forLibraryEdit(old: LayoutLibrary, new: LayoutLibrary, locked: Bool, running: LayoutTemplate?) -> Plan? {
-        if locked {
-            guard let running, let edited = new.template(id: running.id) else { return nil }
-            return plan(old: running, new: edited).map { Plan(camera: $0.camera, share: nil) }
-        }
-        return plan(old: old.active, new: new.active)
-    }
-
-    /// Start, Stop and launch: the layout's value applies. Nil with no layout (the globals stand).
-    /// A share the owner chose on Home before Start (`keepingLiveShare`) stays for that meeting.
-    static func atStart(_ template: LayoutTemplate?, keepingLiveShare: Bool = false) -> Plan? {
-        guard let template else { return nil }
-        let share = keepingLiveShare ? nil : template.share
-        guard template.camera != nil || share != nil else { return nil }
-        return Plan(camera: template.camera, share: share)
-    }
-
-    /// Snap Back: the layout's share returns; the camera spot is left as the meeting has it.
-    static func atSnapBack(_ template: LayoutTemplate?) -> Plan? {
-        guard let share = template?.share else { return nil }
-        return Plan(camera: nil, share: share)
-    }
-
-    /// The library changed. A different layout brings its pieces in; the same one brings in
-    /// only the piece that was edited. Anything else leaves the live settings alone.
-    static func plan(old: LayoutTemplate?, new: LayoutTemplate?) -> Plan? {
-        guard let new else { return nil }
-        guard let old, old.id == new.id else { return atStart(new) }
-        let plan = Plan(camera: new.camera != old.camera ? new.camera : nil,
-                        share: new.share != old.share ? new.share : nil)
-        return plan.camera == nil && plan.share == nil ? nil : plan
     }
 }

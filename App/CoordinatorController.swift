@@ -354,7 +354,6 @@ final class CoordinatorController: ObservableObject {
         didSet {
             guard cameraDirectorSettings != oldValue else { return }
             cameraDirectorSettings.save(defaults)
-            syncSavedCameraState()
             Analytics.setting("camera_director", on: cameraDirectorSettings.isUsable)
             // Applied live: a teacher who turns it on mid-class should not
             // have to end the session to get it.
@@ -867,47 +866,161 @@ final class CoordinatorController: ObservableObject {
     /// speaker tile and participant view show only the others. OFF: your
     /// own tile appears among them like anyone else's. Local rendering
     /// only - the class receives your video either way. Applies live.
-    /// Layouts -> "Show my camera on my screen". Local only: whether Greenroom
-    /// puts the camera bubble on this screen. The meeting, recordings and the
-    /// share follow `cameraIsOff` (the Webcam page), never this. Global.
+    /// The old app-wide "Show my camera on my screen" key. Import-only now (meeting-setup R1.3,
+    /// R6.1): each layout carries its camera state, and this is read once at launch and by a
+    /// settings import. With no layout active it is also where a saved camera state lands.
     @Published var cameraShownOnMyScreen: Bool {
-        didSet {
-            defaults.set(cameraShownOnMyScreen, forKey: "cameraShownOnMyScreen")
-            syncSavedCameraState()
-        }
+        didSet { defaults.set(cameraShownOnMyScreen, forKey: "cameraShownOnMyScreen") }
     }
-    /// The camera state (GLOSSARY.md): the saved default, which is `noCamera` and
-    /// `cameraShownOnMyScreen` read as one word, plus the running meeting's own change
-    /// from the bar or Home. A live change never writes the default; Start and Snap
-    /// Back drop it (`resetPresenceBubbleToLayoutDefault`).
-    @Published private(set) var cameraSession = CameraStateSession(saved: .everyoneAndMe)
-    var cameraState: CameraState { cameraSession.current }
+
+    // MARK: Meeting setup (docs/specs/meeting-setup.md)
+
+    /// The one owner of the active layout's camera state, camera piece and what's shared: each one's
+    /// saved value and any for-this-meeting change (App/Layout/MeetingSetup.swift). The only stored copy:
+    /// `cameraState`, `webcamShape`, the bubble fractions and `shareTarget` below are reads from it
+    /// (their setters are `changeSetup`, the Home / bar / menu door), and the layout in
+    /// `layoutLibrary` is the saved value it writes back to. Published so views refresh; written only
+    /// by `changeSetup`, `savedEditSetup`, `applySetupEvent` and `followLibraryChange`.
+    @Published private(set) var meetingSetup = MeetingSetup(
+        saved: .init(cameraState: .everyoneAndMe, cameraPiece: LayoutCamera(), share: ShareTarget()))
+
+    /// A meeting or a Record session is up (starting, live or between takes): a change from Home, the
+    /// bar, the toolbar or the present menu is then for this meeting (R4.1). `SessionPhase.isSessionUp`
+    /// is the question: it is true from the moment Start is pressed until the picture is torn down,
+    /// and it covers a Record session, whose bar and Stage take the same changes.
+    private var setupMeetingLive: Bool { phase.isSessionUp }
+
+    /// What a layout with nothing saved resolves to: the app's own values, read from the old keys for the
+    /// state where no layout is active (R6.1: read, never written).
+    private var setupFallback: MeetingSetup.Values {
+        .init(cameraState: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
+                                     shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+              cameraPiece: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults))
+    }
+
+    /// The camera state in use: the for-this-meeting one if there is one, else the saved one.
+    var cameraState: CameraState { meetingSetup.cameraState }
+    /// The saved camera state of the active layout (what Settings -> Layouts shows).
+    var savedCameraState: CameraState { meetingSetup.saved.cameraState }
+
     /// Stop video (R49): Zoom's own video is off, so nothing goes to the meeting, not even the screen.
     /// Not a camera state. Written only from Zoom's video-status callback (`noteOwnVideoStatus`) and at
-    /// Start and the end (`resetPresenceBubbleToLayoutDefault`): CoordinatorController+StopVideo.swift.
+    /// Start and the end (`applySetupEvent`): CoordinatorController+StopVideo.swift.
     @Published var videoStopped = false
-    var savedCameraState: CameraState {
-        CameraState(noCamera: cameraDirectorSettings.noCamera, shownOnMyScreen: cameraShownOnMyScreen)
+
+    /// A change from Home, the bar, the toolbar, the present menu or a shortcut: saved before a meeting,
+    /// for this meeting during one (R3.1, R4.1). The Stage hears of it (R2.5).
+    private func changeSetup(_ change: MeetingSetup.Change) {
+        let before = meetingSetup
+        let effect = meetingSetup.change(change, meetingLive: setupMeetingLive)
+        applySetupEffect(effect, before: before)
     }
-    private func syncSavedCameraState() {
-        let saved = savedCameraState
-        if cameraSession.saved != saved { cameraSession.setSaved(saved) }
+
+    /// A change from Settings -> Layouts: always saved; a live meeting gets it unless that setting has a
+    /// for-this-meeting change (R4.2).
+    func savedEditSetup(_ change: MeetingSetup.Change) {
+        let before = meetingSetup
+        let effect = meetingSetup.savedEdit(change, meetingLive: setupMeetingLive)
+        applySetupEffect(effect, before: before)
     }
-    /// Settings -> Layouts: the saved default for each Start. Writes the two old keys
-    /// in step, so a downgrade and every other reader still agree.
-    func setSavedCameraState(_ state: CameraState) {
-        var next = cameraDirectorSettings
-        next.noCamera = state.noCamera
-        cameraDirectorSettings = next
-        cameraShownOnMyScreen = state.shownOnMyScreen
-        if cameraSession.live == nil { applyCameraStateLive() }
+
+    /// Start, Snap Back, the meeting ending and a layout switch. Also what Stop video and the
+    /// camera bubble's hidden flag do at the same moments (R49, R6.3).
+    func applySetupEvent(_ event: MeetingSetup.Event) {
+        let before = meetingSetup
+        let effect = meetingSetup.apply(event)
+        applySetupEffect(effect, before: before)
+        switch event {
+        case .start: noteSetupMoment(.start)
+        case .snapBack: noteSetupMoment(.snapBack)
+        case .meetingEnded: noteSetupMoment(.end)
+        case .layoutSwitched: noteSetupMoment(.layoutSwitch)
+        case .keep, .reset: break
+        }
     }
-    /// The bar and Home: this meeting only. The saved default stays as it was.
-    func setLiveCameraState(_ state: CameraState) {
-        cameraSession.setLive(state)
-        applyCameraStateLive()
+
+    /// What goes with the setup at these moments: Stop video is not part of the camera state, so only
+    /// Start and the end clear it (R49); the bubble's hidden flag follows the camera state in use (R6.3).
+    private func noteSetupMoment(_ moment: CameraStateSession.Moment) {
+        let stopped = StopVideoRules.videoStopped(after: moment, was: videoStopped)
+        if stopped != videoStopped { videoStopped = stopped }
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
     }
-    /// Puts the current state on the stage and the bubble: whether everyone sees
+
+    /// Settings -> Layouts: Keep and Reset (R4.4), under the row that has a for-this-meeting change.
+    func keepForThisMeeting(_ setting: MeetingSetup.Setting) { applySetupEvent(.keep(setting)) }
+    func resetForThisMeeting(_ setting: MeetingSetup.Setting) { applySetupEvent(.reset(setting)) }
+
+    /// Home's one quiet line under a control: where that setting's value lives (R3.2, R4.3).
+    func homeSetupLine(_ setting: MeetingSetup.Setting) -> String? {
+        MeetingSetupLine.home(layoutName: layoutLibrary.active?.name, sessionUp: phase.isSessionUp,
+                              forThisMeeting: meetingSetup.isForThisMeeting(setting),
+                              recording: phase.recordOnlyActive)
+    }
+
+    /// Settings -> Layouts' line under a row: "For this meeting: <value>", nil when that setting has no
+    /// change in effect (R4.4). The editor only ever shows the active layout, which is the one the setup holds.
+    func layoutsSetupLine(_ setting: MeetingSetup.Setting) -> String? {
+        let name: String
+        switch setting {
+        case .cameraState: name = meetingSetup.cameraState.name
+        case .cameraPiece: name = MeetingSetupLine.pieceName(saved: meetingSetup.saved.cameraPiece, inUse: meetingSetup.cameraPiece)
+        case .share: name = LookSummary.shareText(meetingSetup.share)
+        }
+        return MeetingSetupLine.layouts(forThisMeeting: meetingSetup.isForThisMeeting(setting), valueName: name)
+    }
+
+    /// The layout library changed (a pick, an edit, Restore original, an undo, an import): a different
+    /// active layout is a layout switch, an edit to the active one is a Layouts edit (R4.2, R5.1, R5.2).
+    private func followLibraryChange(oldActiveID: UUID?) {
+        let before = meetingSetup
+        let effect = meetingSetup.followLibrary(oldActiveID: oldActiveID, library: layoutLibrary,
+                                                fallback: setupFallback, meetingLive: setupMeetingLive)
+        applySetupEffect(effect, before: before)
+        if layoutLibrary.activeID != oldActiveID { noteSetupMoment(.layoutSwitch) }
+    }
+
+    /// Writes what the module says was saved into the active layout (which persists it), then tells the
+    /// Stage what is in use now (R2.5). Nobody calls `requestShapeApply()` for these three settings.
+    private func applySetupEffect(_ effect: MeetingSetup.Effect, before: MeetingSetup) {
+        if !effect.saved.isEmpty { writeSavedSetup(effect.saved) }
+        guard !effect.inUse.isEmpty else { return }
+        if effect.inUse.contains(.share) {
+            let old = before.share, new = meetingSetup.share
+            targetBeforeWhiteboard = WhiteboardOpenRules.remembered(
+                targetBeforeWhiteboard, replaced: old,
+                oldIsWhiteboard: old.kind == .whiteboard, newIsWhiteboard: new.kind == .whiteboard)
+            // Choosing a screen-based tile is asking for the screen: the permission pane opens once (requestShapeApply).
+            requestShapeApply(rebuild: new.kind != old.kind)
+            refreshCaptureDisplay()
+        }
+        if effect.inUse.contains(.cameraPiece) {
+            let old = before.cameraPiece, new = meetingSetup.cameraPiece
+            if old.shape != new.shape {
+                Analytics.setting("webcam_shape", new.shape.rawValue)
+                requestShapeApply()
+            } else {
+                stage?.updatePlacement(stageLayout)
+            }
+        }
+        if effect.inUse.contains(.cameraState) { applyCameraStateLive() }
+    }
+
+    /// The module's saved values go into the active layout (which persists them). There is always one
+    /// (R6.1: `LayoutLibrary.ensureActive`, Leave my windows alone cannot be deleted, and a session of
+    /// either kind holds it). A damaged file with none keeps the change in memory only: the old
+    /// app-wide keys are import-only now, nothing writes them.
+    private func writeSavedSetup(_ settings: Set<MeetingSetup.Setting>) {
+        guard layoutLibrary.active != nil else { return }
+        var next = layoutLibrary
+        if next.writeActive(meetingSetup.saved, settings: settings) { layoutLibrary = next }
+    }
+
+    /// Settings -> Layouts: the saved camera state of the active layout (R4.2).
+    func setSavedCameraState(_ state: CameraState) { savedEditSetup(.cameraState(state)) }
+    /// The bar and Home: for this meeting once one is live, else saved into the active layout.
+    func setLiveCameraState(_ state: CameraState) { changeSetup(.cameraState(state)) }
+    /// Puts the camera state in use on the stage and the bubble: whether everyone sees
     /// the camera (`cameraIsOff`) and whether it shows on this screen.
     private func applyCameraStateLive() {
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
@@ -995,48 +1108,49 @@ final class CoordinatorController: ObservableObject {
     ///
     /// Clamped on the way in: a bubble placed off-canvas, or a bubble nobody can see, is indistinguishable
     /// from a camera that stopped working.
-    @Published var bubbleWidthFraction: Double {
-        didSet {
-            let clamped = min(max(bubbleWidthFraction, 0.08), 0.6)
-            if clamped != bubbleWidthFraction { bubbleWidthFraction = clamped; return }
-            defaults.set(bubbleWidthFraction, forKey: "bubbleWidthFraction")
-        }
+    var bubbleWidthFraction: Double {
+        get { meetingSetup.cameraPiece.widthFraction }
+        set { changePiece { $0.widthFraction = min(max(newValue, 0.08), 0.6) } }
     }
-    @Published var bubbleRightInset: Double {
-        didSet {
-            let clamped = min(max(bubbleRightInset, 0), 0.9)
-            if clamped != bubbleRightInset { bubbleRightInset = clamped; return }
-            defaults.set(bubbleRightInset, forKey: "bubbleRightInset")
-        }
+    var bubbleRightInset: Double {
+        get { meetingSetup.cameraPiece.rightInset }
+        set { changePiece { $0.rightInset = min(max(newValue, 0), 0.9) } }
     }
-    @Published var bubbleBottomInset: Double {
-        didSet {
-            let clamped = min(max(bubbleBottomInset, 0), 0.9)
-            if clamped != bubbleBottomInset { bubbleBottomInset = clamped; return }
-            defaults.set(bubbleBottomInset, forKey: "bubbleBottomInset")
-        }
+    var bubbleBottomInset: Double {
+        get { meetingSetup.cameraPiece.bottomInset }
+        set { changePiece { $0.bottomInset = min(max(newValue, 0), 0.9) } }
     }
 
     /// Cutout's height, as a fraction of canvas height. Floored well above zero:
     /// the frame being too small was one of the two problems that made cutout
     /// stop reusing the bubble box, because a raised hand left the frame and
     /// clipped visibly.
-    @Published var cutoutHeightFraction: Double {
-        didSet {
-            let clamped = min(max(cutoutHeightFraction, 0.3), 1.0)
-            if clamped != cutoutHeightFraction { cutoutHeightFraction = clamped; return }
-            defaults.set(cutoutHeightFraction, forKey: "cutoutHeightFraction")
-        }
+    var cutoutHeightFraction: Double {
+        get { meetingSetup.cameraPiece.cutoutHeightFraction }
+        set { changePiece { $0.cutoutHeightFraction = min(max(newValue, 0.3), 1.0) } }
     }
     /// Cutout's distance from the right edge, as a fraction of canvas width.
     /// Allowed all the way across so the person can stand on the left when the
     /// shared content lives on the right.
-    @Published var cutoutRightInset: Double {
-        didSet {
-            let clamped = min(max(cutoutRightInset, 0), 0.95)
-            if clamped != cutoutRightInset { cutoutRightInset = clamped; return }
-            defaults.set(cutoutRightInset, forKey: "cutoutRightInset")
-        }
+    var cutoutRightInset: Double {
+        get { meetingSetup.cameraPiece.cutoutRightInset }
+        set { changePiece { $0.cutoutRightInset = min(max(newValue, 0), 0.95) } }
+    }
+
+    /// A drag's box taken onto the camera piece in use (only the dragged shape's numbers change).
+    func changeCameraPiece(placing box: PresenceBox) {
+        changeSetup(.cameraPiece(meetingSetup.cameraPiece.placing(box)))
+    }
+    /// A drag in Settings -> Layouts: onto the SAVED piece, never a working copy (R6.2).
+    func savedEditCameraPiece(placing box: PresenceBox) {
+        savedEditSetup(.cameraPiece(meetingSetup.saved.cameraPiece.placing(box)))
+    }
+
+    /// One edit of the camera piece, through the module (Home, the bubble, shortcuts: R3.1, R4.1).
+    private func changePiece(_ edit: (inout LayoutCamera) -> Void) {
+        var piece = meetingSetup.cameraPiece
+        edit(&piece)
+        changeSetup(.cameraPiece(piece))
     }
 
     /// Every number plus the shape, as the compositor wants it.
@@ -1052,6 +1166,20 @@ final class CoordinatorController: ObservableObject {
                     showsCamera: !cameraIsOff,
                     // Only me: open for the bubble, not drawn for everyone (R6.4).
                     mirrorsCamera: cameraIsMirrorOnly)
+    }
+
+    /// The same, from the SAVED values only: what Settings -> Layouts draws and edits, never a
+    /// for-this-meeting change (R4.5).
+    var savedStageLayout: StageLayout {
+        let saved = meetingSetup.saved
+        let piece = saved.cameraPiece
+        let target = Visibility.Target(saved.share)
+        return StageLayout(widthFraction: piece.widthFraction, rightInset: piece.rightInset,
+                           bottomInset: piece.bottomInset, cutoutHeightFraction: piece.cutoutHeightFraction,
+                           cutoutRightInset: piece.cutoutRightInset, shape: piece.shape,
+                           showsContent: !saved.share.sharesNothing,
+                           showsCamera: Visibility.cameraEveryoneSees(state: saved.cameraState, target: target).isOn,
+                           mirrorsCamera: Visibility.cameraMirrorOnly(state: saved.cameraState, target: target))
     }
 
     /// Only me: a mirror for the owner's bubble. The camera runs, the picture leaves it out.
@@ -1212,67 +1340,18 @@ final class CoordinatorController: ObservableObject {
 
     /// Back to the values the app shipped with, for the shape on screen.
     func resetBubbleLayout() {
-        let shipped = StageLayout()
-        if webcamShape == .cutout {
-            cutoutHeightFraction = shipped.cutoutHeightFraction
-            cutoutRightInset = shipped.cutoutRightInset
-            return
-        }
-        bubbleWidthFraction = shipped.widthFraction
-        bubbleRightInset = shipped.rightInset
-        bubbleBottomInset = shipped.bottomInset
+        changeSetup(.cameraPiece(CameraPlacementRules.reset(meetingSetup.cameraPiece)))
     }
 
-    /// The camera piece as it is now (the working copy: live changes included).
-    var currentLayoutCamera: LayoutCamera { LayoutCamera(shape: webcamShape, box: stageLayout.presenceBox) }
-
-    /// Puts a layout's camera piece and share target into the live settings. The global
-    /// defaults keep their own values (they are the fallback with no layout); the live
-    /// values are only the working copy.
-    /// True while `adoptLayoutPieces` writes the share, so that write is not taken for a choice
-    /// the owner made on Home.
-    private var adoptingLayoutPieces = false
-    /// The owner chose what to share on Home (or the bar) since the layout last set it: it
-    /// survives Start, for that meeting only, and Stop or a layout change drops it.
-    private var liveShareChosen = false
-
-    /// Settings -> Layouts (a camera drag) edits the saved layout: write the working copy of the
-    /// camera piece into the active layout. Home, the bar and the meeting never call this.
-    func saveCameraToActiveLayout() {
-        var next = layoutLibrary
-        if next.updateActive(camera: currentLayoutCamera, share: nil) { layoutLibrary = next }
+    /// The camera piece in use now (a for-this-meeting change included). Set: one change through the setup.
+    var currentCameraPiece: LayoutCamera {
+        get { meetingSetup.cameraPiece }
+        set { changeSetup(.cameraPiece(newValue)) }
     }
 
-    func adoptLayoutPieces(_ plan: LayoutPieceAdoption.Plan?) {
-        guard let plan else { return }
-        let keys = LayoutCamera.defaultsKeys + [LayoutCamera.shareDefaultsKey]
-        let saved = keys.map { ($0, defaults.object(forKey: $0)) }
-        if let c = plan.camera {
-            webcamShape = c.shape
-            bubbleWidthFraction = c.widthFraction
-            bubbleRightInset = c.rightInset
-            bubbleBottomInset = c.bottomInset
-            cutoutHeightFraction = c.cutoutHeightFraction
-            cutoutRightInset = c.cutoutRightInset
-        }
-        if var s = plan.share {
-            if s.kind == .app { s.kind = .display }
-            adoptingLayoutPieces = true
-            if shareTarget != s { shareTarget = s }
-            adoptingLayoutPieces = false
-            liveShareChosen = false
-        }
-        for (key, value) in saved { defaults.set(value, forKey: key) }
-        refreshCaptureDisplay()
-        // The picture (Home's live preview, the bubble) follows the working copy at once.
-        if plan.refreshesPicture { requestShapeApply(rebuild: plan.share != nil) }
-    }
-
-    @Published var webcamShape: WebcamShape {
-        didSet {
-            defaults.set(webcamShape.rawValue, forKey: "webcamShape")
-            Analytics.setting("webcam_shape", webcamShape.rawValue)
-        }
+    var webcamShape: WebcamShape {
+        get { meetingSetup.cameraPiece.shape }
+        set { changePiece { $0.shape = newValue } }
     }
     /// The layout library (Settings -> Layout): named templates, and which one a
     /// class start uses (nil = None). Saved as one JSON blob under `layoutLibrary`.
@@ -1294,10 +1373,11 @@ final class CoordinatorController: ObservableObject {
             // another card does not rearrange a class in progress (Settings offers
             // "Apply now" for that), and editing a layout the class is not using
             // touches nothing.
-            // The camera and share the layout saves come into the live settings only when
-            // the layout itself changes them (a pick, an edit), never from a live change.
-            adoptLayoutPieces(LayoutPieceAdoption.forLibraryEdit(old: oldValue, new: layoutLibrary,
-                                                                 locked: layoutChoiceLocked, running: sessionTemplate))
+            // The Meeting setup follows the library (meeting-setup R2.4, R5.1, R5.2, R4.2): another
+            // layout becoming active is a layout switch (its camera state, camera piece and share come
+            // in at once, for-this-meeting changes go); an edit to the active layout is a Layouts edit.
+            // No caller calls the Stage for these three settings (R2.5).
+            followLibraryChange(oldActiveID: oldValue.activeID)
             // R32.2: the shared display is not live-edited; only Apply now changes it (`adoptingEdit`).
             // R45: the edit is kept for the next Snap Back; no window moves now.
             if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id) {
@@ -1327,7 +1407,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The class is live and arranged, so another layout can be applied now.
-    var liveSessionLayoutID: UUID? { phase.isInMeeting ? sessionTemplate?.id : nil }
+    var liveSessionLayoutID: UUID? { phase.isInMeeting && !phase.isRecordMode ? sessionTemplate?.id : nil }
 
     private lazy var layoutEngine = LayoutEngine(chat: zoomChatBridge, log: { [weak self] in self?.log($0) })
 
@@ -1355,7 +1435,16 @@ final class CoordinatorController: ObservableObject {
               let template = layoutLibrary.template(id: id) else { return }
         sessionTemplate = template
         speakerTileQuickHidden = layoutEngine.startsHidden(template)
-        resetPresenceBubbleToLayoutDefault(at: .layoutSwitch)
+        // R5.1, R5.2, R5.4: the Meeting setup is the active layout's, so the layout applied is the
+        // active one (a no-op when a card pick already made it so), and its camera state, camera piece
+        // and share come into the meeting now. Whatever was set for this meeting goes, except Off.
+        // `select` fires the layout switch itself (`layoutLibrary`'s didSet -> followLibraryChange), so the
+        // event is fired here only when the layout was already active: the switch happens once either way.
+        if layoutLibrary.activeID != template.id {
+            layoutLibrary.select(template.id)
+        } else {
+            applySetupEvent(.layoutSwitched(to: template.setupValues(fallback: setupFallback)))
+        }
         refreshCaptureDisplay()
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
         reapplyLayout(userInitiated: false, openApps: true, trigger: .switchedLayout)
@@ -1548,16 +1637,11 @@ final class CoordinatorController: ObservableObject {
     /// What was shared before Share \u{2192} Whiteboard was chosen, for "Back to screen".
     private var targetBeforeWhiteboard: ShareTarget?
 
-    @Published var shareTarget: ShareTarget {
-        didSet {
-            if !adoptingLayoutPieces, shareTarget != oldValue { liveShareChosen = true }
-            if let data = try? JSONEncoder().encode(shareTarget) {
-                defaults.set(data, forKey: LayoutCamera.shareDefaultsKey)
-            }
-            targetBeforeWhiteboard = WhiteboardOpenRules.remembered(
-                targetBeforeWhiteboard, replaced: oldValue,
-                oldIsWhiteboard: oldValue.kind == .whiteboard, newIsWhiteboard: shareTarget.kind == .whiteboard)
-        }
+    /// What is shared, in use: the for-this-meeting one if there is one, else the active layout's
+    /// (meeting-setup R2.2). The setter is the Home / bar / present-menu door (`changeSetup`).
+    var shareTarget: ShareTarget {
+        get { meetingSetup.share }
+        set { changeSetup(.share(newValue)) }
     }
 
     /// Recording starts by itself once the meeting is up (the Record
@@ -1578,15 +1662,22 @@ final class CoordinatorController: ObservableObject {
     /// Also record the Mac's own sound (what is playing from the shared
     /// screen or app), mixed with the microphone into the one audio track.
     /// Off by default. Greenroom's and the meeting's own sound is left out.
+    /// SHELVED 2026-11-27 (see `Shelved`): Release ignores it via `recordsMacSound`.
     @Published var recordSystemAudio: Bool {
         didSet {
             defaults.set(recordSystemAudio, forKey: "recordSystemAudio")
             Analytics.setting("record_system_audio", on: recordSystemAudio)
-            recorder?.recordsSystemAudio = recordSystemAudio
+            recorder?.recordsSystemAudio = recordsMacSound
             // The sound comes through the screen capture, which is built with
             // or without it, so a running picture rebuilds its capture.
             if sceneInUse, let stage { stage.update(makeStageConfiguration()) }
         }
+    }
+    /// What recordings use: the stored switch, forced off while the feature
+    /// is shelved (Release builds), whatever an old default or an imported
+    /// settings file says.
+    var recordsMacSound: Bool {
+        Shelved.effectiveMacSound(stored: recordSystemAudio, macSoundAvailable: Shelved.macSound)
     }
     /// The app whose slide show the screen capture has moved to, while it has
     /// (phase 6); drives the quiet "Following Keynote's slide show" line.
@@ -1599,9 +1690,7 @@ final class CoordinatorController: ObservableObject {
             installStopVideoHooks()
             observeDisplays()
             startPresenceBubble()
-            adoptLayoutPieces(LayoutPieceAdoption.atStart(layoutLibrary.active))
         }
-        webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
         cameraBackground = CameraBackground(rawValue: defaults.string(forKey: "cameraBackground") ?? "") ?? .normal
         cameraBackgroundImage = defaults.string(forKey: "cameraBackgroundImage") ?? CameraBackgroundPreset.defaultChoice
@@ -1613,19 +1702,28 @@ final class CoordinatorController: ObservableObject {
         // The keys are set only after the save worked (R16.1); a failure is logged by `save` and retried next launch.
         library.migrateCameraAndShare(camera: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults),
                                       defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
+        // meeting-setup R1.2, once: the app-wide camera state goes into every layout that has none.
+        // The two old keys stay readable; nothing reads the layout's copy yet (P3).
+        library.migrateCameraState(
+            saved: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
+                             shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+            defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
         layoutLibrary = library
-        let bubbleDefaults = StageLayout()
-        bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
-        bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
-        bubbleBottomInset = (defaults.object(forKey: "bubbleBottomInset") as? Double) ?? bubbleDefaults.bottomInset
+        // meeting-setup R2.4: the one owner is built from the active layout's saved values. A layout that
+        // saves nothing (and a library with no active layout) resolves to the old keys, which are import-only (R6.1).
+        // Locals only: `self` is not whole yet, and `didSet` does not run in init.
+        let fallbackSetup = MeetingSetup.Values(
+            cameraState: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
+                                   shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+            cameraPiece: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults))
+        let initialSetup = MeetingSetup(saved: library.active?.setupValues(fallback: fallbackSetup) ?? fallbackSetup)
+        meetingSetup = initialSetup
         className = defaults.string(forKey: "className") ?? ""
         // Defaults ON: the shortcuts are useless without it, and bool(forKey:)
         // alone cannot tell "never set" from "deliberately off".
         clipBufferEnabled = (defaults.object(forKey: "clipBufferEnabled") as? Bool) ?? true
         recordingCountdownSeconds = (defaults.object(forKey: "recordingCountdownSeconds") as? Int) ?? 3
         recordSystemAudio = defaults.bool(forKey: "recordSystemAudio")
-        cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
-        cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
         // ON by default: the point of the built-in browser is that the
         // morning's tabs are where they were left. didSet does not run in
         // init, so the controller's flag is set by hand here.
@@ -1655,11 +1753,6 @@ final class CoordinatorController: ObservableObject {
         // the Apptics setup already carries. An explicit false stays false.
         analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
-        // One app is no longer offered: a saved one shares the whole screen.
-        var savedShare = defaults.data(forKey: "shareTarget")
-            .flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
-        if savedShare.kind == .app { savedShare.kind = .display }
-        shareTarget = savedShare
         // On unless the teacher turned it off; Macs that stored the old default
         // (off) are flipped once, so the new default actually reaches them.
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
@@ -1692,8 +1785,7 @@ final class CoordinatorController: ObservableObject {
         hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? false
         let shownOnMyScreen = (defaults.object(forKey: "cameraShownOnMyScreen") as? Bool) ?? true
         cameraShownOnMyScreen = shownOnMyScreen
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: shownOnMyScreen)   // init: no method calls yet
-        cameraSession = CameraStateSession(saved: CameraState(noCamera: CameraDirectorSettings.load().noCamera, shownOnMyScreen: shownOnMyScreen))
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: initialSetup.cameraState.shownOnMyScreen)   // init: no method calls yet
         speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.
@@ -1913,31 +2005,17 @@ final class CoordinatorController: ObservableObject {
     /// the stage is torn down (the meeting or recording ends).
     @Published var presenceBubbleHidden = false
 
-    /// The camera state goes back to the saved default at Start, Snap Back and the end of the picture
-    /// (R6.3). A layout switch mid-meeting keeps it: the camera state is not part of a layout
-    /// (`CameraStateSession.dropsLiveChange`).
-    func resetPresenceBubbleToLayoutDefault(at moment: CameraStateSession.Moment) {
-        let hadLiveChange = cameraSession.reset(at: moment)
-        // Stop video is not part of the camera state: only Start and the end clear it (R49).
-        let stopped = StopVideoRules.videoStopped(after: moment, was: videoStopped)
-        if stopped != videoStopped { videoStopped = stopped }
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
-        // A live "Off" or "Only me" put the picture back to the default along with it.
-        if hadLiveChange, stage != nil { applyCameraStateLive() }
-    }
-
     /// Home's camera and Just me controls: camera on again (not "No camera"), then re-preview.
-    /// Same write as Settings > Webcam's camera cards.
-    /// This meeting only: the saved default (Settings -> Layouts) is not written (R6.2).
+    /// Before a meeting it is saved into the active layout; during one it is for this meeting (R3.1, R4.1).
     /// From Off it brings back the last "on" state, like the bar's camera button (R6.6).
     func turnCameraOnFromHome() {
-        guard let target = cameraSession.turnOnTarget else { return }
+        guard let target = meetingSetup.cameraTurnOnTarget else { return }
         setLiveCameraState(target)
     }
 
-    /// The bar's and the Meeting toolbar's camera button: Off <-> the last on state, this meeting only.
+    /// The bar's and the Meeting toolbar's camera button: Off <-> the last on state.
     func toggleLiveCameraState() {
-        setLiveCameraState(cameraSession.clickTarget(
+        setLiveCameraState(meetingSetup.cameraClickTarget(
             noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: shareTarget.sharesNothing)))
     }
     var presenceTimer: Timer?
@@ -1988,7 +2066,7 @@ final class CoordinatorController: ObservableObject {
                            // otherwise the one.
                            cameraUIDs: stageCameraUIDs
                                ?? sceneCameraUIDs(limit: phase.isCameraBusy ? 1 : nil),
-                           captureSystemAudio: recordSystemAudio)
+                           captureSystemAudio: recordsMacSound)
     }
 
     private func ensureStage() -> StageCompositor? {
@@ -2029,7 +2107,7 @@ final class CoordinatorController: ObservableObject {
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
         self.stage = nil
-        resetPresenceBubbleToLayoutDefault(at: .end)
+        applySetupEvent(.meetingEnded)
         presenceFeedInstalled = false
         stageObservers.removeAll()
         stageCameraUIDs = nil
@@ -2141,10 +2219,9 @@ final class CoordinatorController: ObservableObject {
         // The layout this class runs: the card chosen in Settings right now, held for
         // the whole class. None (nil) arranges nothing.
         sessionTemplate = layoutLibrary.active
-        // At Start the layout's camera and What's shared apply; no layout keeps the globals.
-        adoptLayoutPieces(LayoutPieceAdoption.atStart(sessionTemplate, keepingLiveShare: liveShareChosen))
-        // R6.3: the camera state a live change set before Start is dropped; the saved default stands.
-        resetPresenceBubbleToLayoutDefault(at: .start)
+        // R5.1: Start drops every for-this-meeting change; the active layout's camera state, camera
+        // piece and share are what the meeting starts with (the Meeting setup already holds them).
+        applySetupEvent(.start)
         // Leave my windows alone places the camera only: it arranges nothing, as None did.
         sessionArranges = sessionTemplate?.movesWindows ?? false
         if !sessionArranges { LayoutShareChoice.reset() }
@@ -2526,9 +2603,7 @@ final class CoordinatorController: ObservableObject {
             apply(.meetingTornDown)
             warmUpForStart()
             sessionTemplate = nil
-            // A live change in the meeting does not outlast it: Home shows the layout's own again.
-            liveShareChosen = false
-            adoptLayoutPieces(LayoutPieceAdoption.atStart(layoutLibrary.active))
+            // A for-this-meeting change does not outlast it (`applySetupEvent(.meetingEnded)` in tearDownStage).
             LayoutShareChoice.reset()
             speakerTileQuickHidden = false
             resumePreviewIfWanted()
@@ -2803,8 +2878,9 @@ final class CoordinatorController: ObservableObject {
             }
             .store(in: &cancellables)
         // What is shared decides which tools make sense.
-        $shareTarget
-            .map(\.kind)
+        $meetingSetup
+            .map(\.share.kind)
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] kind in
                 ShareVisibleWindows.setKind(ShowOnShare.ShareKind(kind))
@@ -3205,7 +3281,7 @@ final class CoordinatorController: ObservableObject {
         }
         guard !isSavingRecording else { throw RecorderError.stillSaving }
         recorder.microphoneUID = micDeviceUID
-        recorder.recordsSystemAudio = recordSystemAudio
+        recorder.recordsSystemAudio = recordsMacSound
         try recorder.start(in: folder)
         apply(.takeBegan)
         recordingStartedAt = Date()
@@ -3292,6 +3368,11 @@ final class CoordinatorController: ObservableObject {
         guard phase.canStart else { return }
         apply(.recordStartRequested)
         let startID = phase.startID
+        // A Record session holds the active layout the way Start does (meeting-setup R6.1), so Home's
+        // layout tile and every `layoutChoiceLocked` read name it. It arranges nothing: Record places no
+        // windows, so `sessionArranges` is false and every placing gate stays shut.
+        sessionTemplate = layoutLibrary.active
+        sessionArranges = false
         studioPreviewOn = true
         lastStartWasRecordFlow = true
         recordFlowHUD = true
@@ -3637,12 +3718,13 @@ final class CoordinatorController: ObservableObject {
         recorder?.disarmClipBuffer()
         recorder = nil
         lastCameraLive = nil
-        resetPresenceBubbleToLayoutDefault(at: .end)
+        applySetupEvent(.meetingEnded)
         stopStage()
     }
 
     private func tearDownRecordingScene() async {
         studioPreviewOn = false
+        sessionTemplate = nil
         await tearDownStage()
         publishPreviewFrame(nil)
         resumePreviewIfWanted()
@@ -4698,9 +4780,8 @@ final class CoordinatorController: ObservableObject {
             // Back to the layout's own starting state: hidden if the Meeting
             // starts hidden, shown otherwise.
             speakerTileQuickHidden = layoutEngine.startsHidden(template)
-            resetPresenceBubbleToLayoutDefault(at: .snapBack)
-            // R5.3: the layout's own share returns.
-            adoptLayoutPieces(LayoutPieceAdoption.atSnapBack(template))
+            // R5.1: Snap Back drops every for-this-meeting change; the layout's own values return.
+            applySetupEvent(.snapBack)
         } else if !layoutEngine.hasPlacedSurface(template) {
             // A display change can turn a placed Meeting into a whole-display one
             // (or take it away): nothing is hidden then.
@@ -5246,7 +5327,7 @@ final class CoordinatorController: ObservableObject {
         recorder.onUnexpectedStop = { [weak self] message in
             Task { @MainActor in self?.recorderStoppedItself(message) }
         }
-        recorder.recordsSystemAudio = recordSystemAudio
+        recorder.recordsSystemAudio = recordsMacSound
         stage.onSystemAudio = { [weak recorder] buffer in recorder?.appendSystemAudio(buffer) }
         self.recorder = recorder
         wireInputEvents(recorder, stage: stage)

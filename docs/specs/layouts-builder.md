@@ -194,7 +194,7 @@ different order; this table is the authority.
 - R4.2a With no meeting running, an edit in Settings to the active layout's camera or share reaches
   the working copy and the live picture at once (`LayoutPieceAdoption.forLibraryEdit`); an edit to
   another layout never does.
-- R4.3 A drag on Home, the bubble or in the meeting changes only the running
+- R4.3 (superseded by meeting-setup R3, R4) A drag on Home, the bubble or in the meeting changes only the running
   meeting, never the saved layout.
 - R4.4 The camera piece is drawn on the shared display's canvas (Second when
   that is shared and connected, else Main).
@@ -202,16 +202,16 @@ different order; this table is the authority.
 **R5. Each layout owns what's shared and its shared display.** (Q9, Q17)
 - R5.1 A layout saves what's shared (`LayoutTemplate.share`: kind, window,
   follow the slide show) and its shared display.
-- R5.2 Home's Share panel and the bar change only the running meeting.
-- R5.3 Start and Snap Back load the active layout's share again. A share chosen
+- R5.2 (superseded by meeting-setup R3, R4, R5) Home's Share panel and the bar change only the running meeting.
+- R5.3 (superseded by meeting-setup R3, R4, R5) Start and Snap Back load the active layout's share again. A share chosen
   on Home before Start is kept for that meeting only.
 
 **R6. Four-way camera state everywhere.** (Q12)
 - R6.1 The same four words and meanings appear in Settings > Layouts, the bar's
   camera menu and Home's camera tile.
-- R6.2 Settings holds the saved default used at each Start. A change from the
+- R6.2 (superseded by meeting-setup R3, R4, R5) Settings holds the saved default used at each Start. A change from the
   bar or Home is for the running meeting and never writes the default.
-- R6.3 Start and Snap Back drop the live change.
+- R6.3 (superseded by meeting-setup R3, R4, R5) Start and Snap Back drop the live change.
 - R6.4 Off and Only me hide the camera from everyone whatever else is set,
   camera switching included. The one exception is Just my camera (share
   Nothing): the camera is then the whole picture and stays in.
@@ -236,8 +236,8 @@ different order; this table is the authority.
   toolbar button, Home, the camera shortcut (its toast names the state: "Camera: Off") and the "You" tile's hover button.
   Zoom's own video mute for the owner (`setMyVideo`) is called only by Stop video (R49; a source scan allows that one call). Home's camera
   chip names the state when the camera is out of the picture ("Only me", not "Off"). The owner's own People row is
-  struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps the
-  live camera state (the state is not part of a layout; owner confirmed, 2026-11-26, option A); Start, Snap Back and the end drop it (R6.3).
+  struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps a
+  camera that was turned Off, and drops every other for-this-meeting camera state (superseded by meeting-setup D3, D8, R5.4: the camera state is part of a layout now); Start, Snap Back and the end drop it (R6.3).
   `Tests/CameraMatrixTests.swift` holds the whole matrix.
 - R6.9 (owner, 2026-11-26, option (a)) The Meeting window's "You" tile shows Zoom's render of the owner's own video,
   which is the Stage: what everyone sees. In Off and Only me the Stage leaves the camera out, so the tile shows the
@@ -774,9 +774,9 @@ what everyone sees. Record the date and the R numbers against each line.
 4. Start with layout A, then layout B with a different camera spot and shape:
    each shows its own camera. (R4.2)
 5. Drag the bubble during the meeting, stop, open Settings: the layout's saved
-   camera is unchanged. (R4.3)
+   camera is unchanged. (R4.3; superseded by meeting-setup R4.1)
 6. Change what's shared from Home's Share panel, then Snap Back: the layout's
-   share returns. (R5.2, R5.3)
+   share returns. (R5.2, R5.3; superseded by meeting-setup R3 to R5: before a meeting the pick is saved, so there is nothing to snap back)
 7. Each of the four camera states from the bar menu: the other person sees the
    camera only for Everyone and me and Only everyone; your screen shows it only
    for Everyone and me and Only me. (R6)

@@ -113,7 +113,6 @@ extension CoordinatorController {
         if let value = transfer.s2sAccountID { s2sAccountID = value }
         if let value = transfer.s2sClientID { s2sClientID = value }
         if let value = transfer.s2sClientSecret { s2sClientSecret = value }
-        if let value = transfer.webcamShape, let shape = WebcamShape(rawValue: value) { webcamShape = shape }
         if let value = transfer.backgroundRemoval, let mode = BackgroundRemoval(rawValue: value) { backgroundRemoval = mode }
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
@@ -129,20 +128,19 @@ extension CoordinatorController {
         if let value = transfer.youtubeClientID { youtubeClientID = value }
         if let value = transfer.youtubeClientSecret { youtubeClientSecret = value }
         if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }
-        if let value = transfer.shareTarget { shareTarget = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.recordingCountdownSeconds { recordingCountdownSeconds = value }
-        if let value = transfer.recordSystemAudio { recordSystemAudio = value }
+        // Shelved (docs/specs/shelved.md): the value is kept, but a Release build
+        // never turns it on.
+        if let value = transfer.recordSystemAudio {
+            recordSystemAudio = Shelved.effectiveMacSound(stored: value, macSoundAvailable: Shelved.macSound)
+        }
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }
-        if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }
-        if let value = transfer.bubbleRightInset { bubbleRightInset = value }
-        if let value = transfer.bubbleBottomInset { bubbleBottomInset = value }
-        if let value = transfer.cutoutHeightFraction { cutoutHeightFraction = value }
-        if let value = transfer.cutoutRightInset { cutoutRightInset = value }
+        if let value = transfer.cameraShownOnMyScreen { cameraShownOnMyScreen = value }   // import-only (R1.3)
         if let value = transfer.cuesUseWhisper { cuesUseWhisper = value }
         if let value = transfer.screenroomAgent {
             Self.setJSONString(value, forKey: ScreenroomAgentSettings.key)
@@ -164,9 +162,13 @@ extension CoordinatorController {
         SettingsDefaultsBridge().apply(transfer)
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
+        var importedOldLayoutIsActive = false
         if let library = transfer.layoutLibrary {
             // Already cleaned of second displays that are not connected here.
-            layoutLibrary = library
+            // R1.3: an old file's layouts have no camera state; the file's app-wide one goes to each.
+            layoutLibrary = SettingsImportRules.applyingOldCameraState(
+                library, noCamera: transfer.cameraDirector?.noCamera,
+                shownOnMyScreen: transfer.cameraShownOnMyScreen, fallback: savedCameraState)
         } else if transfer.workspaceLayout != nil || transfer.chromeLayout != nil {
             // An older file: the old keys it carries (import-only now) laid over
             // this Mac's own, then built into one more template. Keys the file
@@ -191,12 +193,33 @@ extension CoordinatorController {
             if var imported = legacy.asTemplate().map({ SettingsImportRules.withLocalDisplays($0, connected: environment.connectedDisplayUUIDs) }) {
                 var library = layoutLibrary
                 if library.templates.contains(where: { $0.name == imported.name }) { imported.name = "Imported layout" }
+                // R1.3: the file's own camera state, camera piece and share go into the layout it brings in,
+                // so when that layout becomes active it is complete (no fall back to this Mac's old keys).
+                imported = SettingsImportRules.completingOldFileLayout(
+                    imported, from: transfer, baseCamera: meetingSetup.saved.cameraPiece,
+                    baseShare: meetingSetup.saved.share, cameraFallback: savedCameraState)
                 library.templates.append(imported)
                 if legacy.arrangeWindowsOnStart { library.select(imported.id) }
                 layoutLibrary = library
+                importedOldLayoutIsActive = library.activeID == imported.id
             }
         }
+        // An older file brings the camera piece and share alone when no layout of its own became active:
+        // a saved edit of the active layout (never for this meeting, even during a live session).
+        if transfer.layoutLibrary == nil, !importedOldLayoutIsActive { importOldCameraPiece(from: transfer) }
         log("Imported settings.")
         return SettingsImportReport(notes: notes)
+    }
+}
+
+extension CoordinatorController {
+    /// An older settings file's camera shape, spot, size and share (no layouts inside it), when no layout of
+    /// its own took over: a SAVED edit of the active layout, one change each, never for this meeting (an
+    /// import during a live session must not become a for-this-meeting change). Keys the file omits keep
+    /// what the layout has.
+    fileprivate func importOldCameraPiece(from transfer: SettingsTransfer) {
+        let piece = SettingsImportRules.applyingOldCameraPiece(to: meetingSetup.saved.cameraPiece, from: transfer)
+        if piece != meetingSetup.saved.cameraPiece { savedEditSetup(.cameraPiece(piece)) }
+        if let value = transfer.shareTarget { savedEditSetup(.share(value)) }
     }
 }

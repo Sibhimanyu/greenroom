@@ -67,9 +67,11 @@ struct ShareTargetSettings: View {
                 get: { selected },
                 set: { key in
                     guard let window = windows.first(where: { $0.key == key }) else { return }
-                    coordinator.shareTarget.appBundleID = window.bundleID
-                    coordinator.shareTarget.appName = window.appName
-                    coordinator.shareTarget.windowTitle = window.title
+                    var next = coordinator.shareTarget
+                    next.appBundleID = window.bundleID
+                    next.appName = window.appName
+                    next.windowTitle = window.title
+                    coordinator.shareTarget = next
                     coordinator.bringSharedWindowForward(window)
                 })) {
                 Text("Choose a window").tag("")

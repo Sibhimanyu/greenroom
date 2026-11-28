@@ -174,6 +174,7 @@ enum SettingsCatalog {
         importOnly("mainAppOnStart", .unset),
         importOnly("peopleViewOnStart", .unset),
         importOnly("peopleViewDisplayUUID", .unset),
+        importOnly("cameraShownOnMyScreen", .bool(true)),   // meeting-setup R1.3: each layout carries its camera state now
 
         // Stays on this Mac.
         excluded("analyticsEnabled", .bool(true), "Consent. Each Mac asks itself."),
@@ -195,7 +196,7 @@ enum SettingsCatalog {
         excluded("browserLastSessionTabs", .unset, "This Mac's open tabs."),
         excluded("browserLastSessionConfiguredIndex", .unset, "This Mac's open tabs."),
         excluded("browserLastSessionConfiguredURL", .unset, "This Mac's open tabs."),
-        excluded("cameraShownOnMyScreen", .bool(true), "The camera state's saved default; each layout's camera piece carries its own look in the layout library."),
+        excluded("layoutCameraStateMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutCameraMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutShareMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutLibrary.appsShownToEveryoneMigrated", .unset, "One-time migration marker on this Mac."),

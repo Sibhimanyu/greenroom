@@ -94,6 +94,49 @@ enum SettingsImportRules {
         return (t, notes)
     }
 
+    /// An older file's two app-wide camera keys read as one state; what the file omits keeps `fallback`.
+    static func oldCameraState(noCamera: Bool?, shownOnMyScreen: Bool?, fallback: CameraState) -> CameraState {
+        CameraState(noCamera: noCamera ?? fallback.noCamera, shownOnMyScreen: shownOnMyScreen ?? fallback.shownOnMyScreen)
+    }
+
+    /// An older file's camera shape, spot and size laid over `base` (keys the file omits keep it).
+    static func applyingOldCameraPiece(to base: LayoutCamera, from t: SettingsTransfer) -> LayoutCamera {
+        var piece = base
+        if let value = t.webcamShape, let shape = WebcamShape(rawValue: value) { piece.shape = shape }
+        if let value = t.bubbleWidthFraction { piece.widthFraction = value }
+        if let value = t.bubbleRightInset { piece.rightInset = value }
+        if let value = t.bubbleBottomInset { piece.bottomInset = value }
+        if let value = t.cutoutHeightFraction { piece.cutoutHeightFraction = value }
+        if let value = t.cutoutRightInset { piece.cutoutRightInset = value }
+        return piece
+    }
+
+    /// meeting-setup R1.3: the layout an older file (no library inside it) brings in carries the file's own
+    /// camera state, camera piece and share, so it is complete the moment it becomes active. What the file
+    /// omits keeps this Mac's (`baseCamera`, `baseShare`, `cameraFallback`).
+    static func completingOldFileLayout(_ template: LayoutTemplate, from t: SettingsTransfer, baseCamera: LayoutCamera,
+                                        baseShare: ShareTarget, cameraFallback: CameraState) -> LayoutTemplate {
+        var out = template
+        out.camera = applyingOldCameraPiece(to: baseCamera, from: t)
+        out.share = t.shareTarget ?? baseShare
+        out.cameraState = oldCameraState(noCamera: t.cameraDirector?.noCamera, shownOnMyScreen: t.cameraShownOnMyScreen,
+                                         fallback: cameraFallback)
+        return out
+    }
+
+    /// meeting-setup R1.3: an older file's app-wide camera state goes to every layout it brings in that
+    /// has none. The file's `noCamera` and `cameraShownOnMyScreen` read as one state; what the file
+    /// omits keeps this Mac's (`fallback`). Layouts that already carry one are left alone.
+    static func applyingOldCameraState(_ library: LayoutLibrary, noCamera: Bool?, shownOnMyScreen: Bool?,
+                                       fallback: CameraState) -> LayoutLibrary {
+        var library = library
+        let state = oldCameraState(noCamera: noCamera, shownOnMyScreen: shownOnMyScreen, fallback: fallback)
+        for i in library.templates.indices where library.templates[i].cameraState == nil {
+            library.templates[i].cameraState = state
+        }
+        return library
+    }
+
     /// A template with its saved second display cleared when that display is not
     /// connected to this Mac: an exported UUID from another Mac matches nothing
     /// here, and "automatic" finds the right one.

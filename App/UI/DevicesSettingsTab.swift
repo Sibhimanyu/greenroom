@@ -28,8 +28,12 @@ struct DevicesSettingsTab: View {
                     Text("10 seconds").tag(10)
                 }
                 .help("A big number counts down on screen before a recording you start begins. Esc or Cancel stops it. A recording that starts by itself with the meeting has no countdown.")
-                Toggle("Record the Mac\u{2019}s sound", isOn: $coordinator.recordSystemAudio)
-                    .help("Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Greenroom\u{2019}s own sound is left out, so the meeting is not doubled. Needs something shared under Behind you.")
+                #if DEBUG
+                if Shelved.macSound {
+                    Toggle("Record the Mac\u{2019}s sound \(Shelved.macSoundCaption)", isOn: $coordinator.recordSystemAudio)
+                        .help("\(Shelved.macSoundCaption) Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Greenroom\u{2019}s own sound is left out, so the meeting is not doubled. Needs something shared under Behind you.")
+                }
+                #endif
             }
         }
         .formStyle(.grouped)

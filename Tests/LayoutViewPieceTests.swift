@@ -206,6 +206,9 @@ final class LayoutViewPieceTests: XCTestCase {
     func testActiveSpeakerBecomesTheMeetingWindowWhereViewsCannotOpen() {
         var raj = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.rajMode }!
         raj.removeSecondDisplay()   // with a Meeting on the second display the speaker is not swapped (R26.4)
+        // Raj San Mode ships no speaker piece (2026-11-27); this test needs one, so it adds the old one.
+        raj.oneDisplay.append(LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
+                                          rect: UnitRect(x: 0.75, y: 0.5833333333333333, w: 0.25, h: 0.4166666666666667)))
         let rect = raj.oneDisplay.first { $0.kind.view == .activeSpeaker }!.rect
         let out = LayoutResolver.substitutingMeetingForActiveSpeaker(raj, viewsCanOpen: false, secondConnected: true)
         let m = out.oneDisplay.first { $0.kind.isMeeting }

@@ -142,7 +142,7 @@ final class LayoutCameraTests: XCTestCase {
 
     // MARK: Who may write the saved layout
 
-    // R4.3, R6.2: Home, the bar and a drag in the meeting change the running meeting only.
+    // meeting-setup R6.2: only a drag in Settings -> Layouts is a saved edit of the dragged piece; Home's goes through `change`.
     // R11: with the Webcam tab gone, Settings -> Layouts is the only writer.
     func testOnlySettingsLayoutsWritesTheSavedLayout() {
         XCTAssertEqual(LayoutEditSource.allCases.filter(\.writesSavedLayout), [.settingsLayouts])
@@ -150,41 +150,7 @@ final class LayoutCameraTests: XCTestCase {
         XCTAssertFalse(LayoutEditSource.home.writesSavedLayout)
     }
 
-    // R5.1: the Layouts tab's edits land in the active layout and nowhere else.
-    func testWritingTheActiveLayoutTouchesOnlyIt() {
-        var lib = library()
-        lib.select(lib.templates[1].id)
-        var cam = globalCamera(); cam.shape = .square
-        XCTAssertTrue(lib.updateActive(camera: cam, share: globalShare()))
-        XCTAssertEqual(lib.templates[1].camera, cam)
-        XCTAssertEqual(lib.templates[1].share, globalShare())
-        XCTAssertNil(lib.templates[0].camera)
-        lib.select(nil)
-        XCTAssertFalse(lib.updateActive(camera: cam, share: nil))
-    }
-
-    // R5.2: a share chosen on Home before Start survives into that meeting; the layout's camera still applies.
-    func testStartKeepsAShareChosenBeforeStart() {
-        var t = LayoutTemplate(name: "A"); t.camera = globalCamera(); t.share = globalShare()
-        let kept = LayoutPieceAdoption.atStart(t, keepingLiveShare: true)
-        XCTAssertNil(kept?.share)
-        XCTAssertEqual(kept?.camera, globalCamera())
-        XCTAssertEqual(LayoutPieceAdoption.atStart(t, keepingLiveShare: false)?.share, globalShare())
-        var onlyShare = LayoutTemplate(name: "B"); onlyShare.share = globalShare()
-        XCTAssertNil(LayoutPieceAdoption.atStart(onlyShare, keepingLiveShare: true))
-    }
-
-    // R5.3: Snap Back loads the layout's share again, and leaves the camera spot alone.
-    func testSnapBackLoadsTheLayoutsShareOnly() {
-        var t = LayoutTemplate(name: "A"); t.camera = globalCamera(); t.share = globalShare()
-        let plan = LayoutPieceAdoption.atSnapBack(t)
-        XCTAssertEqual(plan?.share, globalShare())
-        XCTAssertNil(plan?.camera)
-        XCTAssertNil(LayoutPieceAdoption.atSnapBack(LayoutTemplate(name: "none")))
-        XCTAssertNil(LayoutPieceAdoption.atSnapBack(nil))
-    }
-
-    // R4.1: the camera defaults keys have one home, shared by the global read and the adoption.
+    // R4.1: the camera defaults keys have one home, read by the global fallback.
     func testTheCameraDefaultsKeysAreListedOnce() {
         let d = defaults(["webcamShape": "square", "bubbleWidthFraction": 0.31])
         XCTAssertTrue(LayoutCamera.defaultsKeys.contains("webcamShape"))
@@ -204,96 +170,9 @@ final class LayoutCameraTests: XCTestCase {
         XCTAssertEqual(c.cornerPhrase, "top right")
     }
 
-    // MARK: Start
-
-    func testStartTakesCameraAndShareFromTheLayout() {
-        var t = LayoutTemplate(name: "A")
-        t.camera = globalCamera()
-        t.share = globalShare()
-        let plan = LayoutPieceAdoption.atStart(t)
-        XCTAssertEqual(plan?.camera, globalCamera())
-        XCTAssertEqual(plan?.share, globalShare())
-    }
-
-    // resolvedCamera / resolvedShare were removed (nothing called them); no layout means no plan, the globals stand.
-    func testNoLayoutFallsBackToTheGlobals() {
-        XCTAssertNil(LayoutPieceAdoption.atStart(nil))
-        XCTAssertNil(LayoutPieceAdoption.atStart(LayoutTemplate(name: "Blank")))
-    }
-
-    // MARK: Live changes never reach the layout
-
-    func testAnUnrelatedEditLeavesLiveValuesAlone() {
-        var old = LayoutTemplate(name: "A"); old.camera = globalCamera(); old.share = globalShare()
-        var new = old; new.name = "Renamed"
-        XCTAssertNil(LayoutPieceAdoption.plan(old: old, new: new))
-    }
-
-    func testOnlyAChangedPieceIsAdopted() {
-        var old = LayoutTemplate(name: "A"); old.camera = globalCamera(); old.share = globalShare()
-        var new = old; new.camera?.shape = .square
-        let plan = LayoutPieceAdoption.plan(old: old, new: new)
-        XCTAssertEqual(plan?.camera?.shape, .square)
-        XCTAssertNil(plan?.share)
-    }
-
-    func testPickingAnotherLayoutAdoptsItsPieces() {
-        var a = LayoutTemplate(name: "A"); a.camera = globalCamera()
-        var b = LayoutTemplate(name: "B"); b.share = globalShare()
-        let plan = LayoutPieceAdoption.plan(old: a, new: b)
-        XCTAssertNil(plan?.camera)
-        XCTAssertEqual(plan?.share, globalShare())
-    }
-
     func testBoxCarriesTheShape() {
         var c = globalCamera(); c.shape = .cutout
         XCTAssertTrue(c.box.isCutout)
         XCTAssertEqual(c.box.widthFraction, 0.3)
-    }
-
-    // MARK: A Settings edit reaches the live working copy and the picture (R4, owner bug)
-
-    private func library(_ a: LayoutTemplate, _ b: LayoutTemplate? = nil, active: UUID? = nil) -> LayoutLibrary {
-        LayoutLibrary(templates: [a] + (b.map { [$0] } ?? []), activeID: active ?? a.id)
-    }
-
-    // R4: editing the active layout's camera with no meeting running updates the working copy at once.
-    func testEditingTheActiveLayoutWithNoMeetingUpdatesTheWorkingCopy() {
-        var a = LayoutTemplate(name: "Raj San Mode"); a.camera = globalCamera()
-        let old = library(a)
-        var edited = a
-        edited.camera?.shape = .roundedRectangle
-        edited.camera?.rightInset = 0.6
-        let plan = LayoutPieceAdoption.forLibraryEdit(old: old, new: library(edited), locked: false, running: nil)
-        XCTAssertEqual(plan?.camera?.shape, .roundedRectangle)
-        XCTAssertEqual(plan?.camera?.rightInset, 0.6)
-    }
-
-    // R4: and the compositor is asked to redraw, or Home's live preview keeps the old camera.
-    func testAdoptingACameraOrShareRefreshesThePicture() {
-        XCTAssertTrue(LayoutPieceAdoption.Plan(camera: globalCamera(), share: nil).refreshesPicture)
-        XCTAssertTrue(LayoutPieceAdoption.Plan(camera: nil, share: globalShare()).refreshesPicture)
-        XCTAssertFalse(LayoutPieceAdoption.Plan(camera: nil, share: nil).refreshesPicture)
-    }
-
-    // R4: an edit to a layout that is not active never touches the working copy.
-    func testEditingAnInactiveLayoutLeavesTheWorkingCopyAlone() {
-        var a = LayoutTemplate(name: "A"); a.camera = globalCamera()
-        var b = LayoutTemplate(name: "B"); b.camera = globalCamera()
-        let old = library(a, b, active: a.id)
-        var edited = b
-        edited.camera?.shape = .square
-        XCTAssertNil(LayoutPieceAdoption.forLibraryEdit(old: old, new: library(a, edited, active: a.id), locked: false, running: nil))
-    }
-
-    // R4.3, R5.2: during a meeting a Settings edit of the running layout moves the camera only; the share waits for Start.
-    func testDuringAMeetingASettingsEditAdoptsTheCameraButNotTheShare() {
-        var a = LayoutTemplate(name: "A"); a.camera = globalCamera(); a.share = globalShare()
-        var edited = a
-        edited.camera?.shape = .square
-        edited.share?.followsSlideShow = true
-        let plan = LayoutPieceAdoption.forLibraryEdit(old: library(a), new: library(edited), locked: true, running: a)
-        XCTAssertEqual(plan?.camera?.shape, .square)
-        XCTAssertNil(plan?.share)
     }
 }

@@ -41,10 +41,7 @@ extension CoordinatorController {
             if final { self?.applyPresencePlacement(layout) } else { self?.stage?.updatePlacement(layout) }
         }
         let quick = presenceBubble.quick
-        quick.onShape = { [weak self] shape in
-            self?.webcamShape = shape
-            self?.requestShapeApply()
-        }
+        quick.onShape = { [weak self] shape in self?.webcamShape = shape }
         quick.onBackground = { [weak self] mode in self?.cameraBackground = mode }
         quick.onSizePress = { [weak self] direction, down in self?.presenceBubble.press(direction, down: down) }
         quick.onSize = { [weak self] steps in self?.presenceBubble.step(steps) }
@@ -165,15 +162,15 @@ extension CoordinatorController {
         }
     }
 
-    /// The presenter moved the bubble: keep it (persisted like the Settings
-    /// layout) and tell the compositor now, without the full apply.
+    /// The presenter moved the bubble (the end of a drag): the new spot goes through the Meeting setup,
+    /// which saves it into the active layout before a meeting and makes it for this meeting during one,
+    /// and tells the compositor (meeting-setup R3.1, R4.1, R2.5).
     private func applyPresencePlacement(_ layout: StageLayout) {
-        bubbleWidthFraction = layout.widthFraction
-        bubbleRightInset = layout.rightInset
-        bubbleBottomInset = layout.bottomInset
-        cutoutHeightFraction = layout.cutoutHeightFraction
-        cutoutRightInset = layout.cutoutRightInset
-        stage?.updatePlacement(stageLayout)
+        changeCameraPiece(placing: PresenceBox(widthFraction: layout.widthFraction, rightInset: layout.rightInset,
+                                               bottomInset: layout.bottomInset,
+                                               cutoutHeightFraction: layout.cutoutHeightFraction,
+                                               cutoutRightInset: layout.cutoutRightInset,
+                                               isCutout: layout.shape == .cutout))
     }
 
     /// Home's preview: the camera was dragged there. A step only tells the
@@ -184,13 +181,17 @@ extension CoordinatorController {
         stage?.updatePlacement(layout)
     }
 
-    /// A drag of the camera in a preview ended. Settings -> Layouts also writes
-    /// the active layout's saved camera; Home's preview changes the running session's working copy
-    /// only (R4.3).
+    /// A drag of the camera in a preview ended. Settings -> Layouts is a saved edit of the dragged piece
+    /// only, taken from the layout's own saved camera piece (R6.2, R4.2); Home's preview goes the way a
+    /// Home change goes: saved before a meeting, for this meeting during one (R3.1, R4.1).
     func commitPreviewPlacement(_ box: PresenceBox, source: LayoutEditSource) {
-        var layout = stageLayout
-        layout.apply(box)
-        applyPresencePlacement(layout)
-        if source.writesSavedLayout { saveCameraToActiveLayout() }
+        if source.writesSavedLayout {
+            savedEditCameraPiece(placing: box)
+            // The drag moved the Stage's picture; a saved edit that leaves the piece in use alone
+            // (a for-this-meeting change is in effect) puts it back.
+            stage?.updatePlacement(stageLayout)
+        } else {
+            changeCameraPiece(placing: box)
+        }
     }
 }

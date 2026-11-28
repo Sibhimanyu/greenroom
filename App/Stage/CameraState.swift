@@ -81,8 +81,12 @@ enum CameraState: Equatable, CaseIterable {
     var iSee: Bool { self == .everyoneAndMe || self == .onlyMe }
 }
 
-/// The saved default (Settings -> Layouts) and the running meeting's own change.
+/// The saved camera state of the active layout and the running meeting's own change to it.
 /// A live change never reaches `saved`; Start and Snap Back drop it.
+/// Not retired in P3 (docs/specs/meeting-setup.md): it stays the camera state's rule book (`lastOn`,
+/// click and turn-on targets, `Moment`) behind `MeetingSetup`, which is its only holder in the app.
+/// Retiring it means moving `Moment` out of `StopVideoRules` and rewriting `CameraStateTests`,
+/// `CameraMatrixTests` and `StopVideoRulesTests` onto `MeetingSetup`; nothing in the app needs that.
 struct CameraStateSession: Equatable {
     private(set) var saved: CameraState
     private(set) var live: CameraState?
@@ -128,6 +132,12 @@ struct CameraStateSession: Equatable {
         saved = state
         if live == nil { lastOn = Self.onState(of: state) }
     }
+    /// Keep: the live change becomes the saved value and goes. The camera is unchanged, so the
+    /// `lastOn` memory stays as it is.
+    mutating func keepLive() {
+        if let live { saved = live }
+        live = nil
+    }
     /// Start and Snap Back: the live change goes, and the memory returns to the default's on-state.
     mutating func resetToDefault() {
         live = nil
@@ -138,8 +148,8 @@ struct CameraStateSession: Equatable {
     enum Moment: Equatable {
         /// Start, Snap Back and the end of the picture: the live change goes (R6.3).
         case start, snapBack, end
-        /// Another layout applied mid-meeting. The camera state is not part of a layout, so a live
-        /// Off stays Off: switching must never put the camera back in front of everyone.
+        /// Another layout became active. A live Off stays Off (meeting-setup R5.4): switching must never
+        /// put the camera back in front of everyone. `MeetingSetup.apply(.layoutSwitched)` holds the rule.
         case layoutSwitch
     }
 

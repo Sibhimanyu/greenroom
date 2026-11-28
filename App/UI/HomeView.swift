@@ -19,8 +19,9 @@
 //  Record view use (`startShapePreview`) and it is turned off again when
 //  Home goes away or a start begins.
 //
-//  Nothing here owns logic. Each chip writes the working-copy setting Layouts
-//  writes and calls the same `requestShapeApply`; the button calls `start()`.
+//  Nothing here owns logic. Each chip makes one change to the Meeting setup (saved into the
+//  active layout before a meeting, for this meeting during one; the setup tells the Stage);
+//  the button calls `start()`.
 //
 import AVFoundation
 import SwiftUI
@@ -769,7 +770,10 @@ struct HomeView: View {
 
     private func pickDisplay(_ id: String) {
         coordinator.screenCaptureDisplayUUID = id
-        coordinator.shareTarget.kind = .display
+        var target = coordinator.shareTarget
+        target.kind = .display
+        coordinator.shareTarget = target
+        // The display is not one of the three settings: the picture is asked for it here.
         coordinator.requestShapeApply(rebuild: true)
     }
 
@@ -807,12 +811,12 @@ struct HomeView: View {
     private var lookPicker: some View {
         HomeTilePanel(
             title: "Look", summary: "How you appear over what you share.", value: coordinator.webcamShape.label,
+            setupLine: coordinator.homeSetupLine(.cameraPiece),
             moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openCameraSettings() },
             width: nil
         ) {
             CameraShapeTiles(selected: coordinator.webcamShape, autofocus: true) { shape in
                 coordinator.webcamShape = shape
-                coordinator.requestShapeApply()
                 lookOpen = false
             }
         }

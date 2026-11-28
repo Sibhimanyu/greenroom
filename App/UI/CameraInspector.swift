@@ -27,13 +27,17 @@ struct CameraInspector: View {
     let canvasAspect: Double
     let readout: String
     @Binding var lookOpen: Bool
+    /// The running meeting's own values for this layout's camera state and piece, with Keep and Reset (R4.4).
+    var notes = ForThisMeetingNotes.none
     @State private var largePreview = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             whoSeesRow
+            notes.view(.cameraState)
             if let piece { shapeRow(piece) }
+            notes.view(.cameraPiece)
             if let look = camera.look {
                 // The saved piece's shape, not the live one: the look follows the tiles above.
                 Collapsible(hidden: !lookOpen) {

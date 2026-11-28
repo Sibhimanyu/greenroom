@@ -42,11 +42,15 @@ struct HomeScreenPanel: View {
             gone: gone, goneName: share.displayName, permissionMissing: permissionMissing,
             cameraState: CameraTileRules.state(cameraIsOff: coordinator.cameraIsOff, deviceCount: cameraCount),
             moreTitle: "More screen settings\u{2026}", more: more,
+            setupLine: coordinator.homeSetupLine(.share),
             pickTile: pickTile,
             pickWindow: pickWindow,
             pickDisplay: { id in
                 coordinator.screenCaptureDisplayUUID = id
-                coordinator.shareTarget.kind = .display
+                var target = coordinator.shareTarget
+                target.kind = .display
+                coordinator.shareTarget = target
+                // The display is not one of the three settings: the picture is asked for it here.
                 coordinator.requestShapeApply(rebuild: true)
             },
             setFollows: { coordinator.shareTarget.followsSlideShow = $0 })
@@ -56,7 +60,6 @@ struct HomeScreenPanel: View {
         guard let window = windows.first(where: { "\($0.id)" == row.id }) else { return }
         coordinator.shareTarget = SharePopoutRules.picking(bundleID: window.bundleID, appName: window.appName,
                                                            title: window.title, in: coordinator.shareTarget)
-        coordinator.requestShapeApply(rebuild: true)
         coordinator.bringSharedWindowForward(window)
         close()
     }
@@ -68,6 +71,5 @@ struct HomeScreenPanel: View {
         guard let next = SharePopoutRules.applying(tile, to: coordinator.shareTarget) else { return }
         guard next.kind != share.kind else { return }
         coordinator.shareTarget = next
-        coordinator.requestShapeApply(rebuild: true)
     }
 }

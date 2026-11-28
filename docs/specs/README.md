@@ -50,6 +50,8 @@ requirement is never "verified live" because a test passed: tests prove
 | --- | --- | --- |
 | [2026-11-25-owner-bug-list.md](2026-11-25-owner-bug-list.md) | The owner's bug list of 2026-11-25 and the fixes that followed it the same day | R1 to R13 |
 | [layouts-builder.md](layouts-builder.md) | The merged Layouts tab: layouts own the camera piece and what's shared, one rule for who sees what | R1 to R24 |
+| [meeting-setup.md](meeting-setup.md) | One owner for the layout's camera state, camera piece and share: saved before a meeting, for this meeting during one | R1 to R6 |
+| [shelved.md](shelved.md) | Features the owner has parked (code kept, not shipped): Record the Mac's own sound, with how to test it | S1 to S4 |
 
 ## Related
 

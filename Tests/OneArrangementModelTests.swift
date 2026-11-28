@@ -89,30 +89,30 @@ final class OneArrangementModelTests: XCTestCase {
     // MARK: R28
 
     // R28.1
-    func testRajSanModeIsBrowserSpeakerAndChatOnMainAndAFullMeetingOnSecond() throws {
+    func testRajSanModeIsBrowserAndChatOnMainAndAFullMeetingOnSecond() throws {
         let raj = try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.rajMode))
         let main = raj.pieces(for: .main)
-        XCTAssertEqual(main.count, 3)
+        XCTAssertEqual(main.count, 2, "no speaker piece (owner, 2026-11-27)")
         XCTAssertNotNil(main[0].kind.app)
         XCTAssertEqual(main[0].rect, UnitRect(x: 0, y: 0, w: 0.75, h: 1))
-        XCTAssertEqual(main[1].kind.view, .activeSpeaker)
-        XCTAssertEqual(main[1].rect, UnitRect(x: 0.75, y: 0, w: 0.25, h: 5.0 / 12))
-        XCTAssertTrue(main[2].kind.isChat)
-        XCTAssertEqual(main[2].rect, UnitRect(x: 0.75, y: 5.0 / 12, w: 0.25, h: 1 - 5.0 / 12))
+        XCTAssertTrue(main[1].kind.isChat)
+        XCTAssertEqual(main[1].rect, UnitRect(x: 0.75, y: 0, w: 0.25, h: 7.0 / 12))
         XCTAssertEqual(raj.pieces(for: .second).count, 1)
         guard case .meeting(true, _) = raj.pieces(for: .second)[0].kind else { return XCTFail("a full-display Meeting") }
         XCTAssertEqual(LayoutLibrary.description(forStarter: LayoutLibrary.rajMode),
-                       "The browser with the speaker and chat beside it. With a second display, the meeting fills it.")
+                       "The browser with the chat beside it. With a second display, the meeting fills it.")
     }
 
-    // R28.1: the owner uses Raj San Mode on the laptop alone, so a meeting surface must appear there.
-    func testRajSanModeOnTheLaptopAloneStillPlacesAMeetingSurface() throws {
+    // R28.1 (revised 2026-11-27): the owner's own layout has no speaker piece, so on the laptop alone it is the browser and Chat.
+    func testRajSanModeOnTheLaptopAlonePlacesTheBrowserAndChat() throws {
         let raj = try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.rajMode))
         let screen = LayoutScreen(id: "MAIN", name: "Built-in", visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 875), isMain: true)
-        let withViews = LayoutResolver.resolve(raj, screens: [screen], primaryHeight: 900)
-        XCTAssertFalse(withViews.views.isEmpty, "the Active speaker view is the surface")
-        let zoomUI = LayoutResolver.substitutingMeetingForActiveSpeaker(raj, viewsCanOpen: false, secondConnected: false)
-        XCTAssertNotNil(LayoutResolver.resolve(zoomUI, screens: [screen], primaryHeight: 900).meeting)
+        // Raj San Mode ships no speaker piece (2026-11-27): on the laptop alone it places the browser and Chat only.
+        let placed = LayoutResolver.resolve(raj, screens: [screen], primaryHeight: 900)
+        XCTAssertTrue(placed.views.isEmpty)
+        XCTAssertNil(placed.meeting)
+        XCTAssertNotNil(placed.chat)
+        XCTAssertEqual(placed.apps.count, 1)
     }
 
     // R28.1: an Active speaker on main may sit beside the Meeting on second (views count per version).

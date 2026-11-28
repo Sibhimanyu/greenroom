@@ -68,6 +68,7 @@ Threading: `SessionRecorder` flags read by the render queue sit behind `lock` (`
 - Which leftovers keep/delete an empty session folder: `SessionFolderRules.isDisposable` (and `SessionFolderRulesTests`).
 - Pause/resume behaviour or timeline maths: `PauseClock`, `SessionRecorder.pause/resume`, `fileSeconds(first:)`.
 - Mic device handling or permission messages: `MicrophoneTap.start`, `SessionRecorder.syncPlumbing`.
+- Mac's own sound is SHELVED (2026-11-27, `docs/specs/shelved.md`): `App/Shelved.swift` `Shelved.macSound` is false in Release, so `CoordinatorController.recordsMacSound` is false and `captureSystemAudio`/`recordsSystemAudio` stay off; the path below stays for testing in Debug.
 - System-sound mixing (jitter threshold, 150 ms hold-back, chunk size): `AudioMixer.add/flush`.
 - Clip-buffer length or segment interval: `SessionFolders.clipBufferSeconds`, `SessionRecorder.segmentInterval`, `ClipRing.init`.
 - Clip mark format, sidecar names: `SessionClip`, `SessionClipStore`; the hotkey logic is `CoordinatorController.markClip(minutes:)`.

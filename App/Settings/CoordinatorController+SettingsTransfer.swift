@@ -132,7 +132,11 @@ extension CoordinatorController {
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.recordingCountdownSeconds { recordingCountdownSeconds = value }
-        if let value = transfer.recordSystemAudio { recordSystemAudio = value }
+        // Shelved (docs/specs/shelved.md): the value is kept, but a Release build
+        // never turns it on.
+        if let value = transfer.recordSystemAudio {
+            recordSystemAudio = Shelved.effectiveMacSound(stored: value, macSoundAvailable: Shelved.macSound)
+        }
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }

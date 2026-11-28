@@ -64,16 +64,20 @@ struct HomeMicPanel: View {
                 }
             }
 
-            HomeTileToggleRow(
-                title: "Record the Mac\u{2019}s sound",
-                isOn: Binding(get: { coordinator.recordSystemAudio }, set: { coordinator.recordSystemAudio = $0 }),
-                help: "Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Needs something shared under Behind you.")
-            HomeTileDependents(hidden: !MicPanelRules.showsNeedsShareHint(
-                recordSystemAudio: coordinator.recordSystemAudio,
-                shareIsNothing: coordinator.shareTarget.sharesNothing)) {
-                Text("Share a screen or app to give it sound to record.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            #if DEBUG
+            if Shelved.macSound {
+                HomeTileToggleRow(
+                    title: "Record the Mac\u{2019}s sound",
+                    isOn: Binding(get: { coordinator.recordSystemAudio }, set: { coordinator.recordSystemAudio = $0 }),
+                    help: "\(Shelved.macSoundCaption) Adds what is playing from the screen or app you share (a video, a call) to the recording, mixed with your microphone. Needs something shared under Behind you.")
+                HomeTileDependents(hidden: !MicPanelRules.showsNeedsShareHint(
+                    recordSystemAudio: coordinator.recordsMacSound,
+                    shareIsNothing: coordinator.shareTarget.sharesNothing)) {
+                    Text("Share a screen or app to give it sound to record.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
+            #endif
         }
     }
 

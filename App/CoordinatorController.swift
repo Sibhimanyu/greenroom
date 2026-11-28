@@ -1662,15 +1662,22 @@ final class CoordinatorController: ObservableObject {
     /// Also record the Mac's own sound (what is playing from the shared
     /// screen or app), mixed with the microphone into the one audio track.
     /// Off by default. Greenroom's and the meeting's own sound is left out.
+    /// SHELVED 2026-11-27 (see `Shelved`): Release ignores it via `recordsMacSound`.
     @Published var recordSystemAudio: Bool {
         didSet {
             defaults.set(recordSystemAudio, forKey: "recordSystemAudio")
             Analytics.setting("record_system_audio", on: recordSystemAudio)
-            recorder?.recordsSystemAudio = recordSystemAudio
+            recorder?.recordsSystemAudio = recordsMacSound
             // The sound comes through the screen capture, which is built with
             // or without it, so a running picture rebuilds its capture.
             if sceneInUse, let stage { stage.update(makeStageConfiguration()) }
         }
+    }
+    /// What recordings use: the stored switch, forced off while the feature
+    /// is shelved (Release builds), whatever an old default or an imported
+    /// settings file says.
+    var recordsMacSound: Bool {
+        Shelved.effectiveMacSound(stored: recordSystemAudio, macSoundAvailable: Shelved.macSound)
     }
     /// The app whose slide show the screen capture has moved to, while it has
     /// (phase 6); drives the quiet "Following Keynote's slide show" line.
@@ -2059,7 +2066,7 @@ final class CoordinatorController: ObservableObject {
                            // otherwise the one.
                            cameraUIDs: stageCameraUIDs
                                ?? sceneCameraUIDs(limit: phase.isCameraBusy ? 1 : nil),
-                           captureSystemAudio: recordSystemAudio)
+                           captureSystemAudio: recordsMacSound)
     }
 
     private func ensureStage() -> StageCompositor? {
@@ -3274,7 +3281,7 @@ final class CoordinatorController: ObservableObject {
         }
         guard !isSavingRecording else { throw RecorderError.stillSaving }
         recorder.microphoneUID = micDeviceUID
-        recorder.recordsSystemAudio = recordSystemAudio
+        recorder.recordsSystemAudio = recordsMacSound
         try recorder.start(in: folder)
         apply(.takeBegan)
         recordingStartedAt = Date()
@@ -5320,7 +5327,7 @@ final class CoordinatorController: ObservableObject {
         recorder.onUnexpectedStop = { [weak self] message in
             Task { @MainActor in self?.recorderStoppedItself(message) }
         }
-        recorder.recordsSystemAudio = recordSystemAudio
+        recorder.recordsSystemAudio = recordsMacSound
         stage.onSystemAudio = { [weak recorder] buffer in recorder?.appendSystemAudio(buffer) }
         self.recorder = recorder
         wireInputEvents(recorder, stage: stage)

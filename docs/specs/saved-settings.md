@@ -121,9 +121,9 @@ Nothing makes the four agree. `autoRecordOnStart` shows the cost: a comment in `
 | --- | --- | --- | --- |
 | P1 | This spec, the glossary entry and the index | built | fcb637b |
 | P2 | Failing tests: R1 to R3, R5.3 | built | 9653672 |
-| P3 | `SavedSetting`, `SavedSettings`, `MeetingMode` moved: R1 to R3 pass | planned | |
-| P4 | Wire the coordinator (batch by batch), the bridge, the key constants: R4, R5, R6 | planned | |
-| P5 | Codemaps, statuses, `scripts/check.sh` green | planned | |
+| P3 | `SavedSetting`, `SavedSettings`, `MeetingMode` moved: R1 to R3 pass | built | 7a7a687 |
+| P4 | Wire the coordinator (batch by batch), the bridge, the key constants: R4, R5, R6 | built | 27d91dc |
+| P5 | Codemaps, statuses, `scripts/check.sh` green | built | e3f0aab |
 
 ## Needs a live check
 

@@ -93,8 +93,8 @@ Acceptance: `opensScreenPermission(rebuild:, capturesScreen:, granted:)` is true
 | Phase | Delivers | Status | Commit |
 | --- | --- | --- | --- |
 | P1 | This spec | built | this commit |
-| P2 | Failing tests, then `ShapePreviewRules` (R1 to R9 pure) | planned | |
-| P3 | `ShapePreviewController` owns sink, task, feed; coordinator forwards | planned | |
-| P4 | Codemaps, `check.sh` green | planned | |
+| P2 | Failing tests, then `ShapePreviewRules` (R1 to R9 pure) | built | see git log |
+| P3 | `ShapePreviewController` owns sink, task, feed; coordinator forwards | built | see git log |
+| P4 | Codemaps, `check.sh` green | built | see git log |
 
 Not verified in a real session: attach, release and revival need the real compositor, so they are covered by the full suite and a Debug build, then by the owner trying Home and Settings → Layouts by hand.

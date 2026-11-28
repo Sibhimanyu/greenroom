@@ -175,6 +175,8 @@ neighbours. Spec: `docs/specs/zoom-setup-flow.md`. Decision: `docs/adr/0003-one-
 
 **Look**: the one value that holds the camera look (`CameraLook`). The coordinator keeps one; every screen reads it and every change goes through it (docs/specs/camera-look.md).
 
+**Saved setting**: one value the app remembers between launches in UserDefaults, declared once in `SavedSettings` with its key, type and default (docs/specs/saved-settings.md). The camera look, the meeting window's choices and the Keychain secrets are not in that list.
+
 **Built-in layout**: a layout Greenroom ships with. Three, in this order: Leave my windows alone (the default active one), Raj San Mode and Room + laptop (owner decision, 2026-11-26). Teach from a browser, Talk to the meeting and Present are not built in any more; on an install that had them they are the owner's own layouts. Editable like any other; Reset brings the originals back.
 
 **Leave my windows alone**: the built-in layout that does not move the owner's windows and only places the camera. Replaces "None".

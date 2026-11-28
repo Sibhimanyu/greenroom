@@ -373,6 +373,7 @@ targets:
       - path: App/Settings/SettingsImportRules.swift
       - path: App/Stage/CameraDirectorSettings.swift
       - path: App/Stage/CameraBackgroundChoice.swift
+      - path: App/Stage/CameraLook.swift
       - path: App/Stage/ShareTarget.swift
       - path: App/Stage/ScreenWindowRules.swift
       - path: App/Layout/AppCatalog.swift

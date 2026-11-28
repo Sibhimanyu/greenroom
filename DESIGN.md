@@ -217,7 +217,7 @@ participant rail is the one that exists today; anything similar follows it.
   agree, so nothing looks broken to the scroll view while the panel on screen
   falls apart.
 
-Reference: `App/UI/ParticipantGridWindow.swift`, `railColumn(available:)` and
+Reference: `App/UI/MeetingWindow/MeetingRootView+Layout.swift`, `railColumn(available:)` and
 `layoutRail()`.
 
 ## Motion

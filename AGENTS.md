@@ -23,7 +23,7 @@ Read `DESIGN.md` before any visual change.
 | [editor.md](codemap/editor.md) | `App/Editor`: Edit mode of a session page, `EditorViewModel`, export engine, effects |
 | [cues.md](codemap/cues.md) | `App/Cues`: live mention detection, link resolving, cards, Cues bench |
 | [ui.md](codemap/ui.md) | `App/UI` main surfaces: main window pages (Home, Record, Sessions, report, editor), Settings, menu bar, setup guide, notch island, control bar, camera bubble, shared components and design tokens |
-| [ui-meeting.md](codemap/ui-meeting.md) | Meeting window (`ParticipantGridWindow`), view windows, toolbar, participant console, `App/UI/MeetingVideo` |
+| [ui-meeting.md](codemap/ui-meeting.md) | Meeting window (`ParticipantGridWindowController`, `App/UI/MeetingWindow/`), view windows, toolbar, participant console, `App/UI/MeetingVideo` |
 | [build-test-release.md](codemap/build-test-release.md) | XcodeGen, schemes, build and test commands, Zoom SDK symlink, `Bench/`, `scripts/` (release.sh), the `docs/` website, what each test file covers |
 
 ## Task router
@@ -34,7 +34,7 @@ Read `DESIGN.md` before any visual change.
 | Keyboard shortcuts | app-core | `App/ShortcutModel.swift` → `ShortcutRuntime.swift` → `HotkeyManager.swift` |
 | Joining/hosting, Zoom auth, meeting list, ZAK | zoom | `App/Zoom/ZoomMeetingSDKClient*.swift`, `ZoomServerToServerClient` |
 | Zoom setup (Connect Zoom step, Set up for me, the Zoom window and its bar) | zoom, ui | `App/Zoom/ZoomSetupFlow.swift`, `SetupForMe.swift`, `App/UI/ZoomSetupAssist.swift` |
-| Other people's video, shares, chat, hands up | zoom, ui-meeting | `App/Zoom/` delegates, `App/UI/ParticipantGridWindow.swift` |
+| Other people's video, shares, chat, hands up | zoom, ui-meeting | `App/Zoom/` delegates, `App/UI/MeetingWindow/` |
 | What the meeting sees as my camera, looks, backgrounds | stage | `App/Stage/StageCompositor.swift`, `StageRenderer` |
 | Camera bubble / presence | stage, ui | `App/CoordinatorController+Presence.swift`, `App/Stage/` presence rules, `PresenceBubble` |
 | Which window is shared, slide-show follow | stage | `App/Stage/ShareTarget.swift`, `ShareVisibleWindows.swift` |
@@ -45,7 +45,7 @@ Read `DESIGN.md` before any visual change.
 | Cues / prompter cards | cues | `App/Cues/CuesController.swift`, `CoordinatorController+Cues.swift` |
 | Home, Record view, Sessions pages | ui | `App/UI/ContentView.swift`, `HomeView`, `RecordingsView` |
 | Settings tabs and rows | ui | `App/UI/SettingsView.swift`, `SettingsKit.swift` |
-| Meeting window toolbar, meeting window layout | ui-meeting | `MeetingToolbarLayout`, `MeetingControls.swift`, `ParticipantGridWindow.swift` |
+| Meeting window toolbar, meeting window layout | ui-meeting | `MeetingToolbarLayout`, `MeetingWindowLayout`, `MeetingControls.swift`, `App/UI/MeetingWindow/` |
 | Menu bar menu, notch island, floating bar | ui | `MenuBarStatusItem`, `NotchStatusController`, `MeetingControlBarController` |
 | Colours, glass, fonts | ui + `DESIGN.md` | `Brand` in `App/GreenroomApp.swift`, `App/UI/Glass.swift` |
 | Building, tests, adding a testable file | build-test-release | `project.yml` (`GreenroomTests.sources`) |

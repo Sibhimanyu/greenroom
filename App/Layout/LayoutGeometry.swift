@@ -43,7 +43,7 @@ enum LayoutGeometry {
     // MARK: Minimums
 
     /// Smallest sizes the pieces are usable at, in points: the meeting window's
-    /// own minimum (ParticipantGridWindow), the chat's (ChatWindow) and a
+    /// own minimum (ParticipantGridWindowController), the chat's (ChatWindow) and a
     /// working size for an app.
     static func minimumPoints(for kind: LayoutPiece.Kind) -> CGSize {
         switch kind {

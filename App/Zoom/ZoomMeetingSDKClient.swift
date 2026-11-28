@@ -645,7 +645,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     // MARK: - Featured speaker
     //
     // speakerToShow() below picks who the stage shows; the old per-window
-    // speaker code is gone (see the meeting window, ParticipantGridWindow.swift).
+    // speaker code is gone (see the meeting window, App/UI/MeetingWindow/).
 
     /// The last person known to be talking, so a quiet room does not blank out.
     private var lastKnownSpeaker: UInt32?

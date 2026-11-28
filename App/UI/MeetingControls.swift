@@ -6,7 +6,7 @@
 //
 //  `MeetingControlsModel` is the single source of truth: the coordinator owns
 //  one per session and two views read it. The toolbar along the foot of the
-//  meeting window (ParticipantGridWindow.swift) is the everyday surface. The
+//  meeting window (App/UI/MeetingWindow/) is the everyday surface. The
 //  floating pill is what is left when that window is closed, minimised or
 //  fully covered: mute, camera, record, chat, who is here, how long, End.
 //

@@ -61,11 +61,11 @@ Note: `startAsHost(... enableMedia: true)` is the real meeting client (camera an
 **Ownership.** `CoordinatorController` (App/CoordinatorController.swift) owns exactly one `let zoomChatClient = ZoomMeetingSDKClient()` (line ~497) and one `let zoomChatBridge = ZoomChatBridge()` (~498). The client owns three helper objects: `shareViewer` (`ShareViewer`), `viewVideo` (`ViewVideoStore`), `roomEvents` (`RoomEvents`). They are separate objects, not extensions, because they are SDK delegates. AppDelegate calls `zoomChatClient.shutdown()` on quit; `CoordinatorController` also calls `leave()` / `awaitMeetingClosed` on quit and `useStageVideo(nil)` when a session ends.
 
 **SDK wrapper layering** (top = what the rest of the app sees):
-1. `CoordinatorController` flows (`hostAllInOne`, `joinAllInOne`, `ensurePictureInstalled`, `runPipeline`) and UI (`MeetingControls`, `ParticipantGridWindow`, `MeetingViewWindow`, `PeoplePopOut`, `ChatWindow`) call `ZoomMeetingSDKClient` methods.
+1. `CoordinatorController` flows (`hostAllInOne`, `joinAllInOne`, `ensurePictureInstalled`, `runPipeline`) and UI (`MeetingControls`, `ParticipantGridWindowController`, `MeetingViewWindow`, `PeoplePopOut`, `ChatWindow`) call `ZoomMeetingSDKClient` methods.
 2. `ZoomMeetingSDKClient` (+ its extensions) is the only place that talks to `ZoomSDK.shared()` services (`getMeetingService`, `getSettingService`, `getAuthService`, `getRawDataController`).
 3. Delegate objects feed events back: `ZoomSDKAuthDelegate`, `ZoomSDKMeetingServiceDelegate` (status), `ZoomSDKVideoContainerDelegate` (subscribe failures, data-type changes), `ZoomSDKMeetingActionControllerDelegate` (speaker, join/leave), `ShareViewer` (ASController + share container + share element), `RoomEvents` (waiting room + reactions), `ZoomChatBridge` (chat controller), `ZoomVideoSender` (virtual video source).
 4. Pure value types (budget, ledgers, rules) sit beside and are called by the client, with no SDK import.
-Callbacks to the UI are plain closures: `onVideoSubscribeFailure`, `onParticipantCountChanged`, `roomEvents.onChange/onWaitingJoin`, `shareViewer.onChange`. The UI polls once a second for roster/speaker state (`MeetingControls`, `ParticipantGridWindow`) and redraws at once on those closures.
+Callbacks to the UI are plain closures: `onVideoSubscribeFailure`, `onParticipantCountChanged`, `roomEvents.onChange/onWaitingJoin`, `shareViewer.onChange`. The UI polls once a second for roster/speaker state (`MeetingControls`, `ParticipantGridWindowController`) and redraws at once on those closures.
 
 **Auth, join, start flow** (host-only; no guest join):
 1. Credentials load lazily via `SecretStore` (`zoomSDKClientSecret`, `zoomS2SClientSecret`; the Keychain item itself is read once at launch).

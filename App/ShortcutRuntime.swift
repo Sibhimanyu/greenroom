@@ -71,7 +71,7 @@ final class ShortcutRuntime {
             return
         }
         let slots = ShortcutCatalog.slots(layouts: layouts)
-        // Window-scoped rows are answered by their own window (ControlPanel), never
+        // Window-scoped rows are answered by their own window (MeetingControlPanel), never
         // registered system-wide.
         let resolved = store.bindings.resolved(among: slots).filter { $0.slot.scope == .global }
         let hotkeys = resolved.map { entry in

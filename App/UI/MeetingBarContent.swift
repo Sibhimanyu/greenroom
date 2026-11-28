@@ -255,44 +255,9 @@ struct MeetingBarContent: View {
     /// answers, drawn in the bar's own view (no popover, no second window), so
     /// one click on "End for everyone" is the click.
     private var endConfirmStrip: some View {
-        HStack(spacing: 8) {
-            Text(s.endAskTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .padding(.leading, 12)
-            Spacer(minLength: 8)
-            Button(action: a.keepGoing) {
-                Text("Keep going")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.primary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .help("Keep the meeting going. Esc does the same.")
-            Button(action: a.end) {
-                Text(s.endName == LiveExitChoice.leaveMeeting.title ? "Leave" : "End for everyone")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background {
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.45))
-                            EndCountdownFill(startedAt: s.endAskStartedAt, timeout: s.endAskTimeout)
-                        }
-                    }
-                    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5) }
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .help(s.endAskDetail)
-            .accessibilityLabel("Confirm: \(s.endName)")
-        }
-        .padding(.trailing, L.trailingPad)
+        EndConfirmStrip(title: s.endAskTitle, keep: s.endKeepLabel, confirm: s.endConfirmLabel,
+                        detail: s.endAskDetail, startedAt: s.endAskStartedAt, timeout: s.endAskTimeout,
+                        onKeep: a.keepGoing, onConfirm: a.end)
     }
 
     private var row: some View {
@@ -560,6 +525,7 @@ struct MeetingBarContent: View {
 struct EndCountdownFill: View {
     var startedAt: Date?
     var timeout: TimeInterval
+    var cornerRadius: CGFloat = 10
     @State private var drained = false
 
     var body: some View {
@@ -570,6 +536,83 @@ struct EndCountdownFill: View {
                 .frame(width: geo.size.width * (drained ? 0 : full))
                 .onAppear { withAnimation(.linear(duration: left)) { drained = true } }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
+
+/// The whole bar while End is armed: the question, then the two answers. Shared by the meeting bar
+/// and Record's bar, so both read and behave the same.
+struct EndConfirmStrip: View {
+    var title: String
+    var keep: String
+    var confirm: String
+    var detail: String
+    var startedAt: Date?
+    var timeout: TimeInterval
+    var onKeep: () -> Void
+    var onConfirm: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.leading, 12)
+            Spacer(minLength: 8)
+            EndConfirmButtons(keep: keep, confirm: confirm, detail: detail,
+                              startedAt: startedAt, timeout: timeout, onKeep: onKeep, onConfirm: onConfirm)
+        }
+        .padding(.trailing, MeetingBarLayout.trailingPad)
+    }
+}
+
+/// The armed End on every surface (floating bar, Meeting window toolbar, Record's bar): the
+/// cancel button and the red confirm button with the draining fill. The one visual definition.
+struct EndConfirmButtons: View {
+    var keep: String
+    var confirm: String
+    var detail: String
+    var startedAt: Date?
+    var timeout: TimeInterval
+    var height: CGFloat = 28
+    var onKeep: () -> Void
+    var onConfirm: () -> Void
+
+    var body: some View {
+        HStack(spacing: MeetingToolbarLayout.endArmedGap) {
+            Button(action: onKeep) {
+                Text(keep)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .foregroundStyle(Color.primary)
+                    .padding(.horizontal, 12)
+                    .frame(height: height)
+                    .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help("\(keep). Esc does the same.")
+            Button(action: onConfirm) {
+                Text(confirm)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: height)
+                    .background {
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.45))
+                            EndCountdownFill(startedAt: startedAt, timeout: timeout)
+                        }
+                    }
+                    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5) }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help(detail)
+            .accessibilityLabel("Confirm: \(confirm)")
+        }
+    }
+}
+

@@ -1,5 +1,6 @@
 import XCTest
 import Carbon.HIToolbox
+import AppKit
 
 final class MeetingBarModelTests: XCTestCase {
     private typealias M = MeetingBarModel
@@ -224,6 +225,20 @@ final class MeetingBarModelTests: XCTestCase {
         XCTAssertEqual(cells[i], L.present)
         XCTAssertEqual(cells[i + 1], L.draw)
         XCTAssertGreaterThan(L.recordOnlyWidth, L.recordOnlyPill + L.pause + L.draw + L.notes + L.present)
+    }
+
+    // Armed, Record's fixed-size bar becomes: question, Keep recording, End recording. Measured at
+    // the real fonts: it must fit the panel (which cannot grow), title shrink-to-fit not counted on.
+    func testRecordBarArmedStripFitsItsPanel() {
+        let w = EndConfirm.words(.endRecording)
+        func width(_ t: String, _ weight: NSFont.Weight, _ size: CGFloat) -> CGFloat {
+            ceil((t as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight)]).width)
+        }
+        let need = 12 + width(w.title, .semibold, 13) + 8
+            + (width(w.keep, .medium, 12) + 24) + MeetingToolbarLayout.endArmedGap
+            + (width(w.confirm, .semibold, 12) + 24) + MeetingBarLayout.trailingPad
+        XCTAssertLessThanOrEqual(need, MeetingBarLayout.recordOnlyWidth,
+                                 "armed strip needs \(need)pt, panel is \(MeetingBarLayout.recordOnlyWidth)pt")
     }
 
     func testRecordCellIsOneWidthInEveryState() {

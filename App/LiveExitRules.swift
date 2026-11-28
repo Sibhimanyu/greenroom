@@ -233,6 +233,35 @@ struct EndConfirm: Equatable {
     /// Long enough to read two buttons, short enough that End never lingers armed.
     static let timeout: TimeInterval = 6
 
+    /// What is being ended: the words on every surface come from here.
+    enum Kind: Equatable { case endForAll, leave, endRecording }
+
+    struct Words: Equatable {
+        /// The question the bar asks.
+        var title: String
+        /// The hover help on the confirm button.
+        var detail: String
+        /// The cancel button.
+        var keep: String
+        /// The confirm button.
+        var confirm: String
+    }
+
+    /// One wording for the bar, the Meeting window toolbar, Record mode's bar and Home.
+    static func words(_ kind: Kind) -> Words {
+        switch kind {
+        case .endForAll:
+            return Words(title: "End the meeting for everyone?", detail: "Press End for everyone to end it. Esc keeps it going.",
+                         keep: "Keep going", confirm: "End for everyone")
+        case .leave:
+            return Words(title: "Leave the meeting?", detail: "Press Leave to leave. Esc keeps it going.",
+                         keep: "Keep going", confirm: "Leave")
+        case .endRecording:
+            return Words(title: "End the recording?", detail: "Press End recording to save it. Esc keeps recording.",
+                         keep: "Keep recording", confirm: "End recording")
+        }
+    }
+
     private(set) var phase: Phase = .idle
 
     var isConfirming: Bool { if case .confirming = phase { return true } else { return false } }

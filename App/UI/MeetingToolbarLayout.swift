@@ -56,6 +56,10 @@ enum MeetingToolbarLayout {
     static let more: CGFloat = 68
     static let clock: CGFloat = 56
     static let end: CGFloat = 60
+    /// End armed: "Keep going" and "End for everyone" side by side (EndConfirmButtons, 12pt,
+    /// 12pt padding each side): 87 + 8 + 124 = 219 measured; 224 leaves air. The test measures it.
+    static let endArmed: CGFloat = 224
+    static let endArmedGap: CGFloat = 8
     /// Air kept between the last control and the clock, so they never touch.
     static let spacer: CGFloat = 8
     /// The clock sits between Draw and Security in the drop order: it goes
@@ -95,7 +99,7 @@ enum MeetingToolbarLayout {
     /// all of them. The two balancing pads (the shorter outer group padded to
     /// the longer, to centre the middle) count as nothing: they give way first
     /// when the row is tight, so only the gaps around them count.
-    static func required(items: [ToolbarItemSpec], showsClock: Bool) -> CGFloat {
+    static func required(items: [ToolbarItemSpec], showsClock: Bool, endWidth: CGFloat = end) -> CGFloat {
         var dividers = 0
         var last: Int?
         for item in items { if let last, last != item.group { dividers += 1 }; last = item.group }
@@ -104,7 +108,7 @@ enum MeetingToolbarLayout {
         // Children: the balancing pad, two spacers, the controls, dividers,
         // More, the clock, End.
         let children = 1 + 2 + items.count + dividers + beforeMore + 1 + (showsClock ? 1 : 0) + 1
-        var total = side * 2 + end + more + spacer * 2 + gap * CGFloat(children - 1)
+        var total = side * 2 + endWidth + more + spacer * 2 + gap * CGFloat(children - 1)
         total += items.reduce(0) { $0 + $1.width }
         total += CGFloat(dividers + beforeMore) * divider
         if showsClock { total += clock }
@@ -112,10 +116,10 @@ enum MeetingToolbarLayout {
     }
 
     /// Drops the least important control until what is left fits `width`.
-    static func fit(specs: [ToolbarItemSpec], width: CGFloat) -> Fit {
+    static func fit(specs: [ToolbarItemSpec], width: CGFloat, endWidth: CGFloat = end) -> Fit {
         var items = specs
         var clock = true
-        while required(items: items, showsClock: clock) > width {
+        while required(items: items, showsClock: clock, endWidth: endWidth) > width {
             // The clock is one more candidate, ranked by `clockKeep`.
             let weakest = items.filter { $0.id != .mute }.min { $0.keep < $1.keep }
             if clock, weakest == nil || clockKeep < weakest!.keep {

@@ -73,6 +73,9 @@ struct MeetingBarSnapshot: Equatable {
     /// The REC pill was pressed once and waits for Confirm.
     var recStopArmed = false
     var endAskDetail = ""
+    /// The two armed buttons' words (EndConfirm.words).
+    var endKeepLabel = "Keep going"
+    var endConfirmLabel = "End for everyone"
     /// When the confirm wait began and how long it lasts (the countdown fill).
     var endAskStartedAt: Date?
     var endAskTimeout: TimeInterval = 6

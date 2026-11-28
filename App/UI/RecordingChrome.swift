@@ -146,9 +146,9 @@ final class RecordingControlBarController {
 }
 
 /// Same rules as the meeting bar: one timer (the recording's own, there is no
-/// class), Share and Draw are icons, and the one red control is Stop. The dot is the
+/// class), Share and Draw are icons, and the one red control is End. The dot is the
 /// recording signal, not a control.
-///   [dot REC 1:29] [pause] | [Share] [pencil] [Notes] | [Stop]
+///   [dot REC 1:29] [pause] | [Share] [pencil] [Notes] | [End]
 private struct RecordingControlBarView: View {
     @ObservedObject var coordinator: CoordinatorController
     @ObservedObject private var shortcuts = ShortcutStore.shared
@@ -159,6 +159,24 @@ private struct RecordingControlBarView: View {
     var body: some View {
         let paused = coordinator.isRecordingPaused
         let bindings = shortcuts.bindings
+        Group {
+            if coordinator.exitAsk == .stopTake { armedStrip } else { row(paused: paused, bindings: bindings) }
+        }
+        .animation(.easeOut(duration: 0.15), value: coordinator.exitAsk == .stopTake)
+        .frame(width: RecordingControlBarController.size.width, height: RecordingControlBarController.size.height)
+        .greenroomGlass(in: Capsule(), interactive: true)
+    }
+
+    /// End recording armed: the same strip as the meeting bar's End (EndConfirmStrip), with the
+    /// same 6 s draining fill. Pause is never asked about.
+    private var armedStrip: some View {
+        EndConfirmStrip(title: coordinator.exitAskTitle, keep: coordinator.exitAskKeep,
+                        confirm: coordinator.exitAskConfirm, detail: coordinator.exitAskDetail,
+                        startedAt: coordinator.exitAskStartedAt, timeout: coordinator.exitAskTimeout,
+                        onKeep: { coordinator.disarmExit() }, onConfirm: { coordinator.confirmStopTake() })
+    }
+
+    private func row(paused: Bool, bindings: ShortcutBindings) -> some View {
         HStack(spacing: L.spacing) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 pill(paused: paused, seconds: coordinator.recordingElapsed(at: context.date) ?? 0)
@@ -187,19 +205,13 @@ private struct RecordingControlBarView: View {
                 notes.toggle()
             }
             BarDivider()
-            BarRedButton(title: "Stop", width: L.recordOnlyStop,
-                         help: MeetingBarModel.help("Stop and save the recording", .toggleRecording, bindings),
-                         spoken: "Stop and save the recording",
-                         armed: coordinator.exitAsk == .stopTake,
-                         armedHelp: "Stop and save the recording",
-                         armedTitle: coordinator.exitAskTitle,
-                         armedDetail: coordinator.exitAskDetail) { coordinator.confirmStopTake() }
+            BarRedButton(title: "End", width: L.recordOnlyStop,
+                         help: MeetingBarModel.help("End and save the recording", .toggleRecording, bindings),
+                         spoken: "End and save the recording") { coordinator.confirmStopTake() }
                 .disabled(coordinator.takeBusy)
         }
         .padding(.leading, 8)
         .padding(.trailing, 8)
-        .frame(width: RecordingControlBarController.size.width, height: RecordingControlBarController.size.height)
-        .greenroomGlass(in: Capsule(), interactive: true)
     }
 
     private func pill(paused: Bool, seconds: TimeInterval) -> some View {

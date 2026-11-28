@@ -171,7 +171,9 @@ neighbours. Spec: `docs/specs/zoom-setup-flow.md`. Decision: `docs/adr/0003-one-
 
 **Stop video**: Zoom's own full video off for the owner, like Zoom's button: nothing is sent to the meeting, not even the screen, and everyone sees the owner's name or avatar. Not a camera state and not *Off*: the camera state stays as it was and comes back with *Start video*. The local stage, the recording and the Room screen keep going. Shown by Zoom's red, filled video.slash. Zoom's own state is the truth, so a stop by a co-host or by Zoom shows too.
 
-**Camera look**: the owner's background, effects and framing. One camera look for all layouts.
+**Camera look**: the owner's background (Normal, Blur or a picture), background removal for Cutout and Presenter, and Mirror my camera. One camera look for all layouts. Not the camera devices, and not the camera piece (spot, size, shape), which is per layout.
+
+**Look**: the one value that holds the camera look (`CameraLook`). The coordinator keeps one; every screen reads it and every change goes through it (docs/specs/camera-look.md).
 
 **Built-in layout**: a layout Greenroom ships with. Three, in this order: Leave my windows alone (the default active one), Raj San Mode and Room + laptop (owner decision, 2026-11-26). Teach from a browser, Talk to the meeting and Present are not built in any more; on an install that had them they are the owner's own layouts. Editable like any other; Reset brings the originals back.
 

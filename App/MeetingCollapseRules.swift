@@ -39,6 +39,72 @@ enum MeetingCollapse {
     static func neighbourTakesRoom(going size: MeetingSize, context: MeetingCollapseContext) -> Bool {
         context.placedFull && !context.meetingIsSlot && size != .window
     }
+
+    // MARK: Sizes as decisions (docs/specs/meeting-surface.md R15 to R21)
+
+    /// Which size the meeting is at now, from what is on screen. First match wins:
+    /// a morph's heading; no open window (the Bar); live, the model's reopen target
+    /// (a window that is only covered is still the Window); else hidden or not.
+    static func sizeOnScreen(morphHeading: CGFloat?, windowOpen: Bool, live: Bool,
+                             reopenIsWindow: Bool, windowHidden: Bool) -> MeetingSize {
+        if let heading = morphHeading { return heading == 1 ? .window : .bar }
+        guard windowOpen else { return .bar }
+        if live { return reopenIsWindow ? .window : .bar }
+        return windowHidden ? .bar : .window
+    }
+
+    /// What a move does; the coordinator carries it out.
+    enum Move: Equatable { case stay, collapse, expand }
+
+    /// Where the Bar cannot be built, the meeting stays as it is.
+    static func plan(from: MeetingSize, wanted: MeetingSize, barInstalled: Bool) -> Move {
+        let target = (wanted == .bar && !barInstalled) ? from : wanted
+        guard target != from else { return .stay }
+        switch (from, target) {
+        case (.window, .bar): return .collapse
+        case (.bar, .window): return .expand
+        default: return .stay
+        }
+    }
+
+    /// Going to the Bar is a step down; going to the Window, up.
+    static func step(toward size: MeetingSize) -> Step { size == .bar ? .down : .up }
+
+    enum ExpandPlan: Equatable { case turnRound, openWindow, step }
+
+    /// The Bar's Meeting button. A morph under way is turned round; a Bar that shows
+    /// only because the window is covered brings the window up; else one step up.
+    static func expandPlan(morphing: Bool, size: MeetingSize) -> ExpandPlan {
+        if morphing { return .turnRound }
+        return size == .bar ? .step : .openWindow
+    }
+
+    enum ToggleAction: Equatable { case expandFromBar, shrinkToBar, collapse }
+
+    /// The shortcut and the one click. During a morph, the other way round (any
+    /// heading but 0 shrinks); else the window goes down and the Bar comes up.
+    static func togglePlan(morphHeading: CGFloat?, size: MeetingSize) -> ToggleAction {
+        if let heading = morphHeading { return heading == 0 ? .expandFromBar : .shrinkToBar }
+        return size == .window ? .collapse : .expandFromBar
+    }
+
+    /// `neighbourTakesRoom`, and the session arranges windows.
+    static func neighbourMoves(going size: MeetingSize, context: MeetingCollapseContext, arranged: Bool) -> Bool {
+        neighbourTakesRoom(going: size, context: context) && arranged
+    }
+
+    /// The close button by the person: a placed Meeting counts as hidden, so the
+    /// neighbour grows into the room, unless a view window still shows the meeting.
+    static func closeHandsRoomToNeighbour(arranged: Bool, inMeeting: Bool, placesMeeting: Bool,
+                                          viewWindowsOpen: Bool) -> Bool {
+        arranged && inMeeting && placesMeeting && !viewWindowsOpen
+    }
+
+    /// Whether a Dock click, Show Greenroom or the menu bar's live header finds the
+    /// meeting shrunk. Ignores morphs and whether a window is open.
+    static func shrunkForReopen(live: Bool, reopenIsBar: Bool, windowHidden: Bool) -> Bool {
+        live ? reopenIsBar : windowHidden
+    }
 }
 
 // MARK: - What a meeting surface draws besides its content

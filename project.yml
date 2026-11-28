@@ -336,6 +336,7 @@ targets:
       - path: App/Layout/LayoutEditorRules.swift
       - path: App/Layout/LayoutEditHistory.swift
       - path: App/Layout/LayoutPlacementRules.swift
+      - path: App/Layout/DisplayChangeRules.swift
       - path: App/Layout/StrandedWindowRule.swift
       - path: App/UI/WindowStackRules.swift
       - path: App/Browser/BrowserChromeDrag.swift

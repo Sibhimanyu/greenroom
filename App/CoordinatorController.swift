@@ -492,7 +492,7 @@ final class CoordinatorController: ObservableObject {
     /// that acts on the number — guards, comparisons, joins — uses this.
     var meetingNumberDigits: String { ZoomMeetingLinkParser.digits(meetingNumber) }
     @Published var meetingMode: MeetingMode {
-        didSet { defaults.set(meetingMode.rawValue, forKey: "meetingMode") }
+        didSet { SavedSettings.meetingMode.save(meetingMode, to: defaults) }
     }
 
     /// Saved Join Existing shortcuts (name + number + passcode) - one
@@ -503,15 +503,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func persistPresets() {
-        if let data = try? JSONEncoder().encode(meetingPresets) {
-            defaults.set(data, forKey: "meetingPresets")
-        }
-    }
-
-    private static func loadPresets(from defaults: UserDefaults) -> [MeetingPreset] {
-        guard let data = defaults.data(forKey: "meetingPresets"),
-              let presets = try? JSONDecoder().decode([MeetingPreset].self, from: data) else { return [] }
-        return presets
+        SavedSettings.meetingPresets.save(meetingPresets, to: defaults)
     }
 
     // MARK: First-run onboarding - shown once automatically, reopenable
@@ -539,7 +531,7 @@ final class CoordinatorController: ObservableObject {
     // Secret in the Keychain via SecretStore; the secret is loaded lazily.
 
     @Published var sdkClientID: String {
-        didSet { defaults.set(sdkClientID, forKey: "zoomSDKClientID") }
+        didSet { SavedSettings.sdkClientID.save(sdkClientID, to: defaults) }
     }
     @Published var sdkClientSecret: String {
         didSet {
@@ -847,10 +839,10 @@ final class CoordinatorController: ObservableObject {
     // lazily like the SDK secret.
 
     @Published var s2sAccountID: String {
-        didSet { defaults.set(s2sAccountID, forKey: "zoomS2SAccountID") }
+        didSet { SavedSettings.s2sAccountID.save(s2sAccountID, to: defaults) }
     }
     @Published var s2sClientID: String {
-        didSet { defaults.set(s2sClientID, forKey: "zoomS2SClientID") }
+        didSet { SavedSettings.s2sClientID.save(s2sClientID, to: defaults) }
     }
     @Published var s2sClientSecret: String {
         didSet {
@@ -860,7 +852,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     @Published var userDisplayName: String {
-        didSet { defaults.set(userDisplayName, forKey: "userDisplayName") }
+        didSet { SavedSettings.userDisplayName.save(userDisplayName, to: defaults) }
     }
     /// Zoom's "Hide Self View" for the built-in client. ON (default): the
     /// speaker tile and participant view show only the others. OFF: your
@@ -870,7 +862,7 @@ final class CoordinatorController: ObservableObject {
     /// R6.1): each layout carries its camera state, and this is read once at launch and by a
     /// settings import. With no layout active it is also where a saved camera state lands.
     @Published var cameraShownOnMyScreen: Bool {
-        didSet { defaults.set(cameraShownOnMyScreen, forKey: "cameraShownOnMyScreen") }
+        didSet { SavedSettings.cameraShownOnMyScreen.save(cameraShownOnMyScreen, to: defaults) }
     }
 
     // MARK: Meeting setup (docs/specs/meeting-setup.md)
@@ -894,7 +886,7 @@ final class CoordinatorController: ObservableObject {
     /// state where no layout is active (R6.1: read, never written).
     private var setupFallback: MeetingSetup.Values {
         .init(cameraState: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
-                                     shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+                                     shownOnMyScreen: SavedSettings.cameraShownOnMyScreen.stored(in: defaults)),
               cameraPiece: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults))
     }
 
@@ -1044,7 +1036,7 @@ final class CoordinatorController: ObservableObject {
     }
     @Published var hideSelfView: Bool {
         didSet {
-            defaults.set(hideSelfView, forKey: "hideSelfView")
+            SavedSettings.hideSelfView.save(hideSelfView, to: defaults)
             Analytics.setting("hide_self_view", on: hideSelfView)
             zoomChatClient.setHideSelfView(hideSelfView)
         }
@@ -1057,7 +1049,7 @@ final class CoordinatorController: ObservableObject {
     /// (LegacyLayoutSettings), so that migration keeps its old behaviour. Exports
     /// no longer include it.
     var speakerTileShortcutEnabled: Bool {
-        didSet { defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled") }
+        didSet { SavedSettings.speakerTileShortcutEnabled.save(speakerTileShortcutEnabled, to: defaults) }
     }
 
     /// The placed Meeting piece is hidden and the neighbour that joins it has
@@ -1305,7 +1297,7 @@ final class CoordinatorController: ObservableObject {
     /// system's input.
     @Published var micDeviceUID: String {
         didSet {
-            defaults.set(micDeviceUID, forKey: "micDeviceUID")
+            SavedSettings.micDeviceUID.save(micDeviceUID, to: defaults)
             // The meeting can switch microphones mid-class; the recording's
             // source is rebuilt at the next Start, like the other sources.
             if isRunning, zoomChatClient.didInit { applyMeetingMicrophone() }
@@ -1495,7 +1487,7 @@ final class CoordinatorController: ObservableObject {
     /// open when Greenroom last quit, alongside the configured page.
     @Published var browserRestoresTabs: Bool {
         didSet {
-            defaults.set(browserRestoresTabs, forKey: "browserRestoresTabs")
+            SavedSettings.browserRestoresTabs.save(browserRestoresTabs, to: defaults)
             BrowserWindowController.restoresTabs = browserRestoresTabs
             Analytics.setting("browser_restore_tabs", on: browserRestoresTabs)
         }
@@ -1505,7 +1497,7 @@ final class CoordinatorController: ObservableObject {
     /// its own account, so it is a switch.
     @Published var browserSearchSuggestions: Bool {
         didSet {
-            defaults.set(browserSearchSuggestions, forKey: "browserSearchSuggestions")
+            SavedSettings.browserSearchSuggestions.save(browserSearchSuggestions, to: defaults)
             BrowserWindowController.searchSuggestions = browserSearchSuggestions
             Analytics.setting("browser_search_suggestions", on: browserSearchSuggestions)
         }
@@ -1515,7 +1507,7 @@ final class CoordinatorController: ObservableObject {
     // the only thing that leaves is the search phrase, and each one is logged.
     @Published var cuesEnabled: Bool {
         didSet {
-            defaults.set(cuesEnabled, forKey: "prompterEnabled")
+            SavedSettings.cuesEnabled.save(cuesEnabled, to: defaults)
             Analytics.setting("prompter", on: cuesEnabled)
         }
     }
@@ -1523,7 +1515,7 @@ final class CoordinatorController: ObservableObject {
     /// account is connected). Off means every video card is a search link.
     @Published var cuesVideoSearch: Bool {
         didSet {
-            defaults.set(cuesVideoSearch, forKey: "prompterVideoSearch")
+            SavedSettings.cuesVideoSearch.save(cuesVideoSearch, to: defaults)
             Analytics.setting("prompter_video_search", on: cuesVideoSearch)
         }
     }
@@ -1532,7 +1524,7 @@ final class CoordinatorController: ObservableObject {
     /// at 264 lookups a class against the patterns' 16.
     @Published var cuesUseModel: Bool {
         didSet {
-            defaults.set(cuesUseModel, forKey: "prompterUseModel")
+            SavedSettings.cuesUseModel.save(cuesUseModel, to: defaults)
             Analytics.setting("prompter_model_detector", on: cuesUseModel)
         }
     }
@@ -1541,7 +1533,7 @@ final class CoordinatorController: ObservableObject {
     /// the record of what was said. Off keeps it in memory only.
     @Published var cuesSaveTranscript: Bool {
         didSet {
-            defaults.set(cuesSaveTranscript, forKey: "prompterSaveTranscript")
+            SavedSettings.cuesSaveTranscript.save(cuesSaveTranscript, to: defaults)
             Analytics.setting("prompter_save_transcript", on: cuesSaveTranscript)
         }
     }
@@ -1555,13 +1547,13 @@ final class CoordinatorController: ObservableObject {
     /// word is settled. Which matters more is a judgement about the class.
     @Published var cuesUseWhisper: Bool {
         didSet {
-            defaults.set(cuesUseWhisper, forKey: "cuesUseWhisper")
+            SavedSettings.cuesUseWhisper.save(cuesUseWhisper, to: defaults)
             Analytics.setting("cues_whisper", on: cuesUseWhisper)
         }
     }
 
     @Published var cuesLocaleIdentifier: String {
-        didSet { defaults.set(cuesLocaleIdentifier, forKey: "prompterLocaleIdentifier") }
+        didSet { SavedSettings.cuesLocaleIdentifier.save(cuesLocaleIdentifier, to: defaults) }
     }
     /// Mirrors for the macOS 14+ UI (menu bar, main window): the engine
     /// itself is macOS 26-only and lives behind `cuesEngine`.
@@ -1584,19 +1576,19 @@ final class CoordinatorController: ObservableObject {
     // default; the one place class content can leave the Mac.
     @Published var youtubeUploadMode: YouTubeUploadMode {
         didSet {
-            defaults.set(youtubeUploadMode.rawValue, forKey: "youtubeUploadMode")
+            SavedSettings.youtubeUploadMode.save(youtubeUploadMode, to: defaults)
             Analytics.setting("youtube_upload", youtubeUploadMode.rawValue)
         }
     }
     /// "unlisted" (anyone with the link) or "private" (the channel's account only).
     @Published var youtubePrivacy: String {
         didSet {
-            defaults.set(youtubePrivacy, forKey: "youtubePrivacy")
+            SavedSettings.youtubePrivacy.save(youtubePrivacy, to: defaults)
             Analytics.setting("youtube_privacy", youtubePrivacy)
         }
     }
     @Published var youtubeClientID: String {
-        didSet { defaults.set(youtubeClientID, forKey: "youtubeClientID") }
+        didSet { SavedSettings.youtubeClientID.save(youtubeClientID, to: defaults) }
     }
     @Published var youtubeClientSecret: String {
         didSet {
@@ -1608,19 +1600,16 @@ final class CoordinatorController: ObservableObject {
     /// "Greenroom's Google app" (false): what signing in and uploading use
     /// (YouTubeRouteRules, YouTubeAccountRules).
     @Published var youtubeUsesOwnApp: Bool {
-        didSet { defaults.set(youtubeUsesOwnApp, forKey: "youtubeUsesOwnApp") }
+        didSet { SavedSettings.youtubeUsesOwnApp.save(youtubeUsesOwnApp, to: defaults) }
     }
     /// The Made for Kids answer, nil until the person first gives one (the
     /// upload sheet preselects it; automatic uploads need it).
     @Published var youtubeMadeForKids: Bool? {
-        didSet {
-            if let youtubeMadeForKids { defaults.set(youtubeMadeForKids, forKey: "youtubeMadeForKids") }
-            else { defaults.removeObject(forKey: "youtubeMadeForKids") }
-        }
+        didSet { SavedSettings.youtubeMadeForKids.save(youtubeMadeForKids, to: defaults) }
     }
     /// The signed-in account's channel, for "Signed in as".
     @Published var youtubeChannel: YouTubeChannel? {
-        didSet { defaults.set(youtubeChannel.flatMap { try? JSONEncoder().encode($0) }, forKey: "youtubeChannel") }
+        didSet { SavedSettings.youtubeChannel.save(youtubeChannel, to: defaults) }
     }
     /// The upload sheet, when it is up (main window).
     @Published var youtubeUploadDraft: YouTubeUploadDraft?
@@ -1637,7 +1626,7 @@ final class CoordinatorController: ObservableObject {
     /// is honoured immediately as well as on the next launch.
     @Published var analyticsEnabled: Bool {
         didSet {
-            defaults.set(analyticsEnabled, forKey: "analyticsEnabled")
+            SavedSettings.analyticsEnabled.save(analyticsEnabled, to: defaults)
             Analytics.setEnabled(analyticsEnabled)
         }
     }
@@ -1645,7 +1634,7 @@ final class CoordinatorController: ObservableObject {
     /// which is what almost everyone wants and what this always did. Stored by
     /// display UUID so the choice survives unplugging and reconnecting.
     @Published var screenCaptureDisplayUUID: String {
-        didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
+        didSet { SavedSettings.screenCaptureDisplayUUID.save(screenCaptureDisplayUUID, to: defaults) }
     }
 
     /// The whole display, one app or one window. Changes apply live: the
@@ -1666,7 +1655,7 @@ final class CoordinatorController: ObservableObject {
     /// trigger either way).
     @Published var autoRecordOnStart: Bool {
         didSet {
-            defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart")
+            SavedSettings.autoRecordOnStart.save(autoRecordOnStart, to: defaults)
             Analytics.setting("auto_record", on: autoRecordOnStart)
         }
     }
@@ -1674,7 +1663,7 @@ final class CoordinatorController: ObservableObject {
     /// begins: 0 (off), 3, 5 or 10. Not used when a meeting starts the
     /// recording by itself (auto-record).
     @Published var recordingCountdownSeconds: Int {
-        didSet { defaults.set(recordingCountdownSeconds, forKey: "recordingCountdownSeconds") }
+        didSet { SavedSettings.recordingCountdownSeconds.save(recordingCountdownSeconds, to: defaults) }
     }
     /// Also record the Mac's own sound (what is playing from the shared
     /// screen or app), mixed with the microphone into the one audio track.
@@ -1682,7 +1671,7 @@ final class CoordinatorController: ObservableObject {
     /// SHELVED 2026-11-27 (see `Shelved`): Release ignores it via `recordsMacSound`.
     @Published var recordSystemAudio: Bool {
         didSet {
-            defaults.set(recordSystemAudio, forKey: "recordSystemAudio")
+            SavedSettings.recordSystemAudio.save(recordSystemAudio, to: defaults)
             Analytics.setting("record_system_audio", on: recordSystemAudio)
             recorder?.recordsSystemAudio = recordsMacSound
             // The sound comes through the screen capture, which is built with
@@ -1710,7 +1699,7 @@ final class CoordinatorController: ObservableObject {
             startPresenceBubble()
         }
         look = CameraLook.load(from: defaults)
-        micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
+        micDeviceUID = SavedSettings.micDeviceUID.load(from: defaults)
         // First launch with this key migrates today's settings into "Your previous
         // layout" (see LayoutLibrary.loadOrMigrate); the old keys stay as they were.
         var library = LayoutLibrary.loadOrMigrate(from: defaults, defaultSiteURL: AppLinks.site)
@@ -1722,7 +1711,7 @@ final class CoordinatorController: ObservableObject {
         // The two old keys stay readable; nothing reads the layout's copy yet (P3).
         library.migrateCameraState(
             saved: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
-                             shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+                             shownOnMyScreen: SavedSettings.cameraShownOnMyScreen.stored(in: defaults)),
             defaults: defaults, save: { [store = defaults] in $0.save(to: store) })
         layoutLibrary = library
         // meeting-setup R2.4: the one owner is built from the active layout's saved values. A layout that
@@ -1730,79 +1719,79 @@ final class CoordinatorController: ObservableObject {
         // Locals only: `self` is not whole yet, and `didSet` does not run in init.
         let fallbackSetup = MeetingSetup.Values(
             cameraState: .migrated(noCamera: CameraDirectorSettings.load().noCamera,
-                                   shownOnMyScreen: defaults.object(forKey: "cameraShownOnMyScreen") as? Bool),
+                                   shownOnMyScreen: SavedSettings.cameraShownOnMyScreen.stored(in: defaults)),
             cameraPiece: .global(from: defaults), share: LayoutCamera.globalShare(from: defaults))
         let initialSetup = MeetingSetup(saved: library.active?.setupValues(fallback: fallbackSetup) ?? fallbackSetup)
         meetingSetup = initialSetup
-        className = defaults.string(forKey: "className") ?? ""
+        className = SavedSettings.className.load(from: defaults)
         // Defaults ON: the shortcuts are useless without it, and bool(forKey:)
         // alone cannot tell "never set" from "deliberately off".
-        clipBufferEnabled = (defaults.object(forKey: "clipBufferEnabled") as? Bool) ?? true
-        recordingCountdownSeconds = (defaults.object(forKey: "recordingCountdownSeconds") as? Int) ?? 3
-        recordSystemAudio = defaults.bool(forKey: "recordSystemAudio")
+        clipBufferEnabled = SavedSettings.clipBufferEnabled.load(from: defaults)
+        recordingCountdownSeconds = SavedSettings.recordingCountdownSeconds.load(from: defaults)
+        recordSystemAudio = SavedSettings.recordSystemAudio.load(from: defaults)
         // ON by default: the point of the built-in browser is that the
         // morning's tabs are where they were left. didSet does not run in
         // init, so the controller's flag is set by hand here.
-        let restoresTabs = (defaults.object(forKey: "browserRestoresTabs") as? Bool) ?? true
+        let restoresTabs = SavedSettings.browserRestoresTabs.load(from: defaults)
         browserRestoresTabs = restoresTabs
         BrowserWindowController.restoresTabs = restoresTabs
-        let searchSuggestions = (defaults.object(forKey: "browserSearchSuggestions") as? Bool) ?? true
+        let searchSuggestions = SavedSettings.browserSearchSuggestions.load(from: defaults)
         browserSearchSuggestions = searchSuggestions
         BrowserWindowController.searchSuggestions = searchSuggestions
-        cuesEnabled = defaults.bool(forKey: "prompterEnabled")
-        cuesVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
-        cuesUseModel = defaults.bool(forKey: "prompterUseModel")
-        cuesSaveTranscript = (defaults.object(forKey: "prompterSaveTranscript") as? Bool) ?? true
-        cuesUseWhisper = defaults.bool(forKey: "cuesUseWhisper")
-        cuesLocaleIdentifier = defaults.string(forKey: "prompterLocaleIdentifier") ?? ""
-        youtubeUploadMode = YouTubeUploadMode(rawValue: defaults.string(forKey: "youtubeUploadMode") ?? "") ?? .off
-        youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
-        youtubeClientID = defaults.string(forKey: "youtubeClientID") ?? ""
+        cuesEnabled = SavedSettings.cuesEnabled.load(from: defaults)
+        cuesVideoSearch = SavedSettings.cuesVideoSearch.load(from: defaults)
+        cuesUseModel = SavedSettings.cuesUseModel.load(from: defaults)
+        cuesSaveTranscript = SavedSettings.cuesSaveTranscript.load(from: defaults)
+        cuesUseWhisper = SavedSettings.cuesUseWhisper.load(from: defaults)
+        cuesLocaleIdentifier = SavedSettings.cuesLocaleIdentifier.load(from: defaults)
+        youtubeUploadMode = SavedSettings.youtubeUploadMode.load(from: defaults)
+        youtubePrivacy = SavedSettings.youtubePrivacy.load(from: defaults)
+        youtubeClientID = SavedSettings.youtubeClientID.load(from: defaults)
         youtubeClientSecret = "" // loaded lazily via loadSecretsIfNeeded()
         youtubeUsesOwnApp = YouTubeRouteRules.initialPrefersOwnApp(
-            saved: defaults.object(forKey: "youtubeUsesOwnApp") as? Bool,
-            ownClientComplete: !(defaults.string(forKey: "youtubeClientID") ?? "").isEmpty
+            saved: SavedSettings.youtubeUsesOwnApp.load(from: defaults),
+            ownClientComplete: !SavedSettings.youtubeClientID.load(from: defaults).isEmpty
                 && !(SecretStore.get("youtubeClientSecret") ?? "").isEmpty)
-        youtubeMadeForKids = defaults.object(forKey: "youtubeMadeForKids") as? Bool
-        youtubeChannel = defaults.data(forKey: "youtubeChannel").flatMap { try? JSONDecoder().decode(YouTubeChannel.self, from: $0) }
+        youtubeMadeForKids = SavedSettings.youtubeMadeForKids.load(from: defaults)
+        youtubeChannel = SavedSettings.youtubeChannel.load(from: defaults)
         // Absent means never answered, which is opted IN - matching the consent
         // the Apptics setup already carries. An explicit false stays false.
-        analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
-        screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
+        analyticsEnabled = SavedSettings.analyticsEnabled.load(from: defaults)
+        screenCaptureDisplayUUID = SavedSettings.screenCaptureDisplayUUID.load(from: defaults)
         // On unless the teacher turned it off; Macs that stored the old default
         // (off) are flipped once, so the new default actually reaches them.
-        autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
-        meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
-        meetingPresets = Self.loadPresets(from: defaults)
+        autoRecordOnStart = SavedSettings.autoRecordOnStart.load(from: defaults)
+        meetingMode = SavedSettings.meetingMode.load(from: defaults)
+        meetingPresets = SavedSettings.meetingPresets.load(from: defaults)
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
-        sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
+        sdkClientID = SavedSettings.sdkClientID.load(from: defaults)
         sdkClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
-        s2sAccountID = defaults.string(forKey: "zoomS2SAccountID") ?? ""
-        s2sClientID = defaults.string(forKey: "zoomS2SClientID") ?? ""
+        s2sAccountID = SavedSettings.s2sAccountID.load(from: defaults)
+        s2sClientID = SavedSettings.s2sClientID.load(from: defaults)
         s2sClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
         // The choice between the two ways is explicit; with none saved (a fresh
         // install, or the first launch after it became explicit), pick and save one.
         // Read from storage: this runs before init finishes (the secrets load lazily later).
         let savedChoice = defaults.object(forKey: Self.zoomPrefersSignInKey) as? Bool
         let store = defaults
-        let storedOwnAppsComplete = ["zoomSDKClientID", "zoomS2SAccountID", "zoomS2SClientID"]
-            .allSatisfy { !(store.string(forKey: $0) ?? "").isEmpty }
+        let storedOwnAppsComplete = [SavedSettings.sdkClientID, SavedSettings.s2sAccountID, SavedSettings.s2sClientID]
+            .allSatisfy { !$0.load(from: store).isEmpty }
             && !(SecretStore.get("zoomSDKClientSecret") ?? "").isEmpty
             && !(SecretStore.get("zoomS2SClientSecret") ?? "").isEmpty
         let initialChoice = ZoomRouteChoiceRules.initialPrefersSignIn(
             saved: savedChoice, signedIn: zoomUser.isSignedIn, ownAppsComplete: storedOwnAppsComplete)
         zoomPrefersSignIn = initialChoice
         if savedChoice == nil { defaults.set(initialChoice, forKey: Self.zoomPrefersSignInKey) }
-        userDisplayName = defaults.string(forKey: "userDisplayName") ?? NSFullUserName()
+        userDisplayName = SavedSettings.userDisplayName.load(from: defaults)
         // Default OFF (show self): the teacher's own tile belongs in the
         // extended display's participant grid alongside the students
         // (explicit request); the speaker tile stays clean regardless
         // because spotlight-my-video and the thumbnail strip are disabled.
-        hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? false
-        let shownOnMyScreen = (defaults.object(forKey: "cameraShownOnMyScreen") as? Bool) ?? true
+        hideSelfView = SavedSettings.hideSelfView.load(from: defaults)
+        let shownOnMyScreen = SavedSettings.cameraShownOnMyScreen.load(from: defaults)
         cameraShownOnMyScreen = shownOnMyScreen
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: initialSetup.cameraState.shownOnMyScreen)   // init: no method calls yet
-        speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
+        speakerTileShortcutEnabled = SavedSettings.speakerTileShortcutEnabled.load(from: defaults)
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.
         zoomChatClient.hideSelfViewPreference = hideSelfView
@@ -2690,7 +2679,7 @@ final class CoordinatorController: ObservableObject {
     /// yesterday's. Left empty it falls back to a timestamp, so nothing ever
     /// blocks on it.
     @Published var className: String {
-        didSet { defaults.set(className, forKey: "className") }
+        didSet { SavedSettings.className.save(className, to: defaults) }
     }
 
     /// Keeps the last few minutes clippable even when nothing is being recorded.
@@ -2701,7 +2690,7 @@ final class CoordinatorController: ObservableObject {
     /// choosing not to record a class still ends with nothing written down.
     @Published var clipBufferEnabled: Bool {
         didSet {
-            defaults.set(clipBufferEnabled, forKey: "clipBufferEnabled")
+            SavedSettings.clipBufferEnabled.save(clipBufferEnabled, to: defaults)
             Analytics.setting("clip_buffer", on: clipBufferEnabled)
         }
     }
@@ -4201,14 +4190,14 @@ final class CoordinatorController: ObservableObject {
     private(set) var meetingControls: MeetingControlsModel?
 
     /// Settings key: the invite link goes on the clipboard as the meeting goes live.
-    static let copyInviteOnStartKey = "copyInviteOnStart"
+    static let copyInviteOnStartKey = SavedSettings.copyInviteOnStart.key
 
     /// Puts the invite link on the clipboard once the meeting is live, so it can be
     /// pasted straight into a message. On unless turned off in Settings. The link
     /// arrives a moment after the meeting starts, so it waits for it (up to 10s)
     /// rather than copying nothing. Runs once per start, never on a reconnect.
     func copyInviteWhenReady() {
-        guard UserDefaults.standard.object(forKey: Self.copyInviteOnStartKey) as? Bool ?? true else { return }
+        guard SavedSettings.copyInviteOnStart.load(from: .standard) else { return }
         Task { @MainActor [weak self] in
             for _ in 0..<20 {
                 guard let self else { return }
@@ -5407,39 +5396,6 @@ final class CoordinatorController: ObservableObject {
             try? handle.close()
         } else {
             try? Data(line.utf8).write(to: url)
-        }
-    }
-}
-
-/// The one up-front decision in the single-button flow: does Start create
-/// a fresh meeting, or start one of your scheduled meetings?
-enum MeetingMode: String, CaseIterable, Identifiable {
-    case create, join
-    /// No meeting: the Webcam page's picture recorded to this Mac. See
-    /// `startRecordingFlow`.
-    case record
-
-    var id: String { rawValue }
-
-    /// The raw value "join" is what older versions saved, so it keeps loading
-    /// into the My Meetings tab.
-    static let scheduledHelp = "Your personal room and the meetings scheduled on your Zoom account. To join someone else\u{2019}s meeting, use the Zoom app."
-
-    var label: String {
-        switch self {
-        case .create: return "New Meeting"
-        case .join: return "My Meetings"
-        case .record: return "Record"
-        }
-    }
-
-    /// The toolbar switcher's words: short, so the switcher, Sessions, Help and
-    /// Settings all fit a 560pt window without an overflow chevron.
-    var shortLabel: String {
-        switch self {
-        case .create: return "New"
-        case .join: return "My Meetings"
-        case .record: return "Record"
         }
     }
 }

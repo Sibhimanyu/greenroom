@@ -44,7 +44,7 @@ final class SessionNotes: ObservableObject {
     /// Settings -> Layout -> "Open notes when a session starts". Read here as
     /// well as bound there, so the bar follows it even when the main window is
     /// closed. It is the default; `manualOverride` is this session's say.
-    static let enabledKey = "sessionNotesEnabled"
+    static let enabledKey = SavedSettings.sessionNotesEnabled.key
 
     /// This session's own choice, from the Notes buttons (control bar, Record
     /// view, menu bar). nil means "follow the setting". Set before a session

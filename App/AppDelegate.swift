@@ -39,8 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // suppresses every call including device registration, so a user who
         // turned analytics off stays off across launches rather than
         // re-registering each time.
-        if UserDefaults.standard.object(forKey: "analyticsEnabled") != nil,
-           !UserDefaults.standard.bool(forKey: "analyticsEnabled") {
+        if SavedSettings.analyticsEnabled.stored(in: .standard) == false {
             // Same shape as applicationDidFinishLaunching below: the delegate
             // callback is nonisolated, and everything it reaches here is
             // main-actor work already running on the main thread.

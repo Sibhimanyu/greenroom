@@ -60,20 +60,22 @@ struct SettingsEntry: Equatable {
 /// on the coordinator), so the views that read them and the settings file agree
 /// on one spelling.
 enum SettingsKeys {
-    static let cameraBackground = "cameraBackground"
-    static let cameraBackgroundImage = "cameraBackgroundImage"
-    static let className = "className"
-    static let meetingMode = "meetingMode"
-    static let micDeviceUID = "micDeviceUID"
-    static let copyInviteOnStart = "copyInviteOnStart"
-    static let sessionNotesEnabled = "sessionNotesEnabled"
-    static let mirrorSelfView = "camera.mirrorSelfView"
+    // The camera look's keys come from `CameraLook`, the rest from `SavedSettings`: one spelling each.
+    static let cameraBackground = CameraLook.backgroundKey
+    static let cameraBackgroundImage = CameraLook.backgroundImageKey
+    static let className = SavedSettings.className.key
+    static let meetingMode = SavedSettings.meetingMode.key
+    static let micDeviceUID = SavedSettings.micDeviceUID.key
+    static let copyInviteOnStart = SavedSettings.copyInviteOnStart.key
+    static let sessionNotesEnabled = SavedSettings.sessionNotesEnabled.key
+    static let mirrorSelfView = CameraLook.mirrorKey
+    // The meeting window's own choices: `MeetingViewPrefs` owns them (SettingsDefaultsBridgeTests pins the match).
     static let meetingWindowView = "meetingWindow.view"
     static let meetingWindowShareLayout = "meetingWindow.shareLayout"
     static let meetingWindowShareSplit = "meetingWindow.shareSplit"
     static let meetingWindowHideSelfView = "meetingWindow.hideSelfView"
     static let meetingWindowHideVideoOff = "meetingWindow.hideVideoOff"
-    static let meetingViewsEnabled = "meetingViews.enabled"
+    static let meetingViewsEnabled = SavedSettings.meetingViewsEnabled.key
 }
 
 enum SettingsCatalog {

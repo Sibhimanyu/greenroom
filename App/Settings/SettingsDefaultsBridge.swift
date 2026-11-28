@@ -17,10 +17,10 @@ struct SettingsDefaultsBridge {
     /// default where nothing is saved), so a file says what the exporter sees,
     /// not just what it has changed.
     func read(into transfer: inout SettingsTransfer) {
-        transfer.copyInviteOnStart = bool(SettingsKeys.copyInviteOnStart, default: true)
-        transfer.sessionNotesEnabled = bool(SettingsKeys.sessionNotesEnabled, default: false)
-        transfer.mirrorSelfView = bool(SettingsKeys.mirrorSelfView, default: true)
-        transfer.meetingViewsEnabled = bool(SettingsKeys.meetingViewsEnabled, default: true)
+        transfer.copyInviteOnStart = SavedSettings.copyInviteOnStart.load(from: defaults)
+        transfer.sessionNotesEnabled = SavedSettings.sessionNotesEnabled.load(from: defaults)
+        transfer.mirrorSelfView = CameraLook.load(from: defaults).mirror
+        transfer.meetingViewsEnabled = SavedSettings.meetingViewsEnabled.load(from: defaults)
         let prefs = MeetingViewPrefs(defaults: defaults)
         transfer.meetingWindowView = prefs.view.rawValue
         transfer.meetingWindowShareLayout = prefs.shareLayout.rawValue
@@ -32,19 +32,15 @@ struct SettingsDefaultsBridge {
     /// Writes the fields the file carries; the rest stay as this Mac has them.
     /// Values are expected to have been through `SettingsImportRules.sanitized`.
     func apply(_ transfer: SettingsTransfer) {
-        if let v = transfer.copyInviteOnStart { defaults.set(v, forKey: SettingsKeys.copyInviteOnStart) }
-        if let v = transfer.sessionNotesEnabled { defaults.set(v, forKey: SettingsKeys.sessionNotesEnabled) }
-        if let v = transfer.mirrorSelfView { defaults.set(v, forKey: SettingsKeys.mirrorSelfView) }
-        if let v = transfer.meetingViewsEnabled { defaults.set(v, forKey: SettingsKeys.meetingViewsEnabled) }
+        if let v = transfer.copyInviteOnStart { SavedSettings.copyInviteOnStart.save(v, to: defaults) }
+        if let v = transfer.sessionNotesEnabled { SavedSettings.sessionNotesEnabled.save(v, to: defaults) }
+        if let v = transfer.mirrorSelfView { defaults.set(v, forKey: CameraLook.mirrorKey) }   // the Look's key; the coordinator re-reads the Look after an import
+        if let v = transfer.meetingViewsEnabled { SavedSettings.meetingViewsEnabled.save(v, to: defaults) }
         let prefs = MeetingViewPrefs(defaults: defaults)
         if let raw = transfer.meetingWindowView, let v = MeetingViewMode(rawValue: raw) { prefs.view = v }
         if let raw = transfer.meetingWindowShareLayout, let v = MeetingShareLayout(rawValue: raw) { prefs.shareLayout = v }
         if let v = transfer.meetingWindowShareSplit { prefs.splitFraction = v }
         if let v = transfer.meetingWindowHideSelfView { prefs.hideSelfView = v }
         if let v = transfer.meetingWindowHideVideoOff { prefs.hideNoVideo = v }
-    }
-
-    private func bool(_ key: String, default fallback: Bool) -> Bool {
-        (defaults.object(forKey: key) as? Bool) ?? fallback
     }
 }
